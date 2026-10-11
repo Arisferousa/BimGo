@@ -56,6 +56,34 @@ textures are included in BimGo.
   fabric             Fabric030         https://ambientcg.com/a/Fabric030
 
 --------------------------------------------------------------------------------
+Place list (Resources\places.tsv, shipped beside BimGo.exe)
+
+Made with Natural Earth. Free vector and raster map data @ naturalearthdata.com.
+
+The sun panel's location search uses an offline list of about 7,300 cities and
+towns (name, region, country, latitude, longitude, IANA time zone, population).
+How it was made:
+- Source: Natural Earth 1:10m Cultural Vectors, "Populated Places"
+  (ne_10m_populated_places.geojson), taken from the project's repository
+  https://github.com/nvkelso/natural-earth-vector, commit ca96624
+  (2022-06-02, VERSION 5.2.0-pre), downloaded 2026-10-11.
+- Converted by make_places.py (in BimGo's source, ai/261011b_Video_Location):
+  only the fields above are kept; names the interface font can't draw use
+  Natural Earth's ASCII name; a place without a time zone in the source takes the zone of the
+  nearest place in the same country that has one (same region preferred).
+  No other data was added.
+- Licence: Natural Earth is in the public domain ("All versions of Natural
+  Earth raster + vector map data found on this website are in the public
+  domain... No permission is needed to use Natural Earth. Crediting the
+  authors is unnecessary." - https://www.naturalearthdata.com/about/terms-of-use/).
+  No attribution is required; this credit is given anyway. Primary authors:
+  Tom Patterson and Nathaniel Vaughn Kelso, with Natural Earth's contributors.
+- Natural Earth notes that it is provided as a public service, without any
+  responsibility for accuracy; BimGo passes the data on on the same basis.
+  Place positions are city reference points: for a building, paste the
+  site's own coordinates.
+
+--------------------------------------------------------------------------------
 Trademarks
 
 Autodesk and Revit are registered trademarks of Autodesk, Inc. BCF (BIM
@@ -75,6 +103,11 @@ Not shipped with BimGo
   (Bahnschrift, Segoe UI, Consolas, with fallbacks). No font files are shipped.
 - OpenGL: provided by Windows and the graphics driver; all shaders are
   BimGo's own.
+- Video encoding (walkthrough video, MP4 / H.264): done by Windows Media
+  Foundation and the H.264 encoder that come with Windows (or the graphics
+  driver's hardware encoder). BimGo bundles no codec and no encoding library.
+- Time zones and daylight saving: read at run time from Windows' own time zone
+  data (IANA ids through .NET / ICU). No time zone database is shipped.
 
 --------------------------------------------------------------------------------
 Acknowledgements: published methods and open formats
@@ -106,11 +139,30 @@ Rendering and geometry
   D. Salesin, R. Cook, 1987).
 - Section caps: the stencil-buffer capping technique for clipping planes.
 
+Places and time
+- Place list: Natural Earth (public domain), see "Place list" above.
+- Time zone names: the IANA Time Zone Database identifiers (e.g.
+  "Australia/Sydney"; the tz database is in the public domain).
+- Typed coordinates: decimal degrees and degrees / minutes / seconds, read by
+  BimGo's own parser; distances by the haversine formula.
+
+Windows interfaces
+- Media Foundation sink writer (MFCreateSinkWriterFromURL, IMFSinkWriter,
+  IMFSample, IMFMediaBuffer, IMFAttributes) called from BimGo's own interop
+  code, following Microsoft's published Windows SDK documentation. The GUID
+  values and interface method order (facts needed to call Windows, defined by
+  Microsoft) were cross-checked against the mingw-w64 project's headers
+  (mfapi.h, mfobjects.idl, mfreadwrite.idl; https://github.com/mingw-w64/mingw-w64,
+  Zope Public License 2.1). No mingw-w64 code or files are copied into or
+  shipped with BimGo; they are acknowledged with thanks.
+
 File formats
 - BCF 2.1 (BCF-XML), buildingSMART International: comment import / export.
 - IFC GUID compressed 22-character encoding, buildingSMART International.
 - Google Photo Sphere XMP metadata (GPano) for 360-degree panoramas.
 - PNG and JPEG via the .NET / Windows imaging components.
+- MP4 (ISO base media file format) with H.264 / AVC video, written by Windows
+  Media Foundation.
 
 --------------------------------------------------------------------------------
 Licence review and contact
