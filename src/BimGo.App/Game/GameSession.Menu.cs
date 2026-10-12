@@ -399,6 +399,11 @@ namespace BimGo.Game
                 BuildGeometryPanel();
                 return;
             }
+            if (IsControlsPanelOpen)
+            {
+                BuildControlsPanel();
+                return;
+            }
 
             FontAtlas f = _ui.Atlas;
             InputState input = _window.Input;
@@ -433,7 +438,7 @@ namespace BimGo.Game
             bool texturesButton = HasTexturePanel;
             bool libraryButton = HasLibrary;
             bool roomsButton = Scene.Rooms.Length > 0;
-            int sessionButtons = 3 + (IsFileMode ? 3 : 1);
+            int sessionButtons = 4 + (IsFileMode ? 3 : 1); // + CONTROLS (input round B2)
             int reviewButtons = 4 + (hiddenThings > 0 ? 1 : 0) + (texturesButton ? 1 : 0) + (libraryButton ? 1 : 0) + (roomsButton ? 1 : 0);
             int rows = twoStacks ? Math.Max(sessionButtons, reviewButtons) : sessionButtons + reviewButtons;
             float step = Math.Clamp((endY - S(12) - buttonsTop) / rows, S(40), S(54));
@@ -465,6 +470,10 @@ namespace BimGo.Game
                 if (MenuButton(f, x, y, stackW, "SAVE AS .BIMGO…", false, false, height: buttonH)) { Save(saveAs: true); return; }
                 y += step;
             }
+
+            // Keys, mouse buttons and the wheel: every binding, rebindable (input round B2)
+            if (MenuButton(f, x, y, stackW, "CONTROLS", false, false, height: buttonH)) { OpenControls(); return; }
+            y += step;
 
             // Stack 2: review tools and panels (beside the first, or below it)
             if (twoStacks)

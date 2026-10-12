@@ -2,6 +2,7 @@ using System.Numerics;
 using BimGo.Audio;
 using BimGo.Format;
 using BimGo.Game.Guns;
+using BimGo.Platform;
 using BimGo.Rendering;
 using BimGo.Scene;
 using Gl = BimGo.Native.Gl;
@@ -22,36 +23,67 @@ namespace BimGo.Game
         // Help panel column widths (measured from the text; recomputed when the UI scale changes)
         private float _helpScale = -1f, _helpKeyWidth, _helpActionWidth;
 
-        private static readonly (string Key, string Action)[] HELP_ROWS =
+        // F1 help rows: built from the key map (input round B2), rebuilt when a binding changes
+        private (string Key, string Action)[] _helpRows;
+        private int _helpRowsVersion = int.MinValue;
+        private bool _helpRowsPad;
+
+        /// <summary>
+        /// The F1 help rows with the keys currently bound (the descriptions are fixed; the keys come from the map).
+        /// </summary>
+        private (string Key, string Action)[] HelpRows()
         {
-            ("WASD", "Move"),
-            ("SPACE / CTRL", "Jump / Crouch"),
-            ("SHIFT", "Run"),
-            ("V", "Fly / walk (no-clip)"),
-            ("PGUP / PGDN", "Level up / down"),
-            ("H · SHIFT+H", "Go home · Set home here"),
-            ("1–9 · WHEEL", "Select gun (9 Place: family library)"),
-            ("2 AGAIN", "Measure: distance / area / angle / clearance"),
-            ("F", "Gizmo / Clone / Place: drop onto the surface below"),
-            ("I · SHIFT+I", "Scan gun: hide target · isolate its category"),
-            ("X", "Clear this gun's markers"),
-            ("B · CTRL+1–9", "Bookmark this view · Go to bookmark"),
-            ("ESC → BOOKMARKS", "Play the bookmark tour (eye height: pause menu)"),
-            ("L", "Coordinate readout"),
-            ("K", "Artificial lights: off / glow / light"),
-            ("O · SHIFT+O", "Shadows on/off · Sun panel"),
-            ("J", "Sun / daylight study (click surfaces, RMB-drag looks)"),
-            ("P · SHIFT+P · CTRL+P", "Section box · cut at aimed surface · clear"),
-            ("[ ]", "Sun time −/+ 5 min (Shift: 1 min)"),
-            ("CTRL+S · Z · Y", "Save · Undo · Redo (files)"),
-            ("CTRL+F", "Find a room and go there"),
-            ("F5", "Refresh from Revit (live sessions)"),
-            ("TAB · ESC", "Minimap · Pause menu"),
-            ("U", "Hide the UI (Esc or U shows it)"),
-            ("M", "Photo mode: hi-res stills and 360° panoramas"),
-            ("F11 · F12", "Fullscreen · Screenshot"),
-            ("F1", "Hide help · BimGo " + Program.Version)
-        };
+            bool pad = Gamepad.Connected;
+            if (_helpRows != null && _helpRowsVersion == Hotkeys.Version && _helpRowsPad == pad) { return _helpRows; }
+            KeyMap m = Hotkeys.Map;
+            string J(string separator, params InputAction[] actions) => m.DescribeJoined(separator, false, actions).ToUpperInvariant();
+
+            _helpRows = new[]
+            {
+                (m.DescribeJoined(" ", true, InputAction.MoveForward, InputAction.MoveLeft, InputAction.MoveBack, InputAction.MoveRight).ToUpperInvariant(), "Move"),
+                (J(" / ", InputAction.Jump, InputAction.Crouch), "Jump / Crouch"),
+                (J(" ", InputAction.Run), "Run"),
+                (J(" ", InputAction.Fly), "Fly / walk (no-clip)"),
+                (J(" / ", InputAction.LevelUp, InputAction.LevelDown), "Level up / down"),
+                (J(" · ", InputAction.GoHome, InputAction.SetHome), "Go home · Set home here"),
+                ((m.DescribeRange(InputAction.Gun1, 9) + " · " + m.DescribeJoined(" · ", false, InputAction.PreviousGun, InputAction.NextGun)).ToUpperInvariant(), "Select gun (9 Place: family library)"),
+                (m.Label(InputAction.Gun2).ToUpperInvariant() + " AGAIN", "Measure: distance / area / angle / clearance"),
+                (J(" ", InputAction.GizmoDrop), "Gizmo / Clone / Place: drop onto the surface below"),
+                (J(" · ", InputAction.ScanHide, InputAction.ScanIsolate), "Scan gun: hide target · isolate its category"),
+                (J(" ", InputAction.ClearMarkers), "Clear this gun's markers"),
+                ((m.Label(InputAction.AddBookmark) + " · " + m.DescribeRange(InputAction.Bookmark1, 9)).ToUpperInvariant(), "Bookmark this view · Go to bookmark"),
+                ("ESC → BOOKMARKS", "Play the bookmark tour (eye height: pause menu)"),
+                (J(" ", InputAction.Coordinates), "Coordinate readout"),
+                (J(" ", InputAction.Lights), "Artificial lights: off / glow / light"),
+                (J(" · ", InputAction.Shadows, InputAction.SunPanel), "Shadows on/off · Sun panel"),
+                (J(" ", InputAction.SunStudy), "Sun / daylight study (click surfaces, RMB-drag looks)"),
+                (J(" · ", InputAction.SectionBox, InputAction.SectionPlane, InputAction.SectionClear), "Section box · cut at aimed surface · clear"),
+                (J(" ", InputAction.SunEarlier, InputAction.SunLater), $"Sun time −/+ 5 min ({m.DescribeModifierVariant(InputAction.SunEarlier, InputAction.SunEarlierFine)}: 1 min)"),
+                (J(" · ", InputAction.Save, InputAction.Undo, InputAction.Redo), "Save · Undo · Redo (files)"),
+                (J(" ", InputAction.FindRoom), "Find a room and go there"),
+                (J(" ", InputAction.Refresh), "Refresh from Revit (live sessions)"),
+                (J(" ", InputAction.Minimap) + " · ESC", "Minimap · Pause menu"),
+                (J(" ", InputAction.HideUi), $"Hide the UI (Esc or {m.Label(InputAction.HideUi)} shows it)"),
+                (J(" ", InputAction.PhotoMode), "Photo mode: hi-res stills and 360° panoramas"),
+                (J(" · ", InputAction.Fullscreen, InputAction.Screenshot), "Fullscreen · Screenshot"),
+                ("ESC → CONTROLS", "Every key, and changing them"),
+                (J(" ", InputAction.Help), "Hide help · BimGo " + Program.Version)
+            };
+            if (pad)
+            {
+                // A gamepad is connected (build B): two rows of its main buttons, before the last row
+                string P(InputAction action) => m.PadLabel(action).Length > 0 ? m.PadLabel(action) : "—";
+                string StickOf(string label) => label.StartsWith("LS ", StringComparison.Ordinal) || label.StartsWith("RS ", StringComparison.Ordinal) ? label[..2] : label;
+                var rows = new List<(string Key, string Action)>(_helpRows);
+                rows.Insert(rows.Count - 1, ("GAMEPAD", $"{StickOf(P(InputAction.LookUp))} look · {StickOf(P(InputAction.MoveForward))} move · {P(InputAction.Jump)} jump · {P(InputAction.Crouch)} crouch · {P(InputAction.Fly)} fly · {P(InputAction.Run)} sprint"));
+                rows.Insert(rows.Count - 1, (string.Empty, $"{P(InputAction.GunPrimary)} / {P(InputAction.GunSecondary)} gun · {P(InputAction.GunWheel)} gun wheel · LB / RB + D-pad: views and tools · {P(InputAction.Back)} menu"));
+                _helpRows = rows.ToArray();
+            }
+            _helpRowsPad = pad;
+            _helpRowsVersion = Hotkeys.Version;
+            _helpScale = -1f; // re-measure the columns
+            return _helpRows;
+        }
 
         #endregion
 
@@ -349,7 +381,7 @@ namespace BimGo.Game
 
             Text.Clear().Append("MAP · ").Append(_levelNamesUpper.Length > 0 ? _levelNamesUpper[LevelIndexAt(_player.Feet.Z)] : "\u2014");
             _ui.Text(f.Small, x + S(8), y + S(9), Text.Span, UiTheme.TEXT_MUTED, S(1f));
-            _ui.TextRight(f.Small, x + w - S(8), y + S(9), "TAB", UiTheme.TEXT_MUTED, S(1f));
+            _ui.TextRight(f.Small, x + w - S(8), y + S(9), HINT_MAP_KEY.Text, UiTheme.TEXT_MUTED, S(1f));
 
             float metresPerPixel = MapMetresAcross / mapW;
             float cx = mapX + mapW * 0.5f, cy = mapY + mapH * 0.5f;
@@ -460,6 +492,7 @@ namespace BimGo.Game
 
             BuildHelp(f, height);
             BuildGunBar(f, width, height, active);
+            BuildGunWheel(f, width, height);
             BuildRoomBanner(f, width);
             BuildLiveBanner(f, width, height);
             BuildToast(f, width);
@@ -477,6 +510,7 @@ namespace BimGo.Game
                 _ui.Rect(0, 0, width, _window.Height, Rgba.WithAlpha(_flashColour, 0.35f * t));
             }
             if (_toastImportant) { BuildToast(_ui.Atlas, width); }
+            BuildGunWheel(_ui.Atlas, width, _window.Height);
         }
 
         /// <summary>
@@ -561,17 +595,18 @@ namespace BimGo.Game
             float x = S(20);
             if (!_showHelp)
             {
-                _ui.Text(f.Mono, x, height - S(36), "F1  Help", UiTheme.TEXT_MUTED);
+                _ui.Text(f.Small, x, height - S(30), HINT_HELP.Text, UiTheme.TEXT_MUTED); // help is off by default: a small note
                 return;
             }
 
-            // Columns sized to the widest key and action (measured once per UI scale)
+            // Columns sized to the widest key and action (measured again when the UI scale or a binding changes)
+            (string Key, string Action)[] rows = HelpRows();
             if (_helpScale != UiScale)
             {
                 _helpScale = UiScale;
                 _helpKeyWidth = 0f;
                 _helpActionWidth = 0f;
-                foreach ((string key, string action) in HELP_ROWS)
+                foreach ((string key, string action) in rows)
                 {
                     _helpKeyWidth = MathF.Max(_helpKeyWidth, UiBatch.Measure(f.Mono, key));
                     _helpActionWidth = MathF.Max(_helpActionWidth, UiBatch.Measure(f.Body, action));
@@ -579,17 +614,17 @@ namespace BimGo.Game
             }
 
             float row = S(17);
-            float h = HELP_ROWS.Length * row + S(20);
+            float h = rows.Length * row + S(20);
             float y = height - S(20) - h;
             float keyWidth = _helpKeyWidth + S(16);
             _ui.Panel(x, y, S(12) + keyWidth + _helpActionWidth + S(14), h, Rgba.Hex(0x0C0E12, 0.66f), Rgba.Hex(0xFFFFFF, 0.1f));
 
             float rowY = y + S(10);
-            for (int i = 0; i < HELP_ROWS.Length; i++)
+            for (int i = 0; i < rows.Length; i++)
             {
-                bool last = i == HELP_ROWS.Length - 1;
-                _ui.Text(f.Mono, x + S(12), rowY, HELP_ROWS[i].Key, last ? UiTheme.TEXT_MUTED : UiTheme.TEXT);
-                _ui.Text(f.Body, x + S(12) + keyWidth, rowY - S(1), HELP_ROWS[i].Action, last ? UiTheme.TEXT_MUTED : UiTheme.TEXT_SOFT);
+                bool last = i == rows.Length - 1;
+                _ui.Text(f.Mono, x + S(12), rowY, rows[i].Key, last ? UiTheme.TEXT_MUTED : UiTheme.TEXT);
+                _ui.Text(f.Body, x + S(12) + keyWidth, rowY - S(1), rows[i].Action, last ? UiTheme.TEXT_MUTED : UiTheme.TEXT_SOFT);
                 rowY += row;
             }
         }
@@ -600,6 +635,7 @@ namespace BimGo.Game
         /// </summary>
         private void BuildGunBar(FontAtlas f, int width, int height, Gun active)
         {
+            if (_gunKeysVersion != Hotkeys.Version) { RefreshGunKeys(); }
             float slot = S(52), gap = S(6), iconSize = S(30);
             float total = _guns.Length * slot + (_guns.Length - 1) * gap;
             float x = MathF.Round(width * 0.5f - total * 0.5f);
@@ -619,16 +655,20 @@ namespace BimGo.Game
             // Selected gun name, then the hints, on one row above the bar
             float rowY = y - S(8) - S(24);
             float nameWidth = UiBatch.Measure(f.Bold, active.Name, S(1f)) + S(20);
-            float lmbWidth = HintWidth(f, active.HintPrimary);
-            float rmbWidth = HintWidth(f, active.HintSecondary);
+            // The gamepad's triggers when it was used last (build B), else the mouse buttons
+            bool pad = _window.Input.LastInputWasPad && _window.Input.PadConnected;
+            string primary = pad && Hotkeys.Map.PadLabel(InputAction.GunPrimary).Length > 0 ? Hotkeys.Map.PadLabel(InputAction.GunPrimary) : Hotkeys.Label(InputAction.GunPrimary);
+            string secondary = pad && Hotkeys.Map.PadLabel(InputAction.GunSecondary).Length > 0 ? Hotkeys.Map.PadLabel(InputAction.GunSecondary) : Hotkeys.Label(InputAction.GunSecondary);
+            float lmbWidth = HintWidth(f, primary, active.HintPrimary);
+            float rmbWidth = HintWidth(f, secondary, active.HintSecondary);
             float rowWidth = nameWidth + S(10) + lmbWidth + S(10) + rmbWidth;
             float rowX = MathF.Round(width * 0.5f - rowWidth * 0.5f);
 
             _ui.Rect(rowX, rowY, nameWidth, S(24), Rgba.WithAlpha(active.Colour, 0.9f));
             _ui.Text(f.Bold, rowX + S(10), rowY + S(4), active.Name, UiTheme.SCAN_TAG_TEXT, S(1f));
             rowX += nameWidth + S(10);
-            Hint(f, rowX, rowY, "LMB", active.HintPrimary, active.Colour);
-            Hint(f, rowX + lmbWidth + S(10), rowY, "RMB", active.HintSecondary, active.Colour);
+            Hint(f, rowX, rowY, primary, active.HintPrimary, active.Colour);
+            Hint(f, rowX + lmbWidth + S(10), rowY, secondary, active.HintSecondary, active.Colour);
 
             // Revit write-back activity
             if (EditsPending > 0)
@@ -640,12 +680,12 @@ namespace BimGo.Game
             }
         }
 
-        private float HintWidth(FontAtlas f, string text) =>
-            UiBatch.Measure(f.Mono, "LMB") + S(6) + UiBatch.Measure(f.Body, text) + S(16);
+        private float HintWidth(FontAtlas f, string button, string text) =>
+            UiBatch.Measure(f.Mono, button) + S(6) + UiBatch.Measure(f.Body, text) + S(16);
 
         private void Hint(FontAtlas f, float x, float y, string button, string text, uint colour)
         {
-            _ui.Rect(x, y, HintWidth(f, text), S(24), Rgba.Hex(0x0C0E12, 0.7f));
+            _ui.Rect(x, y, HintWidth(f, button, text), S(24), Rgba.Hex(0x0C0E12, 0.7f));
             float used = _ui.Text(f.Mono, x + S(8), y + S(5), button, colour);
             _ui.Text(f.Body, x + S(8) + used + S(6), y + S(4), text, Rgba.Hex(0xE5E7EB));
         }
@@ -683,7 +723,7 @@ namespace BimGo.Game
             }
             else if (_live.ModelChanges > 0 && _live.Connected)
             {
-                Text.Clear().Append("MODEL CHANGED IN REVIT (").Append(_live.ModelChanges).Append(_live.ModelChanges == 1 ? " CHANGE" : " CHANGES").Append(") · F5 REFRESH");
+                Text.Clear().Append("MODEL CHANGED IN REVIT (").Append(_live.ModelChanges).Append(_live.ModelChanges == 1 ? " CHANGE" : " CHANGES").Append(") · ").Append(HINT_REFRESH_KEY.Text).Append(" REFRESH");
                 colour = UiTheme.MEASURE_LABEL;
             }
             else

@@ -141,7 +141,7 @@ namespace BimGo.Game.Guns
             _mode = (MeasureMode)(((int)_mode + 1) % MODE_NAMES.Length);
             CancelPending();
             Session.Sound.Play(SoundId.UiClick);
-            Session.Toast($"Measure: {Title(_mode)} (press 2 again for {Title((MeasureMode)(((int)_mode + 1) % MODE_NAMES.Length))})", 2f);
+            Session.Toast($"Measure: {Title(_mode)} (press {Hotkeys.Label(InputAction.Gun2)} again for {Title((MeasureMode)(((int)_mode + 1) % MODE_NAMES.Length))})", 2f);
         }
 
         public override void Update(float dt, in AimInfo aim)
@@ -189,9 +189,13 @@ namespace BimGo.Game.Guns
             _previewValid = false;
         }
 
+        // Panel hints naming keys (rebuilt when a binding changes)
+        private static readonly KeyHint HINT_NORMAL = new(() => $"Normal projection ({Hotkeys.Label(InputAction.MeasureNormal)})");
+        private static readonly KeyHint HINT_AGAIN = new(() => $"Press {Hotkeys.Label(InputAction.Gun2)} again: area · angle · clearance");
+
         public override void OnKeys(InputState input)
         {
-            if (_mode == MeasureMode.Distance && input.IsPressed('N'))
+            if (_mode == MeasureMode.Distance && input.Pressed(InputAction.MeasureNormal))
             {
                 _normalSnap = !_normalSnap;
                 Session.Toast(_normalSnap ? "Normal projection ON" : "Normal projection OFF");
@@ -753,10 +757,10 @@ namespace BimGo.Game.Guns
 
             Row(ui, f, x, y, width, "Distances", text.Clear().Append(CountOf(MeasureMode.Distance)));
             y += S(19);
-            ui.Text(f.Body, x, y, "Normal projection (N)", UiTheme.TEXT_MUTED);
+            ui.Text(f.Body, x, y, HINT_NORMAL.Text, UiTheme.TEXT_MUTED);
             ui.TextRight(f.Body, x + width, y, _normalSnap ? "ON" : "OFF", UiTheme.MEASURE_LABEL);
             y += S(19);
-            ui.Text(f.Small, x, y, "Press 2 again: area · angle · clearance", UiTheme.TEXT_FAINT);
+            ui.Text(f.Small, x, y, HINT_AGAIN.Text, UiTheme.TEXT_FAINT);
         }
 
         private void PanelArea(UiBatch ui, FontAtlas f, float x, float y, float width)
