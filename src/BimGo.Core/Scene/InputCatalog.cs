@@ -23,6 +23,9 @@ namespace BimGo.Scene
         SunPanel,
         Tour,
 
+        /// <summary>Clash mode (Round C-B): the docked clash list, free cursor, flying.</summary>
+        Clashes,
+
         /// <summary>Keys that can't be rebound (Esc, menus and panels' mouse, Alt+F4). Listed for reference and clash checks.</summary>
         Fixed
     }
@@ -61,11 +64,12 @@ namespace BimGo.Scene
 
         // Guns
         Gun1, Gun2, Gun3, Gun4, Gun5, Gun6, Gun7, Gun8, Gun9, PreviousGun, NextGun, GunPrimary, GunSecondary, ClearMarkers, GunWheel,
+        GunModePrevious, GunModeNext, Unarmed,
 
         // Views and tools
         AddBookmark, Bookmark1, Bookmark2, Bookmark3, Bookmark4, Bookmark5, Bookmark6, Bookmark7, Bookmark8, Bookmark9,
         Coordinates, Lights, Shadows, SunPanel, SunEarlier, SunEarlierFine, SunLater, SunLaterFine, SunStudy, PhotoMode,
-        SectionBox, SectionPlane, SectionClear,
+        SectionBox, SectionPlane, SectionClear, ClashMode,
 
         // Gun keys
         ScanSelectInRevit, ScanHide, ScanIsolate, MeasureNormal, CommentEdit, DemolishMode, GizmoSnap, GizmoDrop,
@@ -79,6 +83,10 @@ namespace BimGo.Scene
 
         // Section box editor, photo mode, sun panel, tour
         SectionFreeDrag, PhotoTake, SunPlay, TourPause, TourNext, TourPrevious,
+
+        // Clash mode (Round C-B)
+        ClashNext, ClashPrevious, ClashFrame, ClashStatusNew, ClashStatusActive, ClashStatusReviewed, ClashStatusApproved,
+        ClashStatusResolved, ClashSelectInRevit, ClashFlyUp, ClashFlyDown, ClashView, ClashSectionToggle,
 
         // Fixed (not rebindable)
         Back, CloseWindow, Click, DragLook, FineAdjust, PhotoZoom, OpenFile, PadClick, PadMenuBack
@@ -259,8 +267,11 @@ namespace BimGo.Scene
             c = InputContext.Guns;
             string[] guns = { "Scan", "Measure (again: next mode)", "Portal", "Comment", "Teleport", "Demolish", "Gizmo", "Clone", "Place" };
             for (int i = 0; i < 9; i++) { Add(GunAction(i), c, "Gun " + (i + 1) + ": " + guns[i], P, (i + 1).ToString(System.Globalization.CultureInfo.InvariantCulture)); }
-            Add(InputAction.PreviousGun, c, "Previous gun", P, "WheelUp");
-            Add(InputAction.NextGun, c, "Next gun", P, "WheelDown");
+            Add(InputAction.PreviousGun, c, "Previous gun", P, "Shift+WheelUp");
+            Add(InputAction.NextGun, c, "Next gun", P, "Shift+WheelDown");
+            Add(InputAction.GunModePrevious, c, "Gun mode: previous (Measure, Demolish)", P, "WheelUp");
+            Add(InputAction.GunModeNext, c, "Gun mode: next (Measure, Demolish)", P, "WheelDown");
+            Add(InputAction.Unarmed, c, "Unarmed: no gun (again, or a gun key, arms)", P, "0");
             Add(InputAction.GunPrimary, c, "Gun primary (fire)", P, "LMB");
             Add(InputAction.GunSecondary, c, "Gun secondary", P, "RMB");
             Add(InputAction.ClearMarkers, c, "Clear this gun's markers", P, "X");
@@ -283,6 +294,7 @@ namespace BimGo.Scene
             Add(InputAction.SectionBox, c, "Section box editor", P, "P");
             Add(InputAction.SectionPlane, c, "Cut at the aimed surface", P, "Shift+P");
             Add(InputAction.SectionClear, c, "Clear all cuts", P, "Ctrl+P");
+            Add(InputAction.ClashMode, c, "Clash mode on / off (docked clash list)", P, "Y");
 
             // Gun keys (while that gun is selected)
             Add(InputAction.ScanSelectInRevit, InputContext.ScanGun, "Select in Revit (live)", P, "R");
@@ -323,6 +335,22 @@ namespace BimGo.Scene
             Add(InputAction.TourPause, InputContext.Tour, "Pause / play", P, "Space");
             Add(InputAction.TourNext, InputContext.Tour, "Next stop", P, "Right", "PageDown", "LMB");
             Add(InputAction.TourPrevious, InputContext.Tour, "Previous stop (or this stop's start)", P, "Left", "PageUp", "RMB");
+
+            // Clash mode (Round C-B: Y or pause menu → CLASHES → REVIEW; the move keys fly, RMB-drag looks)
+            c = InputContext.Clashes;
+            Add(InputAction.ClashNext, c, "Next clash", R, ".");
+            Add(InputAction.ClashPrevious, c, "Previous clash", R, ",");
+            Add(InputAction.ClashFrame, c, "Go to the current clash again (re-frame)", P, "Enter");
+            Add(InputAction.ClashStatusNew, c, "Status: new", P, "1");
+            Add(InputAction.ClashStatusActive, c, "Status: active", P, "2");
+            Add(InputAction.ClashStatusReviewed, c, "Status: reviewed", P, "3");
+            Add(InputAction.ClashStatusApproved, c, "Status: approved", P, "4");
+            Add(InputAction.ClashStatusResolved, c, "Status: resolved", P, "5");
+            Add(InputAction.ClashSelectInRevit, c, "Select the pair in Revit (live)", P, "R");
+            Add(InputAction.ClashFlyUp, c, "Fly up (hold)", H, "Space", "E");
+            Add(InputAction.ClashFlyDown, c, "Fly down (hold)", H, "Ctrl", "Q");
+            Add(InputAction.ClashView, c, "Model view: ghost / wireframe / real / hidden", P, "G");
+            Add(InputAction.ClashSectionToggle, c, "Section box on / off (on: around the current clash)", P, "B");
 
             // Fixed
             Fixed(InputAction.Back, "Pause menu · back · cancel · stop", P, true, InputContext.Fixed, "Esc");
@@ -391,6 +419,12 @@ namespace BimGo.Scene
             Pad(InputAction.TourPause, "PadA");
             Pad(InputAction.TourNext, "PadRight");
             Pad(InputAction.TourPrevious, "PadLeft");
+            Pad(InputAction.ClashNext, "PadRight");
+            Pad(InputAction.ClashPrevious, "PadLeft");
+            Pad(InputAction.ClashFrame, "PadY");
+            Pad(InputAction.ClashSelectInRevit, "PadX");
+            Pad(InputAction.ClashFlyUp, "PadRT");
+            Pad(InputAction.ClashFlyDown, "PadLT");
 
             return list.ToArray();
         }
@@ -421,7 +455,7 @@ namespace BimGo.Scene
             InputContext.General, InputContext.Movement, InputContext.Guns, InputContext.Tools,
             InputContext.ScanGun, InputContext.MeasureGun, InputContext.CommentGun, InputContext.DemolishGun, InputContext.GizmoGuns,
             InputContext.Holding, InputContext.Markup, InputContext.SectionEditor, InputContext.PhotoMode, InputContext.SunPanel,
-            InputContext.Tour, InputContext.Fixed
+            InputContext.Tour, InputContext.Clashes, InputContext.Fixed
         };
 
         /// <summary>A group's heading.</summary>
@@ -442,6 +476,7 @@ namespace BimGo.Scene
             InputContext.PhotoMode => "Photo mode",
             InputContext.SunPanel => "Sun panel",
             InputContext.Tour => "Bookmark tour",
+            InputContext.Clashes => "Clash mode",
             _ => "Fixed (not rebindable)"
         };
 
@@ -456,6 +491,7 @@ namespace BimGo.Scene
             InputContext.PhotoMode => "The photo mode key or Esc closes it; the sun time keys work.",
             InputContext.SunPanel => "Shadows / sun panel or Esc closes it; the sun time keys work.",
             InputContext.Tour => "While a bookmark tour plays (Esc stops it).",
+            InputContext.Clashes => "Clash detection's docked list (the clash mode key or Esc leaves): the move keys fly, run speeds up, RMB-drag looks, the wheel scrolls the list.",
             InputContext.Fixed => "Text boxes also keep Enter, Tab, Backspace, ↑ / ↓, Ctrl+V and Esc. Gamepad in menus and editors: the look stick moves the cursor, the move stick scrolls (menus) or looks (editors).",
             _ => null
         };
@@ -501,6 +537,10 @@ namespace BimGo.Scene
                 new InputSituation("Sun / daylight study", Array.Empty<InputContext>(), Join(padMenu,
                     InputAction.SunStudy, InputAction.Fullscreen, InputAction.Screenshot, InputAction.Click, InputAction.DragLook, InputAction.FineAdjust)),
                 new InputSituation("Bookmark tour", new[] { InputContext.Tour }, new[] { InputAction.Fullscreen }),
+                new InputSituation("Clash mode", new[] { InputContext.Clashes }, Join(padMenu,
+                    InputAction.MoveForward, InputAction.MoveBack, InputAction.MoveLeft, InputAction.MoveRight, InputAction.Run,
+                    InputAction.ClashMode, InputAction.Help, InputAction.HideUi, InputAction.Fullscreen, InputAction.Screenshot,
+                    InputAction.Click, InputAction.DragLook)),
                 new InputSituation("Recording a video", Array.Empty<InputContext>(), new[] { InputAction.Fullscreen }),
                 new InputSituation("Start screen", Array.Empty<InputContext>(), Join(padMenu, InputAction.OpenFile, InputAction.Click)),
                 new InputSituation("Pause menu and panels", Array.Empty<InputContext>(), Join(padMenu,

@@ -295,6 +295,12 @@ namespace BimGo.Scene
         /// <summary>Imperial lengths as decimal feet (5.33') instead of feet-inches to 1/8" (5' 4").</summary>
         public bool DecimalFeet { get; set; }
 
+        /// <summary>Clash mode (Round C-B): jump straight to a clash instead of a quick flight (per machine).</summary>
+        public bool ClashInstantFly { get; set; }
+
+        /// <summary>The gun bar at the bottom of the screen (polish round: off by default; the gun wheel's bottom slot switches it).</summary>
+        public bool ShowGunBar { get; set; }
+
         /// <summary>The eye-height preset in use (tour round; the pause menu changes it).</summary>
         public EyePreset EyePreset { get; set; } = EyePreset.Standing;
 

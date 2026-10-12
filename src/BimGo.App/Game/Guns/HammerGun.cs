@@ -72,7 +72,12 @@ namespace BimGo.Game.Guns
 
         public override void OnKeys(InputState input)
         {
-            if (input.Pressed(InputAction.DemolishMode))
+            if (input.Pressed(InputAction.DemolishMode)) { CycleMode(+1); }
+        }
+
+        /// <summary>The wheel or the mode key: demolish ↔ delete.</summary>
+        public override bool CycleMode(int direction)
+        {
             {
                 _deleteMode = !_deleteMode;
                 Session.Sound.Play(SoundId.UiClick);
@@ -85,6 +90,7 @@ namespace BimGo.Game.Guns
                     Session.Toast(_deleteMode ? "Demolish gun: DELETE mode (recorded in the file)" : $"Demolish gun: demolish in phase {PhaseLabel} (recorded in the file)");
                 }
             }
+            return true;
         }
 
         public override void OnPrimary(in AimInfo aim)

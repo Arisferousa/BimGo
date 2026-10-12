@@ -21,7 +21,7 @@ namespace BimGo.Game
         {
             if (_tourActive || _video != null || IsCapturingKey || IsMappingPad) { return PadCursorMode.Off; }
             if (_paused || IsEditingComment || _markupOpen) { return PadCursorMode.Menu; }
-            if (_photoOpen || _sectionOpen || _sunHoursOpen || _sunPanelOpen) { return PadCursorMode.Editor; }
+            if (_photoOpen || _sectionOpen || _sunHoursOpen || _sunPanelOpen || _clashModeOn) { return PadCursorMode.Editor; }
             return PadCursorMode.Off;
         }
 

@@ -302,7 +302,7 @@ namespace BimGo.Game
             _sunPanelOpen = false;
             _activeSlider = -1;
             _window.Input.ReleaseAll();
-            if (!_paused && _window.IsActive) { _window.SetCaptured(true); }
+            if (!_paused && _window.IsActive && !_clashModeOn) { _window.SetCaptured(true); } // clash mode keeps its cursor
         }
 
         /// <summary>

@@ -222,7 +222,7 @@ namespace BimGo.Game
             _sectionOpen = false;
             _sectionDrag = -1;
             _window.Input.ReleaseAll();
-            if (!_paused && _window.IsActive) { _window.SetCaptured(true); }
+            if (!_paused && _window.IsActive && !_clashModeOn) { _window.SetCaptured(true); } // clash mode keeps its cursor
         }
 
         /// <summary>

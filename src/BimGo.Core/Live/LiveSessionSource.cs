@@ -46,6 +46,13 @@ namespace BimGo.Live
         /// <param name="elementId">The element's id in the linked model.</param>
         /// <returns>False if not connected.</returns>
         bool ShowLinkedElement(long linkInstanceId, long elementId);
+
+        /// <summary>
+        /// Asks Revit to select and show several elements inside linked models (Round C-B: a clash pair); the link
+        /// instances are the fallback selection.
+        /// </summary>
+        /// <returns>False if not connected.</returns>
+        bool ShowLinkedElements(IReadOnlyList<LinkedElementRef> linked);
     }
 
     /// <summary>
@@ -201,6 +208,21 @@ namespace BimGo.Live
         {
             if (!Connected || elementIds == null || elementIds.Count == 0) { return false; }
             return _channel.Send(MessageTypes.SELECT, new SelectPayload { ElementIds = elementIds.ToArray() }) != null;
+        }
+
+        /// <summary>
+        /// Selects several elements inside linked models (Round C-B: a clash pair in links) and zooms Revit's active
+        /// view to them; the link instances are the fallback selection.
+        /// </summary>
+        public bool ShowLinkedElements(IReadOnlyList<LinkedElementRef> linked)
+        {
+            if (!Connected || linked == null || linked.Count == 0) { return false; }
+            var payload = new SelectPayload
+            {
+                ElementIds = linked.Select(l => l.LinkInstanceId).Distinct().ToArray(),
+                Linked = linked.ToArray()
+            };
+            return _channel.Send(MessageTypes.SELECT, payload) != null;
         }
 
         /// <inheritdoc/>

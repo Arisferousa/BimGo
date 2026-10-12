@@ -43,7 +43,7 @@ namespace BimGo.Game
         /// <summary>True if a standalone file has edits, comments or bookmarks that are not saved yet.</summary>
         public bool IsDirty => IsFileMode && Comments != null && Bookmarks != null &&
             (_journal.Revision != _savedJournalRevision || Comments.Revision != _savedCommentRevision || Bookmarks.Revision != _savedBookmarkRevision || SunDirty || VisibilityDirty
-             || _materialsRevision != _savedMaterialsRevision);
+             || _materialsRevision != _savedMaterialsRevision || ClashesDirty);
 
         /// <summary>The document's display name (file name, or the Revit model title).</summary>
         public string DocumentName => IsFileMode && !string.IsNullOrEmpty(DocumentPath) ? Path.GetFileName(DocumentPath) : Scene.ModelTitle;
@@ -59,6 +59,7 @@ namespace BimGo.Game
             _savedBookmarkRevision = Bookmarks?.Revision ?? 0;
             _savedSunRevision = _sunRevision;
             _savedVisibilityRevision = _visibilityRevision;
+            _savedClashRevision = _clashRevision;
             UpdateTitle();
         }
 
@@ -415,6 +416,7 @@ namespace BimGo.Game
                 Sun = _sun?.Copy(),
                 Visibility = ToVisibilitySettings(),
                 Materials = MaterialsChanged ? CurrentMaterials : null, // Textures panel: picked images are embedded
+                Clashes = ClashBytesForSave(), // Round C: as held when clash detection was never switched on
                 CreatedUtc = _options.Document?.CreatedUtc ?? Scene.Provenance?.ExtractedUtc ?? DateTime.UtcNow,
                 Path = path
             };
