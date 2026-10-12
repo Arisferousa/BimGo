@@ -30,6 +30,9 @@ Edits respect two phases picked in Options: the walkthrough shows the **new** ph
 12. **Name clashes:** WPF, WinForms and Revit `DB` / `UI` are global usings in BimGo.Revit; WinForms + System.Drawing are global in BimGo.App. Avoid unqualified `Color`, `Point`, `Plane`, `View`, `Panel`, `CheckBox`, `TextBox`, `TaskDialog` (use the `DB.`, `UI.`, `SD.`, `Wpf.`, `Win.`, `WinForms` aliases).
 13. **Keys are actions** (input round B2): a new key is a new `InputAction` in Core `Scene/InputCatalog.cs` (group, label, kind, default keys; ids are stored in settings, never rename one), read with `input.Pressed / PressedOrRepeated / Down(InputAction.X)`, never `IsPressed('X')` (raw keys are for text boxes only). If it is live somewhere new, update `InputCatalog.Situations` to match `GameSession.UpdateFrame`. Text naming a key comes from `Hotkeys.Label` (toasts) or a cached `KeyHint` (panels drawn every frame). The Core tests then check the defaults for clashes and regenerate README §3.
 
+
+[![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2FaussieBIMguru%2FBimGo.svg?type=large)](https://app.fossa.com/projects/git%2Bgithub.com%2FaussieBIMguru%2FBimGo?ref=badge_large)
+
 ## 1. Overview
 
 | Item | Decision |
