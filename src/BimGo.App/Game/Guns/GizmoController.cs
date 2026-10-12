@@ -3,7 +3,6 @@ using BimGo.Physics;
 using BimGo.Platform;
 using BimGo.Rendering;
 using BimGo.Scene;
-using Vk = BimGo.Native.Win32;
 
 // The class belongs to the Guns namespace
 namespace BimGo.Game.Guns
@@ -148,19 +147,16 @@ namespace BimGo.Game.Guns
             float forward = 0f, strafe = 0f, lift = 0f, turn = 0f;
             if (!rotating)
             {
-                if (input.IsDown('W') || input.IsDown(Vk.VK_UP)) { forward += 1f; }
-                if (input.IsDown('S') || input.IsDown(Vk.VK_DOWN)) { forward -= 1f; }
-                if (input.IsDown('D') || input.IsDown(Vk.VK_RIGHT)) { strafe += 1f; }
-                if (input.IsDown('A') || input.IsDown(Vk.VK_LEFT)) { strafe -= 1f; }
-                if (input.IsDown('E')) { lift += 1f; }
-                if (input.IsDown('Q')) { lift -= 1f; }
+                forward = input.Axis(InputAction.MoveForward) - input.Axis(InputAction.MoveBack);
+                strafe = input.Axis(InputAction.MoveRight) - input.Axis(InputAction.MoveLeft);
+                if (input.Down(InputAction.HoldUp)) { lift += 1f; }
+                if (input.Down(InputAction.HoldDown)) { lift -= 1f; }
             }
             else
             {
-                if (input.IsDown('A') || input.IsDown(Vk.VK_LEFT)) { turn += 1f; }
-                if (input.IsDown('D') || input.IsDown(Vk.VK_RIGHT)) { turn -= 1f; }
+                turn = input.Axis(InputAction.MoveLeft) - input.Axis(InputAction.MoveRight);
             }
-            float scale = input.IsDown(Vk.VK_SHIFT) ? FINE : 1f;
+            float scale = input.Down(InputAction.HoldFine) ? FINE : 1f;
 
             // Camera-relative in plan, plus straight up / down
             Vector3 flatForward = Flatten(_session.Camera.Forward);
@@ -178,18 +174,18 @@ namespace BimGo.Game.Guns
                 if (!rotating)
                 {
                     Vector3 stepMove = Vector3.Zero;
-                    if (input.IsPressedOrRepeated('W') || input.IsPressedOrRepeated(Vk.VK_UP)) { stepMove += flatForward; }
-                    if (input.IsPressedOrRepeated('S') || input.IsPressedOrRepeated(Vk.VK_DOWN)) { stepMove -= flatForward; }
-                    if (input.IsPressedOrRepeated('D') || input.IsPressedOrRepeated(Vk.VK_RIGHT)) { stepMove += flatRight; }
-                    if (input.IsPressedOrRepeated('A') || input.IsPressedOrRepeated(Vk.VK_LEFT)) { stepMove -= flatRight; }
+                    if (input.PressedOrRepeated(InputAction.MoveForward)) { stepMove += flatForward; }
+                    if (input.PressedOrRepeated(InputAction.MoveBack)) { stepMove -= flatForward; }
+                    if (input.PressedOrRepeated(InputAction.MoveRight)) { stepMove += flatRight; }
+                    if (input.PressedOrRepeated(InputAction.MoveLeft)) { stepMove -= flatRight; }
                     _rawOffset += NearestAxis(stepMove) * step;
-                    if (input.IsPressedOrRepeated('E')) { _rawOffset.Z += step; _zFree = false; }
-                    if (input.IsPressedOrRepeated('Q')) { _rawOffset.Z -= step; _zFree = false; }
+                    if (input.PressedOrRepeated(InputAction.HoldUp)) { _rawOffset.Z += step; _zFree = false; }
+                    if (input.PressedOrRepeated(InputAction.HoldDown)) { _rawOffset.Z -= step; _zFree = false; }
                 }
                 else
                 {
-                    if (input.IsPressedOrRepeated('A') || input.IsPressedOrRepeated(Vk.VK_LEFT)) { _rawAngle += angleStep; }
-                    if (input.IsPressedOrRepeated('D') || input.IsPressedOrRepeated(Vk.VK_RIGHT)) { _rawAngle -= angleStep; }
+                    if (input.PressedOrRepeated(InputAction.MoveLeft)) { _rawAngle += angleStep; }
+                    if (input.PressedOrRepeated(InputAction.MoveRight)) { _rawAngle -= angleStep; }
                 }
 
                 // Clamp the change since lock-on to whole increments (also tidies a smooth move made before snapping)
@@ -247,14 +243,14 @@ namespace BimGo.Game.Guns
             _rawOffset = Target.Offset + new Vector3(0f, 0f, change);
             _zFree = true;
             _session.Dynamics.SetTransform(Target, _rawOffset, Target.Angle);
-            message = change < 0f ? $"Dropped {-change:0.000} m onto the surface below" : $"Lifted {change:0.000} m onto the surface";
+            message = change < 0f ? $"Dropped {UnitFormat.Length(-change)} onto the surface below" : $"Lifted {UnitFormat.Length(change)} onto the surface";
             return true;
         }
 
         /// <summary>
-        /// True while snapping: the session's snap mode, inverted while Ctrl is held.
+        /// True while snapping: the session's snap mode, inverted while the flip-snapping key (Ctrl) is held.
         /// </summary>
-        public bool IsSnapping(InputState input) => _session.GizmoSnap ^ input.IsDown(Vk.VK_CONTROL);
+        public bool IsSnapping(InputState input) => _session.GizmoSnap ^ input.Down(InputAction.HoldSnapInvert);
 
         private static float Snap(float value, float step) => step > 0f ? MathF.Round(value / step) * step : value;
 
@@ -354,8 +350,8 @@ namespace BimGo.Game.Guns
         {
             float degrees = DeltaAngle * 180f / MathF.PI;
             Vector3 delta = DeltaOffset;
-            text.Append("Δ ").Append(new Vector2(delta.X, delta.Y).Length(), 3).Append(" m");
-            if (MathF.Abs(delta.Z) > 5e-4f) { text.Append(" · Z ").Append(delta.Z, 3, plusSign: true).Append(" m"); }
+            text.Append("Δ ").AppendLength(new Vector2(delta.X, delta.Y).Length());
+            if (MathF.Abs(delta.Z) > 5e-4f) { text.Append(" · Z ").AppendLength(delta.Z, 3, plusSign: true); }
             text.Append(" · ").Append(degrees, 1).Append('°');
         }
 

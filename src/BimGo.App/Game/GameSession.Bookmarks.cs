@@ -3,12 +3,13 @@ using BimGo.Audio;
 using BimGo.Format;
 using BimGo.Platform;
 using BimGo.Rendering;
+using BimGo.Scene;
 
 // The class belongs to the Game namespace
 namespace BimGo.Game
 {
     /// <summary>
-    /// Viewpoint bookmarks: B saves where the player stands and looks (then asks for a name), Ctrl+1..9 jump to the
+    /// Viewpoint bookmarks: B saves where the player stands and looks (then asks for a name), Shift+1..9 (by default) jump to the
     /// first nine, and the pause menu's BOOKMARKS list has Go, Rename, Set here (update), reorder and Delete.
     /// Bookmarks are saved inside a .bimgo (bookmarks.json) or, in a live Revit session, beside the model.
     /// </summary>
@@ -61,14 +62,15 @@ namespace BimGo.Game
         private void AddBookmarkHere()
         {
             if (_player == null) { return; }
-            BookmarkRecord record = Bookmarks.CreatePending(null, _player.Feet, _player.Yaw, _player.Pitch, _player.Flying, CurrentLevelName, BookmarkSunTime(), _section);
+            BookmarkRecord record = Bookmarks.CreatePending(null, _player.Feet, _player.Yaw, _player.Pitch, _player.Flying, CurrentLevelName, BookmarkSunTime(), _section,
+                CurrentStandingEye, BookmarkVisibility());
             _thumbnailFor = record;
             Sound.Play(SoundId.CommentPlace);
             BeginBookmarkRename(record, isNew: true);
         }
 
         /// <summary>
-        /// Ctrl+1..9: jumps to the bookmark at that place in the list.
+        /// Shift+1..9 (by default): jumps to the bookmark at that place in the list.
         /// </summary>
         /// <param name="index">0-based list index.</param>
         private void GoToBookmarkAt(int index)
@@ -76,7 +78,7 @@ namespace BimGo.Game
             if (index < 0 || index >= Bookmarks.Bookmarks.Count)
             {
                 Toast(Bookmarks.Bookmarks.Count == 0
-                    ? "No bookmarks yet: press B to save this viewpoint"
+                    ? $"No bookmarks yet: press {Key(InputAction.AddBookmark)} to save this viewpoint"
                     : $"Only {Bookmarks.Bookmarks.Count} bookmark{(Bookmarks.Bookmarks.Count == 1 ? string.Empty : "s")} (Esc → BOOKMARKS lists them)");
                 return;
             }
@@ -89,7 +91,7 @@ namespace BimGo.Game
         private string BookmarkHotkey(BookmarkRecord record)
         {
             int index = Bookmarks.Bookmarks.IndexOf(record);
-            return index >= 0 && index < 9 ? $"Ctrl+{index + 1}" : "Esc → BOOKMARKS";
+            return index >= 0 && index < 9 && !Hotkeys.Map.IsUnbound(InputCatalog.BookmarkAction(index)) ? Key(InputCatalog.BookmarkAction(index)) : "Esc → BOOKMARKS";
         }
 
         /// <summary>
@@ -104,14 +106,17 @@ namespace BimGo.Game
         }
 
         /// <summary>
-        /// Puts the player at a bookmark (walk / fly mode as saved) and, if it kept a sun time, restores that time with
-        /// shadows on.
+        /// Puts the player at a bookmark (walk / fly mode as saved) and restores what it kept: the sun time (shadows on),
+        /// the section cut, the hidden categories / links / elements and the eye height. Older bookmarks without a field
+        /// leave that part as it is.
         /// </summary>
         private void GoToBookmark(BookmarkRecord record)
         {
             if (record == null || _player == null) { return; }
             if (record.Sun != null) { ApplySunTime(record.Sun); }
             if (record.Section != null) { ApplySection(record.Section, announce: false); }
+            if (record.Visibility != null) { ApplyVisibility(record.Visibility, record: true); }
+            if (record.EyeHeight is float eye) { ApplyEyeHeight(eye); }
             if (record.Flying != _player.Flying) { _player.ToggleFly(); }
             _player.TeleportTo(record.Local, record.Yaw, Math.Clamp(record.Pitch, -1.5f, 1.5f));
             Sound.Play(SoundId.Teleport);
@@ -141,8 +146,11 @@ namespace BimGo.Game
         private bool CloseBookmarks()
         {
             if (!_bookmarksOpen) { return false; }
+            FlushTourDraft();
             _bookmarksOpen = false;
             _bookmarkDeleteArmed = null;
+            _tourSettingsOpen = false;
+            _tourDraft = null;
             return true;
         }
 
@@ -179,25 +187,43 @@ namespace BimGo.Game
 
             float ix = x + S(24), iw = w - S(48);
             float cy = y + S(20);
-            _ui.Text(f.Small, ix, cy, "BOOKMARKS", UiTheme.BOOKMARK_LABEL, S(2f));
+            _ui.Text(f.Small, ix, cy, _tourSettingsOpen ? "BOOKMARKS · TOUR" : "BOOKMARKS", UiTheme.BOOKMARK_LABEL, S(2f));
             Text.Clear().AppendGrouped(Bookmarks.Bookmarks.Count).Append(Bookmarks.Bookmarks.Count == 1 ? " viewpoint · saved to " : " viewpoints · saved to ").Append(Bookmarks.FileName);
             _ui.TextRight(f.Small, ix + iw, cy, Text.Span, UiTheme.TEXT_MUTED, S(0.6f));
             cy += S(30);
-            _ui.Text(f.Body, ix, cy, "B saves where you stand · CTRL+1–9 jump to the first nine", UiTheme.TEXT_MUTED);
+            _ui.Text(f.Body, ix, cy, _tourSettingsOpen
+                ? HINT_BOOKMARKS_TOUR.Text
+                : HINT_BOOKMARKS_KEYS.Text, UiTheme.TEXT_MUTED);
             cy += S(34);
 
             float buttonsY = y + h - S(24) - S(48);
-            BuildBookmarkRows(f, input, ix, cy, iw, buttonsY - S(16));
+            if (_tourSettingsOpen) { BuildTourSettings(f, input, ix, cy, iw, buttonsY - S(16)); }
+            else { BuildBookmarkRows(f, input, ix, cy, iw, buttonsY - S(16)); }
 
             if (_bookmarksNotice != null) { _ui.TextWrapped(f.Body, ix, buttonsY - S(30), iw, _bookmarksNotice, UiTheme.MEASURE_TEXT, maxLines: 1); }
-            if (MenuButton(f, ix, buttonsY, S(240), "ADD THIS VIEW", false, false))
+            float bx = ix;
+            if (!_tourSettingsOpen)
             {
-                BookmarkRecord added = Bookmarks.Add(null, _player.Feet, _player.Yaw, _player.Pitch, _player.Flying, CurrentLevelName, BookmarkSunTime(), _section);
-                _thumbnailFor = added;
-                _bookmarksNotice = Bookmarks.LastError ?? $"Added “{added.Name}” (RENAME to change it)";
-                _bookmarkScroll = Bookmarks.Bookmarks.Count; // show the end of the list (clamped while drawing)
+                if (MenuButton(f, bx, buttonsY, S(220), "ADD THIS VIEW", false, false))
+                {
+                    BookmarkRecord added = Bookmarks.Add(null, _player.Feet, _player.Yaw, _player.Pitch, _player.Flying, CurrentLevelName, BookmarkSunTime(), _section,
+                        CurrentStandingEye, BookmarkVisibility());
+                    _thumbnailFor = added;
+                    _bookmarksNotice = Bookmarks.LastError ?? $"Added “{added.Name}” (RENAME to change it)";
+                    _bookmarkScroll = Bookmarks.Bookmarks.Count; // show the end of the list (clamped while drawing)
+                }
+                bx += S(236);
             }
-            if (MenuButton(f, ix + S(256), buttonsY, S(160), "CLOSE", false, false)) { CloseBookmarks(); }
+            if (MenuButton(f, bx, buttonsY, S(200), _tourSettingsOpen ? "BACK TO LIST" : "TOUR SETTINGS", false, false)) { ToggleTourSettings(); }
+            bx += S(216);
+            if (MenuButton(f, bx, buttonsY, S(140), "CLOSE", false, false))
+            {
+                CloseBookmarks();
+                return;
+            }
+            float playW = S(200);
+            if (MenuButton(f, ix + iw - playW, buttonsY, playW, "PLAY TOUR", primary: true, danger: false)) { StartTour(); return; }
+            if (_tourSettingsOpen && MenuButton(f, ix + iw - playW * 2f - S(16), buttonsY, playW, "RECORD VIDEO", false, false)) { StartVideo(); }
         }
 
         /// <summary>
@@ -211,7 +237,7 @@ namespace BimGo.Game
 
             if (list.Count == 0)
             {
-                _ui.TextWrapped(f.Body, x, y + S(8), w, "No bookmarks yet. Resume, stand where you want and press B (or use ADD THIS VIEW below).", UiTheme.TEXT_MUTED, maxLines: 2);
+                _ui.TextWrapped(f.Body, x, y + S(8), w, HINT_BOOKMARKS_EMPTY.Text, UiTheme.TEXT_MUTED, maxLines: 2);
                 return;
             }
 
@@ -286,7 +312,8 @@ namespace BimGo.Game
             }
             else if (here != null)
             {
-                Bookmarks.Update(here, _player.Feet, _player.Yaw, _player.Pitch, _player.Flying, CurrentLevelName, BookmarkSunTime(), _section);
+                Bookmarks.Update(here, _player.Feet, _player.Yaw, _player.Pitch, _player.Flying, CurrentLevelName, BookmarkSunTime(), _section,
+                    CurrentStandingEye, BookmarkVisibility());
                 _thumbnailFor = here;
                 _bookmarksNotice = Bookmarks.LastError ?? $"“{here.Name}” now points at where you are";
                 Sound.Play(SoundId.Commit);

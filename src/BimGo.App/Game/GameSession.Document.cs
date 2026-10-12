@@ -4,6 +4,7 @@ using BimGo.Format;
 using BimGo.Physics;
 using BimGo.Platform;
 using BimGo.Sources;
+using BimGo.Scene;
 
 // The class belongs to the Game namespace
 namespace BimGo.Game
@@ -305,7 +306,7 @@ namespace BimGo.Game
         {
             if (!IsFileMode)
             {
-                Toast("Edits are in Revit: undo them there, then press F5 to refresh");
+                Toast($"Edits are in Revit: undo them there, then press {Key(InputAction.Refresh)} to refresh");
                 return;
             }
             if (_guns[_activeGun].CapturesInput || IsPushPanelOpen) { return; }
@@ -328,7 +329,7 @@ namespace BimGo.Game
             ReplayJournal();
             UpdateTitle();
             Sound.Play(SoundId.Remove);
-            Toast(string.IsNullOrEmpty(last.Label) ? "Undone (Ctrl+Y redoes)" : $"Undone: {last.Label} (Ctrl+Y redoes)");
+            Toast(string.IsNullOrEmpty(last.Label) ? $"Undone ({Key(InputAction.Redo)} redoes)" : $"Undone: {last.Label} ({Key(InputAction.Redo)} redoes)");
         }
 
         /// <summary>
@@ -340,7 +341,7 @@ namespace BimGo.Game
         {
             if (!IsFileMode)
             {
-                Toast("Edits are in Revit: redo them there, then press F5 to refresh");
+                Toast($"Edits are in Revit: redo them there, then press {Key(InputAction.Refresh)} to refresh");
                 return;
             }
             if (_guns[_activeGun].CapturesInput || IsPushPanelOpen) { return; }
@@ -401,8 +402,12 @@ namespace BimGo.Game
                 if (!BimGoFormat.HasExtension(path)) { path += BimGoFormat.EXTENSION; }
             }
 
+            // The start screen's picture of this view (before the progress screen draws over the window)
+            byte[] thumbnail = CaptureFileThumbnail() ?? _options.Document?.Thumbnail;
+
             var document = new BimGoDocument
             {
+                Thumbnail = thumbnail,
                 Scene = Scene,
                 Comments = Comments.ToDocument(),
                 Journal = _journal,

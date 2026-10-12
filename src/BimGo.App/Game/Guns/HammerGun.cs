@@ -72,7 +72,7 @@ namespace BimGo.Game.Guns
 
         public override void OnKeys(InputState input)
         {
-            if (input.IsPressed('T'))
+            if (input.Pressed(InputAction.DemolishMode))
             {
                 _deleteMode = !_deleteMode;
                 Session.Sound.Play(SoundId.UiClick);
@@ -113,7 +113,7 @@ namespace BimGo.Game.Guns
             {
                 _primed.Remove(target);
                 Session.Sound.Play(SoundId.Error);
-                Session.Toast($"{blocked}, so it can't be demolished. Press T to delete it instead.", 3.5f, important: true);
+                Session.Toast($"{blocked}, so it can't be demolished. Press {Hotkeys.Label(InputAction.DemolishMode)} to delete it instead.", 3.5f, important: true);
                 return;
             }
 
@@ -302,7 +302,7 @@ namespace BimGo.Game.Guns
                 }
                 else if (blocked != null)
                 {
-                    TextBuffer line = Session.Text.Clear().Append(blocked).Append(": press T to delete instead");
+                    TextBuffer line = Session.Text.Clear().Append(blocked).Append(": press ").Append(Hotkeys.Label(InputAction.DemolishMode)).Append(" to delete instead");
                     ui.TextWrapped(f.Body, x, y, width, line.Span, UiTheme.DANGER, maxLines: 1);
                 }
                 else

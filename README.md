@@ -18,7 +18,7 @@ Edits respect two phases picked in Options: the walkthrough shows the **new** ph
 3. **Keep this README current** (§8 *to verify*, §9 history) and write the round's notes in `ai/`. Zip the repo minus `bin/`, `obj/`, `.vs/`, `artifacts/`.
 4. **Code style:** readable and robust over clever; XML doc headers; explicit types where clearer; nullable off. **No per-frame allocations** in the app. **No exceptions reach the user:** log with `Utilities.Log_Utils.Write`, show a toast or dialog; errors use `Toast(…, important: true)` (they show even with the UI hidden).
 5. **Dependencies: own what differentiates BimGo, rent commodity plumbing.**
-   - Own: renderer, shadows, picking, physics, guns, UI look, `.bimgo` format, journal, Revit bridge, live protocol, window / input (`Platform/`, `Native/Win32.cs`, `Native/Wgl.cs`), audio, font atlas.
+   - Own: renderer, shadows, picking, physics, guns, UI look, `.bimgo` format, journal, Revit bridge, live protocol, window / input (`Platform/`, `Native/Win32.cs`, `Native/Wgl.cs`, `Native/XInput.cs`: Windows' own `xinput1_4.dll`, `Native/Joystick.cs`: its joystick API, no packages), audio, font atlas, the video writer (`Native/MediaFoundation.cs`: Windows' own encoder, no codec package).
    - Rent: OpenGL bindings (Silk.NET behind the `Native/Gl.cs` facade; renderer code calls `Gl.Xxx` with `uint` constants; add new calls as facade wrappers).
    - **BimGo.Revit stays package-free** (it loads inside Revit). Revit API references are HintPaths to the installed Revit.
    - Any new package needs Gavin's explicit yes, a permissive licence, a pinned version and a line in §10. No UI toolkits. Ask before adding folders.
@@ -29,6 +29,7 @@ Edits respect two phases picked in Options: the walkthrough shows the **new** ph
 10. **GLSL check without a GPU:** pull the shader strings out of `Rendering/Shaders.cs`, swap `#version 330 core` for `#version 300 es` + precision lines, compile and link in headless WebGL2 (Playwright + the pre-installed Chromium, SwiftShader); give every sampler its own texture unit in a test.
 11. **Revit template conventions:** commands in `Commands/Cmds_<Group>.cs` as `Cmd_<Button>`; extensions in `Extensions/TypeName_Ext.cs`; tooltips and icons resolve from the command's base name (`BimGo_Launch`, `BimGo_Export`).
 12. **Name clashes:** WPF, WinForms and Revit `DB` / `UI` are global usings in BimGo.Revit; WinForms + System.Drawing are global in BimGo.App. Avoid unqualified `Color`, `Point`, `Plane`, `View`, `Panel`, `CheckBox`, `TextBox`, `TaskDialog` (use the `DB.`, `UI.`, `SD.`, `Wpf.`, `Win.`, `WinForms` aliases).
+13. **Keys are actions** (input round B2): a new key is a new `InputAction` in Core `Scene/InputCatalog.cs` (group, label, kind, default keys; ids are stored in settings, never rename one), read with `input.Pressed / PressedOrRepeated / Down(InputAction.X)`, never `IsPressed('X')` (raw keys are for text boxes only). If it is live somewhere new, update `InputCatalog.Situations` to match `GameSession.UpdateFrame`. Text naming a key comes from `Hotkeys.Label` (toasts) or a cached `KeyHint` (panels drawn every frame). The Core tests then check the defaults for clashes and regenerate README §3.
 
 
 [![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2FaussieBIMguru%2FBimGo.svg?type=large)](https://app.fossa.com/projects/git%2Bgithub.com%2FaussieBIMguru%2FBimGo?ref=badge_large)
@@ -59,45 +60,220 @@ Edits respect two phases picked in Options: the walkthrough shows the **new** ph
 
 ## 3. Controls
 
-| Input | Action |
-|---|---|
-| WASD / arrows · Mouse | Move · Look (click the window to capture the mouse) |
-| Space · Shift · Ctrl | Jump · Run · Crouch (fly mode: ascend / descend) |
-| V | Fly / no-clip |
-| 1–9, wheel · LMB / RMB | Select gun · gun primary / secondary |
-| Page Up / Down | Teleport up / down a level |
-| H / Shift+H | Go home / set home (saved with the model; walkthroughs start there) |
-| B · Ctrl+1–9 | Bookmark this view (type a name, Enter; Esc cancels) · jump to bookmark |
-| L | Coordinate readout: off → shared → project → internal |
-| K | Artificial lights: off / glow / glow + light |
-| O · Shift+O | Shadows on / off · sun panel (free cursor) |
-| J | Sun / daylight study (free cursor, player still; RMB-drag looks, clicks pick surfaces) |
-| P · Shift+P · Ctrl+P | Section box editor (free cursor; drag face handles, Shift = no snap; P / Esc closes, the cut stays) · plane cut just behind the aimed surface (opens what's behind it) · clear all cuts |
-| [ / ] | Sun time −/+ 5 min (Shift: 1 min) while shadows are on |
-| Tab | Minimap |
-| M | Photo mode (free cursor; RMB-drag looks, wheel = field of view, Enter = take; M / Esc closes) |
-| U | Hide the UI (errors still show; every control keeps working). Esc or U brings it back |
-| X | Clear this gun's markers (Comment gun: twice deletes all comments) |
-| Ctrl+F | Find room: search by number, name or level and go there |
-| Ctrl+S · Ctrl+Shift+S | Save · Save as (in a live session: save the walkthrough as a new `.bimgo`) |
-| Ctrl+Z · Ctrl+Y / Ctrl+Shift+Z | Undo · redo (files only; live: undo in Revit, then F5) |
-| F5 | Live: fresh snapshot from Revit (reloads where you stand) |
-| F1 · F11 · F12 | Help · borderless fullscreen · screenshot (`Pictures\BimGo`) |
-| Esc | Pause menu; cancels a gizmo; closes a panel; shows the UI again |
-| **Gun keys** | |
-| N (Measure) | Toggle normal projection |
-| T (Demolish) | Toggle phase demolish (default) / delete |
-| E (Comment) | Edit the hovered comment |
-| R (Scan) · I · Shift+I | Select in Revit · hide target · isolate its category (pause menu SHOW ALL restores) |
-| Gizmo / Clone / Place, locked on | Move mode: WASD in plan, E up / Q down. **R** move ↔ rotate (A / D turn). Shift fine, **G** snap on/off (Ctrl inverts while held), **Z / X** step the increment (5 mm–1 m, 1°–90°), **F drop / lift onto the first surface below the bottom centre of its box**, RMB commit, Esc cancel |
-| F (Gizmo, aiming) | Drop / lift the aimed element onto the surface below and commit at once |
+Every key, mouse button and wheel notch is an **action** in one catalogue (Core `Scene/InputCatalog.cs`: `InputAction`, its group, label and default keys); code asks for actions, never raw keys (only text boxes read typed characters). **Esc → CONTROLS** rebinds them: up to three keys per action, Shift / Ctrl / Alt combinations, LMB / RMB / MMB / Mouse 4 / Mouse 5 and the wheel; a key already used where the action also works asks before it **swaps**; search, RESET / RESET ALL, EXPORT / IMPORT a keymap file (JSON). Changes are saved at once in `settings.json` (`KeyBindings`: only what differs from the defaults). F1 help and the hints in panels show the keys as bound. **Gamepad** (build B, a secondary input; nothing changes without one): an Xbox-style controller through XInput, its own column in CONTROLS (one binding per action; LB / RB combine with other buttons, e.g. LB + D-pad), move on the left stick and look on the right by default (SWAP STICKS), the right stick's click opens the gun wheel, Start is the menu; in menus and editors the look stick moves the cursor, A clicks and B goes back. **Generic controllers** (build B2-C: pads XInput doesn't see, e.g. "Generic USB Joystick") are read through Windows' joystick API: CONTROLS → **MAP BUTTONS…** asks for each Xbox-style button in turn (SKIP for ones the pad lacks; without Start, LB + RB together open the menu). **F1 help is off by default** (a small "F1: Help" note sits bottom left). **Gun wheel:** hold MMB, move towards a gun, let go (let go in the middle: no change); on the gamepad click, point, A picks. A binding with no modifiers also fires with extra modifiers held (Shift+Space still jumps while running) unless another binding live at the same time uses the same key with those modifiers (Shift+H sets home instead of going home).
+
+The tables below are generated from the defaults by the Core tests (`ControlsTests.Readme_ControlsTablesAreCurrent` rewrites them when the catalogue changes): change `InputCatalog`, not the tables.
+
+<!-- controls:begin (generated from the action map's defaults by tests/BimGo.Core.Tests/ControlsTests.cs: edit InputCatalog, not this table) -->
+
+**General**
+
+| Action | Keys | Gamepad |
+|---|---|---|
+| Help on / off | `F1` | `LB+Back` |
+| Fullscreen | `F11` |  |
+| Screenshot | `F12` |  |
+| Hide / show the UI | `U` |  |
+| Minimap | `Tab` | `Back` |
+| Refresh from Revit (live) | `F5` |  |
+| Save | `Ctrl+S` |  |
+| Save as | `Ctrl+Shift+S` |  |
+| Undo (files) | `Ctrl+Z` |  |
+| Redo (files) | `Ctrl+Y` · `Ctrl+Shift+Z` |  |
+
+**Movement**
+
+| Action | Keys | Gamepad |
+|---|---|---|
+| Move forward | `W` · `↑` | `LS ↑` |
+| Move back | `S` · `↓` | `LS ↓` |
+| Move left | `A` · `←` | `LS ←` |
+| Move right | `D` · `→` | `LS →` |
+| Jump (flying: up) | `Space` | `A` |
+| Run (hold) | `Shift` | `LS click` |
+| Crouch (flying: down) | `Ctrl` | `B` |
+| Fly / walk (no-clip) | `V` | `Y` |
+| Level up | `PgUp` | `D-pad ↑` |
+| Level down | `PgDn` | `D-pad ↓` |
+| Go home | `H` | `LB+D-pad ←` |
+| Set home here | `Shift+H` |  |
+| Find room | `Ctrl+F` |  |
+| Look up |  | `RS ↑` |
+| Look down |  | `RS ↓` |
+| Look left |  | `RS ←` |
+| Look right |  | `RS →` |
+
+**Guns**
+
+| Action | Keys | Gamepad |
+|---|---|---|
+| Gun 1: Scan | `1` |  |
+| Gun 2: Measure (again: next mode) | `2` |  |
+| Gun 3: Portal | `3` |  |
+| Gun 4: Comment | `4` |  |
+| Gun 5: Teleport | `5` |  |
+| Gun 6: Demolish | `6` |  |
+| Gun 7: Gizmo | `7` |  |
+| Gun 8: Clone | `8` |  |
+| Gun 9: Place | `9` |  |
+| Previous gun | `Wheel up` |  |
+| Next gun | `Wheel down` |  |
+| Gun primary (fire) | `LMB` | `RT` |
+| Gun secondary | `RMB` | `LT` |
+| Clear this gun's markers | `X` | `RB+X` |
+| Gun wheel (mouse: hold, steer, release; gamepad: click, steer, A / click again picks, B cancels) | `MMB` | `RS click` |
+
+**Views and tools**
+
+| Action | Keys | Gamepad |
+|---|---|---|
+| Bookmark this view | `B` |  |
+| Go to bookmark 1 | `Shift+1` |  |
+| Go to bookmark 2 | `Shift+2` |  |
+| Go to bookmark 3 | `Shift+3` |  |
+| Go to bookmark 4 | `Shift+4` |  |
+| Go to bookmark 5 | `Shift+5` |  |
+| Go to bookmark 6 | `Shift+6` |  |
+| Go to bookmark 7 | `Shift+7` |  |
+| Go to bookmark 8 | `Shift+8` |  |
+| Go to bookmark 9 | `Shift+9` |  |
+| Coordinate readout | `L` | `LB+D-pad →` |
+| Artificial lights | `K` | `LB+D-pad ↓` |
+| Shadows on / off | `O` | `LB+D-pad ↑` |
+| Sun panel | `Shift+O` | `RB+D-pad →` |
+| Sun time −5 min | `[` | `D-pad ←` |
+| Sun time −1 min | `Shift+[` |  |
+| Sun time +5 min | `]` | `D-pad →` |
+| Sun time +1 min | `Shift+]` |  |
+| Sun / daylight study | `J` | `RB+D-pad ←` |
+| Photo mode | `M` | `RB+D-pad ↑` |
+| Section box editor | `P` | `RB+D-pad ↓` |
+| Cut at the aimed surface | `Shift+P` |  |
+| Clear all cuts | `Ctrl+P` |  |
+
+**Scan gun** While the gun is selected (walking keys still work).
+
+| Action | Keys | Gamepad |
+|---|---|---|
+| Select in Revit (live) | `R` |  |
+| Hide the target | `I` | `X` |
+| Isolate its category (again: show all) | `Shift+I` | `LB+X` |
+
+**Measure gun** While the gun is selected (walking keys still work).
+
+| Action | Keys | Gamepad |
+|---|---|---|
+| Normal projection (distance mode) | `N` | `X` |
+
+**Comment gun** While the gun is selected (walking keys still work).
+
+| Action | Keys | Gamepad |
+|---|---|---|
+| Edit the hovered comment | `E` |  |
+
+**Demolish gun** While the gun is selected (walking keys still work).
+
+| Action | Keys | Gamepad |
+|---|---|---|
+| Demolish / delete mode | `T` | `X` |
+
+**Gizmo, Clone and Place guns** While the gun is selected (walking keys still work).
+
+| Action | Keys | Gamepad |
+|---|---|---|
+| Snap on / off | `G` | `LB+X` |
+| Drop onto the surface below | `F` | `X` |
+
+**Holding an element** While the Gizmo, Clone or Place gun holds an element: the move keys move it (left / right turn it in rotate mode), gun secondary commits, Esc cancels.
+
+| Action | Keys | Gamepad |
+|---|---|---|
+| Move it up | `E` | `D-pad ↑` |
+| Move it down | `Q` | `D-pad ↓` |
+| Move ↔ rotate | `R` | `Y` |
+| Smaller snap step | `Z` | `D-pad ←` |
+| Larger snap step | `X` | `D-pad →` |
+| Fine moves (hold) | `Shift` | `RS click` |
+| Flip snapping (hold) | `Ctrl` |  |
+
+**Markup editor** After a comment's picture is taken. Text typing keeps Enter / Backspace / Esc.
+
+| Action | Keys | Gamepad |
+|---|---|---|
+| Arrow | `A` |  |
+| Box | `R` |  |
+| Ellipse | `E` |  |
+| Pen | `P` |  |
+| Text | `T` |  |
+| Colour 1 | `1` |  |
+| Colour 2 | `2` |  |
+| Colour 3 | `3` |  |
+| Colour 4 | `4` |  |
+| Colour 5 | `5` |  |
+| Undo | `Ctrl+Z` |  |
+| Redo | `Ctrl+Y` · `Ctrl+Shift+Z` |  |
+| Save the markup | `Enter` |  |
+
+**Section box editor** The section box key or Esc closes it; clear all cuts still works.
+
+| Action | Keys | Gamepad |
+|---|---|---|
+| Drag a handle without snapping (hold) | `Shift` |  |
+
+**Photo mode** The photo mode key or Esc closes it; the sun time keys work.
+
+| Action | Keys | Gamepad |
+|---|---|---|
+| Take the photo | `Enter` | `RT` |
+| Field of view (photo mode) | `Wheel up` · `Wheel down` |  |
+
+**Sun panel** Shadows / sun panel or Esc closes it; the sun time keys work.
+
+| Action | Keys | Gamepad |
+|---|---|---|
+| Play / pause the day | `Space` |  |
+
+**Bookmark tour** While a bookmark tour plays (Esc stops it).
+
+| Action | Keys | Gamepad |
+|---|---|---|
+| Pause / play | `Space` | `A` |
+| Next stop | `→` · `PgDn` · `LMB` | `D-pad →` |
+| Previous stop (or this stop's start) | `←` · `PgUp` · `RMB` | `D-pad ←` |
+
+**Fixed (not rebindable)** Text boxes also keep Enter, Tab, Backspace, ↑ / ↓, Ctrl+V and Esc. Gamepad in menus and editors: the look stick moves the cursor, the move stick scrolls (menus) or looks (editors).
+
+| Action | Keys | Gamepad |
+|---|---|---|
+| Pause menu · back · cancel · stop | `Esc` | `Start` |
+| Close the window | `Alt+F4` |  |
+| Menus, panels, handles, markup | `LMB` |  |
+| Look around (drag; photo, section box, study) | `RMB` |  |
+| Finer slider and stepper changes (hold) | `Shift` |  |
+| Open a file (start screen) | `Ctrl+O` |  |
+| Gamepad: click where the cursor is (menus, panels, editors) |  | `A` |
+| Gamepad: back (menus, panels, editors) |  | `B` |
+
+<!-- controls:end -->
+
+**Notes** (hand-written)
+
+- **Mouse:** move the mouse to look (click the window to capture it); menus, panels and handles use the left button.
+- **Measure (2 again):** cycles Distance → Area → Angle → Clearance; RMB removes the last measurement, X clears them all.
+- **Moving an element (Gizmo / Clone / Place locked on):** the move keys move it in plan (left / right turn it in rotate mode), snap steps 5 mm–1 m and 1°–90°; drop / lift lands on the first surface below the bottom centre of its box; gun secondary (RMB) commits, Esc cancels. With the Gizmo gun, aiming + the drop key drops and commits at once.
+- **Bookmark tour:** Esc → BOOKMARKS → PLAY TOUR. **Walkthrough video:** Esc → BOOKMARKS → TOUR SETTINGS → RECORD VIDEO (the window shows progress; Esc / CANCEL stops and deletes the partial file).
+- **Section box (P):** free cursor; drag face handles (Shift = no snap); P / Esc closes, the cut stays. Shift+P cuts just behind the aimed surface; Ctrl+P clears all cuts.
+- **Photo mode (M):** free cursor; RMB-drag looks, wheel = field of view, Enter = take; M / Esc closes. **Sun / daylight study (J):** free cursor, the player stands still; RMB-drag looks, clicks pick surfaces.
+- **Hide the UI (U):** errors still show and every control keeps working; Esc or U brings it back. **Esc** also cancels a gizmo, closes a panel and shows the UI again.
+- **Undo / redo** work in files only (live: undo in Revit, then F5). **Screenshots** go to `Pictures\BimGo`. **L** cycles the coordinate readout off → shared → project → internal.
+- The start screen opens files with Ctrl+O (fixed).
 
 ### Guns
 
 | # | Gun | LMB | RMB | Live (Revit) | File |
 |---|---|---|---|---|---|
 | 1 | Scan | Lock target | Clear | Info + extra parameters; R selects in Revit | Same (no R) |
-| 2 | Measure | Start / end point | Remove last | | Same |
+| 2 | Measure (2 again: mode) | Distance: start / end · Area: corners (first corner closes) · Angle: arm, vertex, arm · Clearance: floor to ceiling here | Close the area / cancel / remove last | | Same |
 | 3 | Portal | Blue portal | Red portal | | Same |
 | 4 | Comment | Place + type (view + picture saved) | Remove marker | Model folder | In the file |
 | 5 | Teleport | Blink to marker | Step back | | Same |
@@ -106,9 +282,11 @@ Edits respect two phases picked in Options: the walkthrough shows the **new** ph
 | 8 | Clone | Clone in place | Commit | Copies in Revit | Journal `clone` |
 | 9 | Place | Family library | Commit (not holding: place the last type again) | Places the type in Revit | Journal `place` |
 
-**Pause menu:** RESUME, RETURN HOME, SET HOME HERE, SAVE / SAVE AS / PUSH TO REVIT (files) or SAVE AS .BIMGO (live), COMMENTS (issues: thumbnail, status, priority, assignee, replies; level and status filters; OPEN for the detail view and thread; EXPORT BCF (the comments shown), IMPORT BCF, BCF COORDS), BOOKMARKS (thumbnails, GO / RENAME / SET HERE / reorder / DELETE), TEXTURES (Realistic mode with missing images), FIND ROOM, SUN HOURS STUDY, **FAMILY LIBRARY** (when the snapshot has one), SHOW ALL (when anything is hidden), CLEAR MARKERS. Middle: category cards and LINKED MODELS toggles. Right: QUALITY PROFILE, then tabs **Display** (ground, colour mode, AA, FOV, mouse, VSync, invert Y, FPS, AO) · **Reflections** (Off / Some / All, source Sky / Probes / Probes HQ, strength, probe status, REFRESH) · **Debug** (colours Off / Reflection / Probes).
+**Pause menu** (review tools round: two button stacks and two settings columns when the window is wide enough, so it fits a 720 px high window; narrower windows stack them): **session** stack RESUME, RETURN HOME, SET HOME HERE, SAVE / SAVE AS / PUSH TO REVIT (files) or SAVE AS .BIMGO (live), **CONTROLS** (input round B2: every key, rebindable), END SESSION at the bottom; **review** stack COMMENTS (issues: thumbnail, status, priority, assignee, replies; level and status filters; OPEN for the detail view and thread, **MARKUP…** on its picture; EXPORT BCF (the comments shown), IMPORT BCF, BCF COORDS), BOOKMARKS (thumbnails, GO / RENAME / SET HERE / reorder / DELETE; **TOUR SETTINGS** and **PLAY TOUR**), TEXTURES (Realistic mode with missing images), FIND ROOM, SUN HOURS STUDY, **FAMILY LIBRARY** (when the snapshot has one), **CATEGORIES & LINKS** (the category cards and linked-model toggles, now their own panel; a * on the label when anything is switched off), SHOW ALL (when anything is hidden), CLEAR MARKERS. Settings: QUALITY PROFILE, **EYE HEIGHT** (Standing / Seated / Child, − / + for the selected preset's height), **UNITS** (Metric / Imperial, decimal feet), and beside them the tabs **Display** (ground, colour mode, AA, FOV, mouse, VSync, invert Y, FPS, AO) · **Reflections** (Off / Some / All, source Sky / Probes / Probes HQ, strength, probe status, REFRESH) · **Debug** (colours Off / Reflection / Probes).
 
-**Sun panel (Shift+O):** shadows and quality (Low / Medium / High, per machine), time slider with play, month / day, +1 h DST, sun height / bearing, sunlight / sky / shadow / glass sliders, artificial lights mode with Light / Bloom sliders, RESET LIGHTING. Site from Revit's Location; start time from the launch view's sun settings.
+**Markup editor** (after a comment's picture is taken, or MARKUP… in its detail view): ARROW / BOX / ELLIPSE / PEN / TEXT (A R E P T), five colours (1–5), THIN / MEDIUM / THICK, UNDO / REDO (Ctrl+Z / Ctrl+Y), CLEAR; drag on the picture to draw, TEXT: click, type, Enter; SAVE (Enter) or CANCEL / SKIP (Esc).
+
+**Sun panel (Shift+O):** the location line with **CHANGE…** (location override: search a city or paste lat, long; UTC offset − / +; RESET TO THE REVIT MODEL'S LOCATION), shadows and quality (Low / Medium / High, per machine), time slider with play, month / day, +1 h DST (DST AUTO when an overridden place's time zone decides), sun height / bearing, sunlight / sky / shadow / glass sliders, artificial lights mode with Light / Bloom sliders, RESET LIGHTING. Site from Revit's Location; start time from the launch view's sun settings.
 
 **Coordinate readout (L):** *Shared* = survey E / N / elevation (as Revit spot coordinates); *Project* = relative to the project base point on project-north axes; *Internal* = Revit internal metres.
 
@@ -118,7 +296,9 @@ Edits respect two phases picked in Options: the walkthrough shows the **new** ph
 src/
 ├── BimGo.Core/          # net8.0: no Revit, no GL, no UI
 │   ├── Scene/           #   SceneData, CategoryCatalog, LaunchSettings, QualityProfiles, ModelInfo, LinkInfo, SiteCoordinates,
-│   │                    #   SolarPosition, SunHours, LightingData, MaterialData, TextureSearch, ProxyCatalog, TextureOverrides, FamilyLibrary
+│   │                    #   SolarPosition, SunHours, LightingData, MaterialData, TextureSearch, ProxyCatalog, TextureOverrides, FamilyLibrary,
+│   │                    #   Units (metric / imperial text), MeasureMath (area, angle, triangulation),
+│   │                    #   InputCatalog (every action + default keys), KeyChord, KeyMap (bindings, clashes, keymap files)
 │   ├── Edits/           #   EditRequest / EditResult (EditOp), EditJournal + JournalEntry (JournalOps)
 │   ├── Sources/         #   IModelSource, FileEditSource
 │   ├── Live/            #   protocol, FolderChannel, LiveSessions, LiveSessionSource, JournalPush
@@ -128,13 +308,15 @@ src/
 │   ├── Program.cs · Shell/        # entry, single instance, home screen, open / recent, inbox, file association
 │   ├── Game/            #   GameSession (+Render, +Menu, +Edits, +Document, +Live, +Push, +Comments, +Bookmarks, +Thumbnails,
 │   │                    #   +Coordinates, +Sun, +Lights, +Textures, +Reflections, +Profiles, +Visibility, +Screenshot, +Library,
-│   │                    #   +Rooms (Find room), +SunHours), SunHoursStudy, CommentStore, BookmarkStore
+│   │                    #   +Rooms (Find room), +SunHours, +Tour, +EyeHeight, +Video, +Location, +Markup, +Geometry,
+│   │                    #   +Controls (CONTROLS panel, key capture), +Hints (text naming keys), +Gamepad, +GunWheel),
+│   │                    #   SunHoursStudy, CommentStore, BookmarkStore, VideoRecorder, UnitFormat
 │   ├── Game/Guns/       #   Gun base, Scan, Measure, Portal, Comment, Teleport, Hammer (Demolish), Gizmo (+GizmoController,
 │   │                    #   GizmoPanel), Clone, Place, GunIcons
 │   ├── Rendering/       #   SceneRenderer, SceneBatches, ShadowMaps, LightShadows, ScreenEffects (AO + bloom), ArtificialLighting,
 │   │                    #   SunLighting, MaterialTextures, ProxyPack, ReflectionProbes, Shaders, UI (UiBatch, fonts), Overlay3D
 │   ├── Physics/         #   Bvh (static), DynamicSet (moved / cloned / placed instances), CharacterController
-│   └── Platform/ Native/ Audio/ Resources/ (icon, CC0 proxy textures)
+│   └── Platform/ (+Hotkeys: the app's key map, KeyHint, Gamepad) Native/ (+MediaFoundation: MP4 writer, +XInput) Audio/ Resources/ (icon, CC0 proxy textures, places.tsv)
 └── BimGo.Revit/         # the add-in
     ├── Application.cs · Commands/Cmds_BimGo.cs   # ribbon: Go, Export .bimgo, Live (status)
     ├── Extraction/      #   SceneExtractor (+Materials, +Lighting, +Review, +Library), TextureLocator, MaterialScan,
@@ -146,7 +328,8 @@ src/
     │                    #   TextureReviewWindow, ProgressWindow
     └── Extensions/ General/ Utilities/ Resources/
 tests/BimGo.Core.Tests/  # MSTest (Core only): format round-trips, compatibility, journal, push, sun, settings, live channel,
-                         #   sidecars, model folders, lighting, materials, texture search, profiles, family library
+                         #   sidecars, model folders, lighting, materials, texture search, profiles, family library, review tools,
+                         #   controls (default clashes, modifier rule, swap, keymap files; regenerates README §3)
 ai/                      # per-round handoffs and build notes (§9)
 ```
 
@@ -176,7 +359,17 @@ ai/                      # per-round handoffs and build notes (§9)
 - **Find room** (Ctrl+F / pause menu). Every room (host and linked) with number, name, level and area; search by any of them (an exact number goes first; Enter takes the first match). GO stands the player on a clear floor spot nearest the room's middle (≥ 0.45 m from its walls, capsule checked), facing across it.
 - **Study modes** (daylight round; segmented at the top of the J panel): **Sun hours** (below), **Daylight %** and **Lux** (`GameSession.Daylight`, `SunHoursStudy.StepDaylight`, Core `Daylight`). Daylight modes select the room's **floor** at a **0.7 m work plane** (editable 0–2 m; walls can be clicked in). Per cell, 128 / 256 / 512 cosine-weighted rays (Hammersley) over its hemisphere are binned into 192 sky patches (8 × 11.25° bands × 24 × 15°): sky (× 0.7 glass transmittance when glass is in the way), ground below the horizon (reflectance 0.2), outside surfaces (one bounce, 0.2), or the cell's own room (left to the internally reflected component). **Daylight factor:** CIE overcast sky scaled to a unit horizontal illuminance; DF = sky + ground + outside + the room's **BRE split-flux IRC** (0.85 W / (A (1 − R)) · (39 Rfw + 5 Rcw); W = see-through triangles in the room's walls or over it, halved; A from the room boundary and height; reflectances from the colours of its floor, walls and ceiling, or standard 0.2 / 0.5 / 0.7, the panel's Reflectance choice). Legend 0–5 %+. **Illuminance:** per time sample (the sun hours day, range and step), the CIE clear sky scaled to the IES clear-sky diffuse horizontal illuminance (800 + 15 500 √sin α lux) plus, with Direct sun on, the sun (127 500 e^(−0.21 / sin α) lux × cos × glass) by one ray; the room's sky IRC; and the sun bounce (direct sun landing on the room's floor cells, split-flux). Cells show the average lux (legend 0–2000+) and keep the share of samples at or above the lux target. Room figures go in the summary (one room) and the CSV. Results are **early design indicators**, labelled as such (no validated interreflection, no frame / maintenance factors).
 - **Sun hours study** (J / pause menu; `GameSession.SunHours`, `SunHoursStudy`, Core `SunHours`). The player stands still, the cursor is free, RMB-drag looks. Surfaces: the walls and floors of the room you stand in (wall / floor categories, grouped by element and plane; cells kept inside the room, walls within 6 cm of its boundary on the side facing in), plus any surface you click (clipped to the room it faces; click again to remove). Grid: square cells (0.1 / 0.25 / 0.5 / 1 m, default 0.25) in each face's plane, at the floor offset (floors, 0–2 m) or wall offset (walls, 0–1 m) + 2 cm; ≤ 80 000 cells. Run: sun positions every 5 / 10 / 15 min (sample mid-step) over the chosen day and time range (default 21 June 9:00–15:00; DST tick) from the site location and true north (`SolarPosition`); per cell one ray per sample in front of the surface against the visible static scene and moved / placed elements, glass passing unless "glass blocks sun" (the BVH's per-triangle transparent flag); 10 ms per frame on the game thread with a progress bar and CANCEL. Cells coloured on Ladybug's legend 0–7+ h; summary: average, min, max, share ≥ 2 h and ≥ 3 h. Results stay until CLEAR (also with the panel closed); EXPORT CSV (settings, target + one row per cell, Revit internal metres, Pass column with a target) and SCREENSHOT (3D view + legend, `Pictures\BimGo\<model> sun hours <time>.png`). **Wall faces** of the room count when they lie up to 0.4 m inside its boundary or 3 cm outside (rooms bounded at wall finishes or wall centres both work; the far face of a partition doesn't), tested on the side that leads deeper into the room. **PASS / FAIL** (a toggle, general: no regional presets): on, cells colour **pass (green) / fail (red)** against the mode's target (sun hours ≥ 2 h by default, 0.5–12 h; daylight factor ≥ 2 %, 0.5–10 %; illuminance ≥ 300 lux for ≥ 50 % of the time samples), the legend shows the passing and failing area shares and the summary the pass share; off, cells show their values on the legend. **Saved studies:** SAVE STUDY… (name; the same name replaces) writes the settings, surfaces (element + plane + room), every cell's point and hours to `sun-studies\<name>.json` in the model folder (live: the session's model folder; files: the folder their provenance points to: cloud ids, else the model path); SAVED STUDIES… lists them (LOAD, DELETE twice). LOAD finds the surfaces again and lays the grid; when every cell lands where it was saved (2 cm) the results show, otherwise the surfaces stay selected and it asks for a new RUN.
-- **App shell.** One window alternates between the home screen (live sessions, Open, recent files, drag-and-drop) and walkthroughs; second launches and Revit's requests go through `%LocalAppData%\BimGo\App\inbox\`.
+- **Bookmark tour** (tour round; `GameSession.Tour`, Core `TourTimeline`). BOOKMARKS → PLAY TOUR plays the ticked bookmarks in list order. **Fade** (default): each stop fades in (0.6 s, 0–2 s), holds (4 s, 1–30 s) and fades out; the stop changes at black. **Glide**: the first stop fades in, the last fades out, and the camera flies between stops (at least the set time, 1–15 s; longer for far stops, ≤ 4 m/s, ≤ 30 s), easing position, eye height, yaw (the short way) and pitch. **Swivel** (default on, 30° left): a slow eased pan over the visible stop (fade) or the hold (glide). Each bookmark can override the hold and swivel (TOUR / OFF / LEFT / RIGHT, ± 15°) or be left out; tour-wide settings (transition, fade / glide, hold, swivel, **Show the UI**, **Loop**) are saved with the bookmarks. Each stop applies what its bookmark kept (sun time, section cut, hidden categories / links / elements, eye height); a part it didn't keep uses the walkthrough's state from the tour's start. Nothing is recorded as a change during the tour, and the player, sun, cut, visibility, eye height and UI state go back when it ends or Esc stops it (also before a save on the way out). UI off (default): a clean view with only important toasts; UI on: status, coordinates, minimap, room banner and a tour bar (stop, name, progress with stop ticks). A key hint shows for the first 4 s and while paused. Losing focus doesn't pause the tour. The player is moved with the camera (minimap and readouts follow); physics, guns and highlights are off while it plays. The timing is pure Core maths so build A2 can record the same tour to video at a fixed frame rate.
+- **Walkthrough video** (tour round, build A2; `GameSession.Video`, `VideoRecorder`, `Native/MediaFoundation.cs` `Mp4Writer`). TOUR SETTINGS → RECORD VIDEO plays the tour off-screen at a fixed rate (the tour clock steps 1 / fps per frame; as many frames as fit in ~45 ms per window frame), so the video is smooth on any PC. Per frame: `RenderScene(..., photo: true)` at the video size (MSAA as the window, within the photo sample budget), resolved; with **Show the UI** the HUD (status, coordinates, minimap with its plan, tour bar; no toasts, FPS, help or room banner) is drawn at the video's height by a second UI batch at a matching scale; the fade is drawn over it; read back (bottom-up BGRA) into one of three pooled buffers and encoded on a worker. Encoding: Windows Media Foundation's sink writer, H.264 High profile in MP4, ~0.2 bits per pixel (4–80 Mb/s), hardware encoder first, software encoder if refused; RGB32 frames (flipped to top-down) converted by the sink writer. Sizes **Window** (rounded to even) / **1080p** (default) / **4K** (refused above the GPU's renderbuffer limit), **30** (default) / **60 fps** (per-machine settings). Output `Videos\BimGo\<model> tour <date time>.mp4`; afterwards the tour settings open with the result and **OPEN FOLDER (LAST VIDEO)**. The window shows the frames as they come (letterboxed) with progress, frames, time left and CANCEL (Esc); cancelling or a failure deletes the partial file; closing the window mid-recording cancels it. Missing Media Foundation (Windows N without the Media Feature Pack) is reported.
+- **Location override** (tour round, build A2; `GameSession.Location`, Core `Places` (`PlaceIndex`, `TimeZones`), `SolarPosition.EffectiveSite`, `LocationOverride`). Sun panel → CHANGE… opens a picker in the panel: type a city (the bundled `Resources\places.tsv`: ~7,300 Natural Earth populated places with IANA zones, public domain; ranked exact name → name starts with → contains → region / country match, larger places first; accents ignored) or paste coordinates (Ctrl+V; decimal, hemisphere letters or degrees / minutes), which borrow the zone of the nearest listed place within 300 km (else an offset estimated from the longitude). The choice (latitude, longitude, standard offset, IANA zone, name, DST auto) is saved in `sun.json` (`location`) with the model; the sun, shadows, sun hours, Daylight % and Lux all use the effective site (a copy of the model's site with the override; true north and coordinates stay the model's; Revit is never changed). With a zone Windows knows, daylight saving follows the zone for each date (**DST AUTO**; a click switches to the manual tick, AUTO switches back); the study panel shows "Daylight saving: auto". The UTC offset − / + (half hours) makes the offset manual. RESET returns to the Revit site. Finished study results are marked "settings changed".
+- **Eye height** (tour round; `GameSession.EyeHeight`, `CharacterController.SetStandingEye`). Presets Standing 1.62 / Seated 1.20 / Child 1.10 m (eye heights, editable 0.9–2.0 m in the pause menu in 5 cm steps and in Options → Player; saved in settings with the preset in use). The capsule follows: standing height = eye + 0.13 m, crouch eye and height scale with it, step-up unchanged. A taller preset is refused under a low ceiling (walking; flying never). The status panel's MODE shows SEATED / CHILD / CUSTOM EYE. **Bookmarks** now also keep the **eye height** and the **hidden categories / links / elements** (not the ground or the section, which has its own field); GO restores both (older bookmarks leave them alone; a height no preset has reads CUSTOM until a preset is picked).
+- **Measure modes** (review tools round; `MeasureGun`, Core `MeasureMath`). Pressing 2 with the Measure gun selected cycles **Distance** (as before, N = normal projection) → **Area** (LMB corners on the plane of the first point: the aim ray meets that plane, so corners can be picked anywhere on screen; clicking the first corner again (14 px) or RMB with three or more corners closes it; ≤ 64 corners; a translucent fill by ear clipping, area + perimeter, live while drawing) → **Angle** (three clicks, the vertex in the middle; 0–180° with an arc) → **Clearance** (from the aimed point, lifted 1 cm off its surface, one ray straight down to the first surface (or the ground plane outside) and one straight up; a surface within 2 cm counts as the point itself, so aiming at a floor reads floor → ceiling; both segments labelled ↓ / ↑, the total in the panel; a live preview follows the crosshair). RMB removes the last measurement of any mode (or cancels / closes the one being made), X clears them all. Measurements stay temporary markers (never saved). The panel shows mode chips, the live or last value and hints.
+- **Display units** (review tools round; Core `Units`, App `UnitFormat`). Metric (default) or **imperial**: feet-inches to the nearest 1/8" (5' 7 1/2"), or **decimal feet** (5.63') when ticked; areas in ft². Covers the Measure gun, level / ground readouts, the coordinate readout (survey coordinates always in decimal feet in imperial), study work plane / offsets and grid labels (≈), eye heights, the gizmo's move readout and drop messages, Teleport distances, room areas, glazing areas, bookmark details. Lux, daylight % and sun hours are unchanged; CSV exports stay in Revit internal metres; snap increments stay metric steps. Per machine (`DisplayUnits`, `DecimalFeet`), set in the pause menu (UNITS) or Options → Player.
+- **Snapshot markup** (review tools round; `GameSession.Markup`). Opens straight after a comment's picture is taken (a new comment, SET VIEW HERE; SKIP leaves it clean) and from the detail view (MARKUP… on the picture; MARKED UP shows when it has markup). Shapes are kept in picture pixels; committed shapes are drawn with GDI+ into a preview texture (what SAVE writes), the shape being dragged or typed with the UI batch. **SAVE burns** the markup into the comment's picture (same size, JPEG 82) and thumbnail (192 × 108), so the comment list, BCF snapshots and everything else carry it, and keeps the **unmarked original** as `comments/<id>_original.jpg` (`snapshotOriginal`): MARKUP… always starts from the clean picture (shapes aren't kept after the editor closes). Clearing everything and saving puts the original back. A new picture (SET VIEW HERE) drops the old original. Text is bold with a contrasting outline. Comments without a picture (older ones with only a thumbnail) can't be marked up.
+- **Input and key bindings** (input round B2, build A; Core `InputCatalog`, `KeyChord`, `KeyMap`; App `Platform/Hotkeys`, `InputState`, `GameSession.Controls`). Every key is an `InputAction` with a group (General, Movement, Guns, Views and tools, each gun, Holding an element, the editors, Fixed), a kind (press, repeat, hold) and up to three default chords (key, mouse button or wheel notch + Shift / Ctrl / Alt). **Situations** (walking with each gun, holding an element, each editor, the tour, recording, the start screen) list what can fire together, mirroring `GameSession.UpdateFrame`: two actions **clash** only when a situation holds both (X clears markers walking and steps the snap while holding an element). `KeyMap` holds the live chords (defaults + `settings.json` `KeyBindings`, which keeps only the changes), answers `Pressed` / `PressedOrRepeated` / `Down` for a frame without allocating, and applies the **modifier rule**: extra modifiers don't stop a binding unless a live binding on the same key needs more of the held modifiers (precomputed "shadow" lists per slot). Mouse buttons share the key arrays under their virtual-key codes (MMB, Mouse 4 / 5 now captured: `WM_MBUTTON*`, `WM_XBUTTON*`); the wheel is two codes of its own. **CONTROLS** (pause menu, session stack): grouped rows with three slots each; click a slot and press the key (Esc or a click elsewhere cancels; LMB binds by clicking the slot again; a lone modifier binds on release), right-click clears; reserved keys (Esc, Windows keys, Print Screen, lock keys, Alt+F4), fixed actions and the wheel on held actions are refused; a clash asks, and SWAP gives the other action(s) the slot's old key (or none when that would clash for them); search by action, group or key; RESET / RESET ALL; EXPORT / IMPORT a keymap file (`bimgo-keymap` JSON, every action; import = defaults + the file, unknown entries skipped and logged, clashes shown in red). Saved at once. Punctuation keys are named from the keyboard layout (`MapVirtualKeyW`). F1 help, the gun bar's numbers and LMB / RMB tags and every hint or toast that names a key read the map (`KeyHint` caches per-frame text until a binding changes).
+- **Gamepad and gun wheel** (input round B2, build B; `Native/XInput.cs`, `Platform/Gamepad.cs`, `GameSession.Gamepad`, `GameSession.GunWheel`). XInput (`xinput1_4.dll`, in Windows: no package) is read once a frame in `GameWindow.PumpMessages` (the first connected controller; the slots are scanned every 2 s when none is; all released while the window isn't active). Its buttons, triggers and each stick's four directions are 24 gamepad codes (from 0x200) on `InputState`, with edges and auto-repeat (0.4 s, then every 0.1 s) like keys; sticks pass a radial dead zone (default 24 %) and triggers a threshold (15 %), and both are analog: `KeyMap.Axis` reads 0–1, so movement (`Player`, the gizmo) is analog while keys still read 0 / 1. The gamepad has its own slot per action (`KeyMap.PAD_SLOT`), stored apart from the keys (settings `PadBindings`, keymap files `"pad"`), and LB / RB are modifiers (`KeyModifiers.PadLB / PadRB`): LB + D-pad ↑ shadows D-pad ↑ as Shift+H shadows H. Look actions (`LookUp/Down/Left/Right`, gamepad only by default) turn at up to 3 rad/s × look speed with a squared response; the stick click toggles sprint until movement stops; triggers fire the guns. **Cursor:** in menus, panels and text boxes (`PadCursorMode.Menu`) and the free-cursor editors (`Editor`) the look stick moves the Windows cursor (`SetCursorPos`, so every widget works unchanged), A presses the left button (held: drags), B sends Esc, and the move stick scrolls (menus) or looks (photo, section box, study); off while walking, during tours, videos and key captures. **Gun wheel:** `GunWheel` (MMB, gamepad RS click): the mouse holds it open and steers with its raw movement (let go to pick; the middle does nothing), the gamepad toggles it, points with the look stick and picks with A or another click (B / Start / Esc close). Looking pauses while it is open; walking doesn't; nothing fires. Tuning (look speed, invert Y, dead zone, trigger threshold) and SWAP STICKS are in CONTROLS (settings `PadLookSensitivity`, `PadInvertY`, `PadDeadZone`, `PadTriggerThreshold`). F1 help adds two gamepad rows while one is connected; the gun bar shows RT / LT when the gamepad was used last.
+- **Generic controllers** (build B2-C; `Native/Joystick.cs`, `Platform/Gamepad.PollGeneric`, Core `GenericPadMap`, `GameSession.PadMapping`). When no XInput controller answers, the joystick ids (`joyGetNumDevs`, ≤ 16) are scanned every 2 s with `joyGetPosEx`; the first that answers is used (name and axis ranges from `joyGetDevCapsW`). Its six axes (−1–1 over the reported ranges), 32 buttons and hat (continuous, hundredths of a degree) go through a `GenericPadMap` (one source per gamepad code: "B3", "POVU", "Y-"; settings `GenericPadMap`, `GenericPadName`; the Xbox-style guess until mapped) into the same 24 gamepad codes, then the same dead zone, trigger threshold, edges and bindings as XInput. Hat diagonals press both directions. Without a mapped Start, LB + RB held together are Start. **MAP BUTTONS** (CONTROLS, shown for a generic controller): the reading when it starts is "at rest"; 20 steps (A B X Y, LB RB, LT RT, the D-pad, each stick up and left (down / right are the same axes reversed), the stick clicks, Back, Start); each waits for the pad to come back to rest, then takes the first button, hat direction or axis (moved over 60 %) that leaves rest; SKIP, CANCEL / Esc; saved at the end. Nothing reaches the actions while mapping.
+- **App shell.** One window alternates between the home screen (live sessions, Open, recent files, drag-and-drop) and walkthroughs; second launches and Revit's requests go through `%LocalAppData%\BimGo\App\inbox\`. **Start screen** (review tools round): each recent file's card shows the `thumbnail.jpg` saved in it (every save renders the current view off-screen at 640 × 360, photo pass: no HUD or markers, stored at 384 × 216; Revit exports and older files show the BimGo mark), title, details, folder, **SHOW IN FOLDER** and **REMOVE FROM LIST** (right-click still removes). The last model walked live (`LastLive.json`) shows greyed under the live sessions when its session isn't running ("open it in Revit and press Go").
 
 ## 6. The `.bimgo` format (version 1)
 
@@ -190,15 +383,16 @@ A ZIP (extension masked); JSON camelCase; writes are atomic (`.tmp` then replace
 | `geometry.bin` | `BGEO` header (version, vertex size 28, counts), `SceneVertex[]`, `uint[]` indices |
 | `parameters.json` | optional extra parameters: pooled names / values, per-element rows |
 | `comments.json` · `journal.json` | comments (marker, text, author; optional `status`, `priority`, `assignedTo`, `updated` / `updatedBy`, `replies[]`, `view`, `thumbnail`, `elementUniqueId`, `snapshot`; same shape in the live model folder) · ordered edits (`hide` + mode, `transform`, `clone`, `place`) |
-| `comments/*.jpg` | optional: comment pictures for BCF snapshots, named in `comments.json` (`snapshot`) |
-| `bookmarks.json` · `sun.json` · `visibility.json` | optional: bookmarks + home (thumbnails base64 JPEG; `section` per bookmark) · sun state · hidden categories / links / elements, `groundOffset` (m from the default ground) and `section` (box min / max, plane point / normal, internal metres) |
+| `comments/*.jpg` | optional: comment pictures for BCF snapshots, named in `comments.json` (`snapshot`); since the review tools round a marked-up picture's unmarked original (`snapshotOriginal`, `comments/<id>_original.jpg`) |
+| `thumbnail.jpg` | optional (review tools round): the view at the last save, 384 × 216 JPEG, for the start screen |
+| `bookmarks.json` · `sun.json` · `visibility.json` | optional: bookmarks + home (thumbnails base64 JPEG; `section`, and since the tour round `visibility`, `eyeHeight`, `tourHold`, `tourSwivel`, `tourSkip` per bookmark; `tour` = tour settings: `transition`, `holdSeconds`, `fadeSeconds`, `glideSeconds`, `swivel`, `swivelDegrees`, `swivelDirection`, `showUi`, `loop`) · sun state (since build A2 optional `location`: `latitude`, `longitude`, `timeZone`, `zoneId`, `autoDaylightSaving`, `name`) · sun state · hidden categories / links / elements, `groundOffset` (m from the default ground) and `section` (box min / max, plane point / normal, internal metres) |
 | `lighting.json` | optional: glowing vertex runs and fixture lights |
 | `materials.json` · `material.bin` · `textures/*` | optional (Realistic): material table (colour, texture, placement, tint, invert, reflection fields…), per-vertex material index + surface coordinate, embedded images |
 | `library.json` · `library/*.png` | optional (live sessions): family library entries (`typeId`, `typeUniqueId`, family, type, category key, `placement`, `placeable`, `reason`, `element` = template index or -1, `preview`, `placed`) and `vertexStart` (first template vertex); previews |
 
-Settings (`settings.json`) carry the Options and in-app display choices; notable keys: categories, phases, `ActiveViewOnly`, `SkipHelperGeometry`, `LinkedModels`, `ExtractTextures`, `TextureMaxSize`, `RevitTint`, `ProxyMissingTextures`, `TextureSearchFolders`, `ShadowQuality`, `ArtificialLights`, `BloomIntensity`, `ReflectionThreshold`, `ReflectionProbes`, `ProbeResolution`, `QualityProfile`, `SidecarsBesideModel`, `LastOptionsTab`, `FamilyLibrary`, `FamilyLibraryMax`, `BcfCoordinates`, `SectionCapColour`.
+Settings (`settings.json`) carry the Options and in-app display choices; notable keys: categories, phases, `ActiveViewOnly`, `SkipHelperGeometry`, `LinkedModels`, `ExtractTextures`, `TextureMaxSize`, `RevitTint`, `ProxyMissingTextures`, `TextureSearchFolders`, `ShadowQuality`, `ArtificialLights`, `BloomIntensity`, `ReflectionThreshold`, `ReflectionProbes`, `ProbeResolution`, `QualityProfile`, `SidecarsBesideModel`, `LastOptionsTab`, `FamilyLibrary`, `FamilyLibraryMax`, `BcfCoordinates`, `SectionCapColour`, `EyePreset`, `EyeHeightStanding` / `EyeHeightSeated` / `EyeHeightChild`, `VideoSize`, `VideoFps`, `DisplayUnits` (`Metric` / `Imperial`), `DecimalFeet`, `KeyBindings` (input round B2: action id → its keys, only those changed from the defaults), `PadBindings` (build B: action id → its gamepad binding, changes only), `PadLookSensitivity`, `PadInvertY`, `PadDeadZone`, `PadTriggerThreshold`, `GenericPadMap`, `GenericPadName` (build B2-C).
 
-Model folders (`%LocalAppData%\BimGo\Models\<title>_<hash>\`) also hold `comments\<id>.jpg` (comment pictures) and `sun-studies\<name>.json` (saved sun hours studies).
+Model folders (`%LocalAppData%\BimGo\Models\<title>_<hash>\`) also hold `comments\<id>.jpg` (comment pictures; `<id>_original.jpg` beside a marked-up one) and `sun-studies\<name>.json` (saved sun hours studies). The app also keeps `%LocalAppData%\BimGo\LastLive.json` (the last model walked live, for the start screen).
 
 ## 7. The live session protocol (version 1)
 
@@ -218,6 +412,18 @@ Model folders (`%LocalAppData%\BimGo\Models\<title>_<hash>\`) also hold `comment
 Envelope: `protocol`, `id`, `seq`, `sessionId`, `type`, `replyTo`, `sentUtc`, `payload`; files `<utc>-<seq>-<type>.json` (`.tmp` then rename), read by a watcher + 1 s poll, validated (session, protocol, 4 MB cap), de-duplicated and deleted. Additive messages / ops: an older add-in ignores `journal.apply` and can't read `place` (the app times out with a hint to update).
 
 ## 8. Known limitations / to verify
+
+**Input, build B2-C (`261012c_Input_C`): generic controllers and F1, written without a .NET SDK, to verify:** the Core tests (`ControlsTests`: 22; new `GenericPad_SourcesAndMapping`); with the "Generic USB Joystick": the log line naming it (axes, buttons, hat), CONTROLS showing its name and MAP BUTTONS…, the 20 steps (each button, the triggers whether they are buttons or axes, the D-pad whether it is a hat or buttons, each stick up / left), SKIP for Back / Start, CANCEL / Esc keeping the old map, then the whole gamepad list below working through it (sticks with the dead zone, triggers with the threshold, LB + RB opening the menu), the map surviving a restart (`GenericPadMap` in settings.json); an Xbox pad still taking XInput when both are plugged in. F1: help hidden at start, "F1: Help" bottom left, F1 shows / hides it. CONTROLS (C3 fix): the gamepad row's sliders clear Invert Y and the buttons at 1280 px and wider; on a narrow window the buttons sit on their own line.
+
+**Input, build B2-B (`261012b_Input_B`): gamepad and gun wheel, written without a .NET SDK, to verify:** build, the Core tests (`ControlsTests`: 21 then; the catalogue checked again in the Python port: no default clash, keyboard or gamepad, in any of the 16 situations; README §3 regenerated). **Keyboard and mouse first:** everything as in B2-A with no controller connected and with one connected but untouched (walking, guns, menus, editors, the tour); the new MMB gun wheel (hold, steer, let go on a gun / in the middle; looking pauses; nothing fires; Esc closes). **Gamepad** (Xbox-style): connecting / disconnecting while BimGo runs (log lines), move (left stick, analog walking speed) and look (right stick), invert Y, look speed, dead zone (drift at rest), A jump / fly up, B crouch / fly down, Y fly, LS click sprint (ends when you stop), D-pad ↑ / ↓ levels, ← / → sun time (shadows on; repeats when held), LB + D-pad (↑ shadows, ↓ lights, ← home, → coordinates), RB + D-pad (↑ photo, ↓ section box, ← study, → sun panel), RT / LT gun primary / secondary, X the gun's key (Scan hide, Measure normal, Demolish mode, Gizmo drop; LB + X Scan isolate / Gizmo snap), RB + X clear markers, Back minimap, LB + Back help, Start pause / resume; holding an element (move stick moves it, D-pad up / down / steps, Y rotate, RS click fine, RT / LT); the gun wheel (RS click, point with the right stick, A / click picks, B closes); menus (cursor on the right stick, A click and drag sliders, B back through panels, the left stick scrolls lists, text boxes cancel with B); editors (photo: cursor + left-stick look, RT takes the photo; section box handles drag with A; study clicks; markup drawing with A held); the tour (A pause, D-pad ← / →); CONTROLS gamepad column (capture a button, a trigger, a stick direction, LB + button, LB alone; Start refused; clashes swap within the column), SWAP STICKS, the tuning saved across a restart; the gun bar showing RT / LT after gamepad use; F1's gamepad rows; Windows without `xinput1_4.dll` (gamepad off, logged).
+
+**Input, build B2-A (`261012a_Input_A`): written without a .NET SDK, to verify:** build, then the Core tests (new `ControlsTests`: 19; the catalogue was also checked in a Python port: no default clash in any of the 15 situations). `Readme_ControlsTablesAreCurrent` rewrites README §3's tables and reports Inconclusive when they are out of date (they were generated from the same port, so it should pass). **Every key should behave exactly as before** with the defaults: walking (WASD / arrows, Space, Shift run, Ctrl crouch, V, PgUp / PgDn, H / Shift+H, Ctrl+F), guns (1–9, 2 again, wheel, LMB / RMB, X), tools (B, Shift+1–9 (was Ctrl+1–9), L, K, O / Shift+O, [ ] and Shift+[ ], J, M, P / Shift+P / Ctrl+P, Tab, U, F1, F5, F11, F12, Ctrl+S / Ctrl+Shift+S / Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z, also while paused), gun keys (R, I, Shift+I, N, E, T, G, F), holding an element (WASD, E / Q, R, Z / X, F, Shift fine, Ctrl flips snap, snapped steps on key repeat, RMB commit, Esc cancel), markup (A R E P T, 1–5, Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z, Enter, Esc, text typing), section editor (P / Esc close, Ctrl+P does nothing there, Shift free drag), photo (M / Esc, Enter, wheel, [ ]), sun panel (O / Shift+O / Esc, Space, [ ], the month / day boxes, the location picker), study (J / Esc, F11, F12), tour (Space, ← → PgUp / PgDn, LMB / RMB, Esc, F11), video (Esc), progress screens (Esc), start screen (Ctrl+O). Small changes: Ctrl+letter in the markup editor now picks the tool (Ctrl used to block every key there); Ctrl+Esc / Ctrl+Enter there now cancel / save. CONTROLS: the session stack's new button (pause menu height at 1280 × 720), binding a letter, Shift+letter, Ctrl+Alt+key, F10, Alt, a lone Shift / Ctrl, LMB / RMB / MMB / Mouse 4 / Mouse 5, the wheel (refused for held actions), Esc cancelling, reserved keys refused, a clash (SWAP / CANCEL / Esc), right-click clearing, RESET / RESET ALL, search (jump, sun, ctrl), scrolling, EXPORT / IMPORT (a file with a clash, a non-keymap file), the change surviving a restart (`KeyBindings` in settings.json) and reaching F1 help, the gun bar, LMB / RMB tags, panel hints and toasts; a German / French layout's punctuation names; the window losing focus while waiting for a key.
+
+**Review tools, build B1 (`261011d_Review_Tools`):** built and confirmed working by Gavin (2026-10-11). Still worth a look when convenient: the Core tests (new `ReviewToolsTests`: 11; the feet-inches rounding and the ear clipping were also checked in a Python port, 5,000 random polygons). Measure: 2 cycling the modes (and the toast), Distance unchanged (N), Area on floors / walls / sloped roofs (corners picked off the plane's edge land on it), closing by the first corner and by RMB, concave outlines (fill), the live area; Angle (arc, 90° on a room corner); Clearance on a floor (floor → ceiling), a desk (↓ + ↑), a ceiling, outside over the ground, under the sky (nothing above), with a section cut (rays skip cut geometry); RMB / X; the panel heights. Markup: opens after a new comment and after SET VIEW HERE (SKIP / Esc keep the clean picture), MARKUP… in the detail view, each tool, colour, thickness, text (outline legible on light and dark), undo / redo / clear, SAVE then MARKUP… again (starts clean, MARKED UP tag), clear + SAVE (original back), the thumbnail in the list, BCF export (snapshot carries the markup), live sessions (`comments\<id>_original.jpg` in the model folder) and files (saved / reopened), the toolbar wrapping on a narrow window, Segoe UI missing (generic sans-serif). Units: Metric / Imperial / decimal feet in the pause menu and Options → Player (saved, read at the next start), every readout listed in §5, the room list and bookmark details switching at once. Pause menu: 1280 × 720 (two stacks, two columns, nothing past the bottom), 1024 wide (one stack), a very narrow window (stacked settings), CATEGORIES & LINKS (toggles, Esc / CLOSE back, the OFF count). Start screen: thumbnails after a save (file and live SAVE AS), older files and exports (placeholder), SHOW IN FOLDER, REMOVE FROM LIST, the greyed last live session (hidden while that model's session runs; a click explains), the save time with the extra off-screen render (log).
+
+**Video and location, build A2 (`261011b_Video_Location`):** built and confirmed working by Gavin (2026-10-11). Still worth a look when convenient: the Core tests (new `LocationTests`: 10, `TourTests`: +1; on a PC whose .NET can't resolve IANA zones the DST test reports inconclusive). The Media Foundation interop calls COM methods by vtable slot (slots and GUIDs checked against the Windows SDK interface definitions): RECORD VIDEO at 1080p30, 1080p60, 4K and window size, with UI on and off, fade and glide; the MP4 in Windows' Films & TV / VLC / a phone (picture the right way up, colours, smooth swivel, fades, length = tour length); hardware vs software encoder (log line when the hardware one is refused); CANCEL / Esc (file deleted); closing the window mid-recording; time per frame at 4K (log); the HUD's size in a 4K video from a smaller window; OPEN FOLDER. Location: CHANGE… → search (sydney, perth aus, sao paulo), paste "-33.8568, 151.2153" (Ctrl+V) and a degrees / minutes pair, Enter takes the first result, the sun moving to match, DST AUTO in January / June for Sydney, the AUTO / manual switch, UTC − / +, RESET, saved and restored in a file and in a live session, sun hours / Daylight % / Lux runs with an overridden site (and "settings changed" on finished results), `places.tsv` copied beside the exe (and to `%LocalAppData%\Programs\BimGo`).
+
+**Tour, build A1 (`261011a_Tour`):** built and confirmed working by Gavin (2026-10-11). Still worth a look when convenient: the Core tests (new `TourTests`: 12; the timeline maths was also checked in a Python port). On Gavin's machine: PLAY TOUR with fade and glide; swivel left / right and per-bookmark overrides (TOUR / OFF / LEFT / RIGHT, ± angle, hold − / + / ×, the tick to leave a stop out); Space / ← → / Page Up / Down / LMB / RMB / Esc; Loop; UI on (tour bar, minimap following) vs off; stops with sun times, cuts and hidden elements, and that everything (including the eye height and an isolated category) comes back after the tour with the file not marked changed; a presenter clicker (sends Page Up / Down); the window losing focus mid-tour; closing the window mid-tour (save prompt keeps the real state). Eye height: the three presets and − / +, refusing a taller preset under a low ceiling, crouch / stand-up and stairs when seated or child, the MODE readout, Options → Player eye heights (validation), bookmarks saved seated replaying seated (GO and tour), the settings surviving a restart. (The pause menu's height on a 720 px window was dealt with in B1.)
 
 **Photo mode (`261010c_PhotoMode`), to verify:** build + Core tests (new `PanoramaTests`); exposure shader checked in WebGL2. On Gavin's machine: stills at 2× / 4× (time, memory, any GPU limit message), 360 at 4K / 8K (stitch seams, the up / down views, time on the worker), the 360 JPEG on a phone / Facebook / a panorama viewer (metadata), exposure, the restore after a shot (no flicker, effects back at window size).
 
@@ -264,7 +470,10 @@ Envelope: `protocol`, `id`, `seq`, `sessionId`, `type`, `replyTo`, `sentUtc`, `p
 - Sun hours: geometric only (no diffuse sky, no reflections); a cell is lit or not per sample (no partial shade); the ground plane doesn't shade. Saved studies live in the model folder, not in the `.bimgo` (a workshared model's file studies use its local copy's folder, as files don't record the central path).
 - BCF: plain 2.1 out (no markup lines, clipping planes, coloured or hidden components, labels or extensions); the first viewpoint only on import; viewpoints carry no marker position (it is found again from the view's centre ray); the field of view is clamped to 45–60°; topics in project / internal coordinates only line up when the other tool's model uses the same.
 - Comment pictures aren't copied beside the model when sharing is on (comments still are; the pictures stay in BimGo's folder).
-- Key bindings grew one round at a time: a full review is planned before v1 (more than 9 guns would need a rethink of the number keys).
+- Video: no sound; the tour's live-only parts (room banner, toasts, key hint) are left out of videos; probes aren't re-baked during a recording (a stop that changes the visibility keeps the walkthrough's reflections); rendering is synchronous (a 4K frame waits for its read-back). Location: places are city reference points (paste a site's own coordinates for accuracy); a place without a zone in the list (43, mostly Antarctic stations) gets an offset from its longitude; the zone's current standard offset is used for every date; saved sun studies don't record the override.
+- Tour: a glide flies straight through walls and floors (no path finding); bookmarks keep the eye height but not crouching; stops change the sun with a cut, not a blend. Eye height: BCF viewpoints and comment views still use the standing eye height (1.62 m) when they convert eye ↔ feet; the Teleport gun's headroom check and Find room's spot check use the standing capsule.
+- Review tools: measurements aren't saved (by design); an area's corners all lie on the first point's plane (no 3D outlines); clearance is vertical only; the angle is between picked points (not between faces). Markup is burned in (shapes can't be edited after SAVE; the original is kept to start again); text preview while typing is the UI font (the saved text is Segoe UI Bold at the chosen size). Units: snap increments and the eye-height − / + steps stay metric (shown converted); the sun hours grid sizes are metric (labels ≈ in imperial); CSV exports stay in metres. The pause menu stacks its settings on windows under ~960 px wide (they can run past the bottom at 720 px high there). Revit exports have no `thumbnail.jpg` until saved from the app.
+- Key bindings: the defaults are still the keys as they grew round by round (the hotkey review picks new ones in `InputCatalog`); three keys per action; text boxes keep their own keys; the start screen's Ctrl+O and the progress screens' Esc are fixed. Gamepad (build B): XInput controllers, or one generic controller through Windows' joystick API once MAP BUTTONS has recorded it (no per-device maps: one map per machine), the first connected one, one binding per action, no vibration, no on-screen keyboard (typing names needs the keyboard), the cursor moves the real Windows cursor; the editors' own tools have no gamepad bindings by default (A clicks their buttons).
 
 ## 9. History
 
@@ -295,6 +504,14 @@ Every round's handoff and build notes live in `ai/<yymmdd>_<round>/`. Same-day f
 | 2026-10-10 | Section box (`261010b_SectionBox`) | Section box + quick plane (P / Shift+P / Ctrl+P), stencil caps in a flat, user-chosen colour, cuts saved with the model, in bookmarks and comment views, and as BCF clipping planes; tools skip cut geometry |
 | 2026-10-10 | Photo mode (`261010c_PhotoMode`) | M: clean-frame photo mode, hi-res stills (1–4×, PNG / JPEG), 360° equirectangular panoramas (4K / 8K, Photo Sphere metadata), exposure, field of view |
 | 2026-10-10 | Licence | BimGo relicensed MIT → **MIT-0** (no attribution required, same disclaimer); notices gained trademarks, acknowledgements and a licence-review / contact statement |
+| 2026-10-11 | Tour, build A1 (`261011a_Tour`) | Bookmark tour (fade / glide, swivel, hold, per-bookmark overrides, UI on / off, loop; Space / ← → / Esc), bookmarks keep eye height and visibility, eye-height presets (standing / seated / child) |
+| 2026-10-11 | Video + location, build A2 (`261011b_Video_Location`) | Walkthrough video (RECORD VIDEO: the tour to MP4 / H.264 through Windows Media Foundation, window / 1080p / 4K, 30 / 60 fps, UI on / off, progress + cancel), location override (offline Natural Earth place search, pasted coordinates, IANA zones with automatic daylight saving, saved with the model) |
+| 2026-10-11 | Handoff (`261011c_Handoff`) | Plan for rounds B1 → B2 → C → hotkeys → polish → installer |
+| 2026-10-11 | Review tools, build B1 (`261011d_Review_Tools`) | Measure modes (distance / area / angle / clearance, 2 cycles), snapshot markup burned into comment pictures (original kept), metric / imperial units, pause menu re-laid out for 720 px (two stacks, CATEGORIES & LINKS panel), start screen thumbnails (`thumbnail.jpg`), last live session card, SHOW IN FOLDER / REMOVE FROM LIST |
+| 2026-10-11 | Handoff (`261011e_Handoff`) | Plan for rounds B2 → C → hotkeys → polish → installer |
+| 2026-10-12 | Input, build B2-A (`261012a_Input_A`) | Action map: every key an `InputAction` in one Core catalogue (groups, defaults, situations), rebinding in Esc → CONTROLS (three keys per action, modifiers, all mouse buttons and the wheel, clash warning with swap, search, reset, keymap export / import), F1 help and key hints from the map, README §3 generated by the Core tests |
+| 2026-10-12 | Input, build B2-B (`261012b_Input_B`) | Gamepad (XInput, Xbox-style; its own column in CONTROLS, LB / RB combinations, analog move and look, sprint toggle, cursor in menus and editors, tuning, swap sticks) and the gun wheel (MMB hold / gamepad RS click); bookmarks moved to Shift+1–9 |
+| 2026-10-12 | Input, build B2-C (`261012c_Input_C`) | Generic (non-XInput) controllers through Windows' joystick API with CONTROLS → MAP BUTTONS; F1 help off by default with a small "F1: Help" note |
 
 ## 10. Dependencies
 
