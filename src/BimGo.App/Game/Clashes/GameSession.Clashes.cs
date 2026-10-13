@@ -259,6 +259,7 @@ namespace BimGo.Game
 
             if (ran == 0) { return; }
             ClashesChanged();
+            SyncClashComments(); // C-B2: linked comments follow the statuses the run set
             _clashRowsDirty = true;
             _clashListDirty = true;
             Sound.Play(SoundId.Commit);
@@ -322,6 +323,7 @@ namespace BimGo.Game
             }
             ClashImportResult r = result.Value;
             ClashesChanged();
+            SyncClashComments(); // C-B2: linked comments follow imported statuses
             _clashRowsDirty = true;
             _clashListDirty = true;
             Sound.Play(SoundId.Commit);

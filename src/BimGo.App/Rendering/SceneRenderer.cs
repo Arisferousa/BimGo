@@ -923,6 +923,16 @@ namespace BimGo.Rendering
         }
 
         /// <summary>
+        /// Draws the next passes without AO or glow, keeping their targets as they are (clash pictures, Round C-B2: an
+        /// off-screen picture of another size would otherwise remake them twice a frame). The next
+        /// <see cref="UpdateScreenEffects"/> turns them back on.
+        /// </summary>
+        public void SkipScreenEffects()
+        {
+            _aoActive = _glowActive = false;
+        }
+
+        /// <summary>
         /// Gives this frame's picked lights their shadow maps (call after the session filled <see cref="Artificial"/>,
         /// before binding the scene target): renders the few that are new, moved or out of date, then keeps only the
         /// lights that have a map (a new light joins, fading in, once its map exists). With no lights the maps are freed.

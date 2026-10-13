@@ -59,6 +59,36 @@ namespace BimGo.Clashes
     }
 
     /// <summary>
+    /// Clash → comment (Round C-B2: TO COMMENT / TO COMMENTS): how a clash's review state reads on its comment. The
+    /// comment follows the clash one way (a clash's status change updates its comment, never the other way round).
+    /// </summary>
+    public static class ClashCommentRules
+    {
+        /// <summary>A hard clash crossing deeper than this (m) makes a high-priority comment.</summary>
+        public const double HIGH_PRIORITY_DEPTH = 0.05;
+
+        /// <summary>The most clashes TO COMMENTS makes comments for in one go.</summary>
+        public const int BATCH_LIMIT = 500;
+
+        /// <summary>
+        /// The comment status for a clash status: new / active → open, reviewed → in progress, approved / resolved →
+        /// closed.
+        /// </summary>
+        public static string CommentStatusFor(string clashStatus) => ClashStatus.Normalise(clashStatus) switch
+        {
+            ClashStatus.REVIEWED => BimGo.Format.CommentStatus.IN_PROGRESS,
+            ClashStatus.APPROVED or ClashStatus.RESOLVED => BimGo.Format.CommentStatus.CLOSED,
+            _ => BimGo.Format.CommentStatus.OPEN
+        };
+
+        /// <summary>The comment priority: high for a hard clash crossing deeper than 50 mm, else normal.</summary>
+        public static string PriorityFor(ClashRecord clash, string testKind) =>
+            clash != null && ClashKind.Normalise(testKind) == ClashKind.HARD && clash.Crossing && clash.Distance > HIGH_PRIORITY_DEPTH
+                ? BimGo.Format.CommentPriority.HIGH
+                : BimGo.Format.CommentPriority.NORMAL;
+    }
+
+    /// <summary>
     /// What a search set rule looks at.
     /// </summary>
     public static class RuleField

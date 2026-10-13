@@ -18,8 +18,9 @@ namespace BimGo.Game
     /// red (A) and green (B) and the rest as faint grey glass without shadows. 1–5 set the status; R selects the pair in
     /// Revit (live). The test's clashes show as dots in the model while the mode is on (overlay only: never saved).
     /// C-B1 fixes: G cycles the rest of the model through ghost / wireframe / real / hidden; B switches the section box
-    /// off and back on (on again = round the current clash; GO and next / previous turn it on too). Leaving keeps the
-    /// section box (Ctrl+P clears it) and flying (V walks).
+    /// off and back on (on again = round the current clash). Leaving keeps the section box (Ctrl+P clears it) and flying
+    /// (V walks). C-B2: the box choice sticks: off stays off from clash to clash, on follows each clash GO goes to; R
+    /// shows the clash in Revit (the pair selected in a "BimGo clash" 3D view with the same section box).
     /// </summary>
     internal sealed partial class GameSession
     {
@@ -34,9 +35,12 @@ namespace BimGo.Game
         private int _clashView = CLASH_VIEW_GHOST;
         private string _clashViewLabel, _clashBoxLabel;
 
-        // The current clash's section box, and whether it is on (B toggles; GO turns it on)
+        // The current clash's section box, and whether it is on (B toggles; C-B2: the choice sticks from clash to clash)
         private SectionCut _clashSection;
-        private bool _clashBoxOn;
+        private bool _clashBoxOn = true;
+
+        /// <summary>The current clash's framing (camera and region), kept for SHOW IN REVIT.</summary>
+        private ClashView _clashFrame;
         private static readonly Vector4 CLASH_A_TINT = new(0.94f, 0.27f, 0.27f, 0.75f);
         private static readonly Vector4 CLASH_B_TINT = new(0.13f, 0.77f, 0.37f, 0.75f);
 
@@ -62,7 +66,8 @@ namespace BimGo.Game
 
         /// <summary>True while the clash view is drawn: clash mode on and the current clash's pair found.</summary>
         private bool ClashViewActive => _clashModeOn && _clashCurrent != null
-            && (_clashElementA >= 0 || _clashDynamicA != null || _clashElementB >= 0 || _clashDynamicB != null);
+            && (_clashElementA >= 0 || _clashDynamicA != null || _clashElementB >= 0 || _clashDynamicB != null
+                || (ClashMultiActive && _clashMultiA.Count + _clashMultiB.Count + _clashMultiDynamicA.Count + _clashMultiDynamicB.Count > 0));
 
         /// <summary>True when the player's own movement waits (a flight, or typing in the search box).</summary>
         private bool ClashFreezesPlayer => _clashModeOn && (_clashFlying || _clashSearchFocused);
@@ -123,6 +128,7 @@ namespace BimGo.Game
         private void ExitClashMode()
         {
             if (!_clashModeOn) { return; }
+            if (_clashBatch != null) { FinishClashBatch(cancelled: true); }
             _clashModeOn = false;
             _clashFlying = false;
             _clashSearchFocused = false;
@@ -149,8 +155,13 @@ namespace BimGo.Game
                 return;
             }
 
-            // Esc closes an open dropdown first
+            // Esc closes an open dropdown first, then stops making comments (C-B2)
             if (input.Pressed(InputAction.Back) && CloseOverlay()) { return; }
+            if (input.Pressed(InputAction.Back) && _clashBatch != null)
+            {
+                FinishClashBatch(cancelled: true);
+                return;
+            }
             if (input.Pressed(InputAction.Back) || input.Pressed(InputAction.ClashMode))
             {
                 ExitClashMode();
@@ -165,8 +176,12 @@ namespace BimGo.Game
 
             if (input.PressedOrRepeated(InputAction.ClashNext)) { StepClash(+1); }
             else if (input.PressedOrRepeated(InputAction.ClashPrevious)) { StepClash(-1); }
-            else if (input.Pressed(InputAction.ClashFrame) && _clashCurrent != null) { GoToClash(_clashCurrent, animate: !_clashInstant); }
-            else if (input.Pressed(InputAction.ClashSelectInRevit)) { SelectClashInRevit(); }
+            else if (input.Pressed(InputAction.ClashFrame) && _clashCurrent != null)
+            {
+                if (ClashMultiActive) { GoToSelectedClashes(animate: !_clashInstant); }
+                else { GoToClash(_clashCurrent, animate: !_clashInstant); }
+            }
+            else if (input.Pressed(InputAction.ClashSelectInRevit)) { ShowClashInRevit(); }
             else if (input.Pressed(InputAction.ClashView)) { SetClashView((_clashView + 1) % CLASH_VIEW_NAMES.Length); }
             else if (input.Pressed(InputAction.ClashSectionToggle)) { ToggleClashBox(); }
             else
@@ -210,37 +225,29 @@ namespace BimGo.Game
         private void GoToClash(ClashRecord clash, bool animate)
         {
             if (clash == null) { return; }
+            ClearClashSelection(); // C-B3: one clash again
             _clashCurrent = clash;
             ResolveClashElement(clash.A, out _clashElementA, out _clashDynamicA);
             ResolveClashElement(clash.B, out _clashElementB, out _clashDynamicB);
+            ClashView view = FrameClash(clash, _player.Yaw, out Vector3 point, out _clashSection);
+            _clashFrame = view;
 
-            Vector3 point = new Vector3((float)(clash.X - Scene.OriginOffset.X), (float)(clash.Y - Scene.OriginOffset.Y), (float)(clash.Z - Scene.OriginOffset.Z));
-            Aabb boxA = ClashBoundsOf(_clashElementA, _clashDynamicA, point);
-            Aabb boxB = ClashBoundsOf(_clashElementB, _clashDynamicB, point);
-            Aabb section = ClashFraming.SectionFor(boxA, boxB, point);
-            ClashView view = ClashFraming.Frame(point, boxA, boxB, section, _player.Yaw);
-
-            // The section box (kept after leaving clash mode until Ctrl+P or the next GO; B switches it off and on)
-            Vector3 origin = Scene.OriginOffset;
-            _clashSection = new SectionCut
-            {
-                BoxOn = true,
-                MinX = section.Min.X + origin.X, MinY = section.Min.Y + origin.Y, MinZ = section.Min.Z + origin.Z,
-                MaxX = section.Max.X + origin.X, MaxY = section.Max.Y + origin.Y, MaxZ = section.Max.Z + origin.Z
-            };
-            ApplySection(_clashSection, announce: false);
-            if (!_clashBoxOn)
-            {
-                _clashBoxOn = true;
-                RefreshClashViewLabels();
-            }
+            // The section box (kept after leaving clash mode until Ctrl+P or the next GO). C-B2: it follows the clash
+            // only while it is on; switched off (B) it stays off from clash to clash
+            if (_clashBoxOn) { ApplySection(_clashSection, announce: false); }
+            InvalidateClashThumbnail(clash); // the visited one's picture is taken again
 
             int room = FindRoom(point);
             _clashCurrentRoom = room >= 0 ? (string.IsNullOrWhiteSpace(Scene.Rooms[room].Number) || Scene.Rooms[room].Number == "—"
                 ? Scene.Rooms[room].Name : $"{Scene.Rooms[room].Number} · {Scene.Rooms[room].Name}") : null;
             _clashScrollToCurrent = true;
             RefreshClashCard();
+            FlyToClashView(view, animate);
+        }
 
+        /// <summary>Flies (or jumps) the camera to a clash view.</summary>
+        private void FlyToClashView(ClashView view, bool animate)
+        {
             Vector3 from = _player.Feet + Vector3.UnitZ * _player.Controller.StandEye;
             float distance = Vector3.Distance(from, view.Eye);
             if (!animate || distance < 0.05f)
@@ -259,6 +266,31 @@ namespace BimGo.Game
             _clashFlyToYaw = view.Yaw;
             _clashFlyFromPitch = _player.Pitch;
             _clashFlyToPitch = view.Pitch;
+        }
+
+        /// <summary>
+        /// A clash's framing from the pair as currently resolved (<see cref="_clashElementA"/> etc.): the camera ~2.5 m
+        /// back and the section box round the clash region (Revit internal metres, box on).
+        /// </summary>
+        /// <param name="clash">The clash.</param>
+        /// <param name="currentYaw">The heading that breaks ties between equally good sides.</param>
+        /// <param name="point">The clash point (scene-local).</param>
+        /// <param name="cut">The section box round the clash region.</param>
+        /// <returns>The camera (scene-local eye).</returns>
+        private ClashView FrameClash(ClashRecord clash, float currentYaw, out Vector3 point, out SectionCut cut)
+        {
+            Vector3 origin = Scene.OriginOffset;
+            point = new Vector3((float)(clash.X - origin.X), (float)(clash.Y - origin.Y), (float)(clash.Z - origin.Z));
+            Aabb boxA = ClashBoundsOf(_clashElementA, _clashDynamicA, point);
+            Aabb boxB = ClashBoundsOf(_clashElementB, _clashDynamicB, point);
+            Aabb section = ClashFraming.SectionFor(boxA, boxB, point);
+            cut = new SectionCut
+            {
+                BoxOn = true,
+                MinX = section.Min.X + origin.X, MinY = section.Min.Y + origin.Y, MinZ = section.Min.Z + origin.Z,
+                MaxX = section.Max.X + origin.X, MaxY = section.Max.Y + origin.Y, MaxZ = section.Max.Z + origin.Z
+            };
+            return ClashFraming.Frame(point, boxA, boxB, section, currentYaw);
         }
 
         /// <summary>
@@ -329,6 +361,7 @@ namespace BimGo.Game
         private void SetClashView(int view)
         {
             _clashView = Math.Clamp(view, 0, CLASH_VIEW_NAMES.Length - 1);
+            _clashThumbVersion++; // row pictures follow the view
             RefreshClashViewLabels();
             Sound.Play(SoundId.UiClick);
             Toast(_clashView switch
@@ -355,7 +388,7 @@ namespace BimGo.Game
                     SectionChanged();
                 }
                 Sound.Play(SoundId.Remove);
-                Toast($"Section box off ({Key(InputAction.ClashSectionToggle)} puts it back round the clash)", 2.5f);
+                Toast($"Section box off, from clash to clash too ({Key(InputAction.ClashSectionToggle)} puts it back round the clash)", 2.5f);
             }
             else
             {
@@ -368,8 +401,9 @@ namespace BimGo.Game
                 _clashBoxOn = true;
                 ApplySection(_clashSection, announce: false);
                 Sound.Play(SoundId.UiClick);
-                Toast("Section box on round the clash", 2f);
+                Toast("Section box on: round each clash you go to", 2f);
             }
+            _clashThumbVersion++; // row pictures follow the box
             RefreshClashViewLabels();
         }
 
@@ -377,7 +411,8 @@ namespace BimGo.Game
         private void RefreshClashViewLabels()
         {
             _clashViewLabel = $"VIEW: {CLASH_VIEW_NAMES[_clashView]} ({Hotkeys.Label(InputAction.ClashView)})";
-            _clashBoxLabel = $"SECTION BOX: {(_clashBoxOn ? "ON" : "OFF")} ({Hotkeys.Label(InputAction.ClashSectionToggle)})";
+            _clashBoxLabel = $"BOX: {(_clashBoxOn ? "ON" : "OFF")} ({Hotkeys.Label(InputAction.ClashSectionToggle)})";
+            _clashThumbLabel = _clashThumbsOn ? "PICTURES: ON" : "PICTURES: OFF";
         }
 
         #endregion
@@ -392,25 +427,39 @@ namespace BimGo.Game
                 Sound.Play(SoundId.Error);
                 return;
             }
-            if (_clashCurrent.Status == status) { return; }
-            ClashMerge.SetStatus(_clashCurrent, status, Environment.UserName, DateTime.UtcNow);
+
+            // C-B3: every selected clash (or the current one); their comments follow (clash → comment, one save)
+            IReadOnlyList<ClashRecord> targets = ClashTargets();
+            int changed = 0;
+            bool commentsChanged = false;
+            foreach (ClashRecord clash in targets)
+            {
+                if (clash.Status == status) { continue; }
+                ClashMerge.SetStatus(clash, status, Environment.UserName, DateTime.UtcNow);
+                commentsChanged |= SyncClashComment(clash, save: false);
+                changed++;
+            }
+            if (changed == 0) { return; }
             ClashesChanged();
+            if (commentsChanged) { Comments.Save(); }
             _clashListDirty = true;
             _clashRowsDirty = true;
             Sound.Play(SoundId.UiClick);
-            Toast($"Clash {ClashStatus.Label(status).ToLowerInvariant()}", 1.6f);
+            Toast(changed == 1 ? $"Clash {ClashStatus.Label(status).ToLowerInvariant()}" : $"{changed} clashes {ClashStatus.Label(status).ToLowerInvariant()}", 1.6f);
         }
 
         /// <summary>
-        /// R: selects the pair in Revit and zooms to it (live sessions). Two host elements or two linked ones go
-        /// together; a host + linked pair selects the linked one (Revit can't mix them in one selection request yet).
+        /// R / REVIT: shows the clash in Revit (live sessions). C-B2: one request selects the pair (host, linked or one of
+        /// each, together) and sets up a 3D view named "BimGo clash" (made once, then reused) with the clash's section
+        /// box (on or off as in BimGo), turned to look the way BimGo does, made active and zoomed to the region. An older
+        /// add-in reads the same request as a plain selection (it ignores the view part).
         /// </summary>
-        private void SelectClashInRevit()
+        private void ShowClashInRevit()
         {
             if (_clashCurrent == null) { return; }
             if (_live == null)
             {
-                Toast("Selecting in Revit needs a live Revit session (press Go in Revit)");
+                Toast("Showing a clash in Revit needs a live Revit session (press Go in Revit)");
                 return;
             }
             if (!_live.Connected)
@@ -421,23 +470,48 @@ namespace BimGo.Game
 
             var hostIds = new List<long>(2);
             var linked = new List<LinkedElementRef>(2);
-            AddRevitTarget(_clashElementA, _clashDynamicA, hostIds, linked);
-            AddRevitTarget(_clashElementB, _clashDynamicB, hostIds, linked);
+            if (ClashMultiActive)
+            {
+                // C-B3: every selected pair, one view whose box covers them all
+                foreach (int element in _clashMultiA) { AddRevitTarget(element, null, hostIds, linked); }
+                foreach (DynamicInstance instance in _clashMultiDynamicA) { AddRevitTarget(-1, instance, hostIds, linked); }
+                foreach (int element in _clashMultiB) { AddRevitTarget(element, null, hostIds, linked); }
+                foreach (DynamicInstance instance in _clashMultiDynamicB) { AddRevitTarget(-1, instance, hostIds, linked); }
+            }
+            else
+            {
+                AddRevitTarget(_clashElementA, _clashDynamicA, hostIds, linked);
+                AddRevitTarget(_clashElementB, _clashDynamicB, hostIds, linked);
+            }
             if (hostIds.Count == 0 && linked.Count == 0)
             {
                 Toast("Neither element is in Revit (clones not created yet, or demolished)", 3f);
                 return;
             }
 
+            // The region and camera in Revit internal metres (the section box is the clash's, whether on or off here)
+            Vector3 origin = Scene.OriginOffset;
+            SectionCut box = _clashSection;
+            Vector3 eye = _clashFrame.Eye + origin;
+            float cp = MathF.Cos(_clashFrame.Pitch);
+            var request = new ClashViewRequest
+            {
+                Name = ClashViewRequest.DEFAULT_NAME,
+                SectionBox = _clashBoxOn,
+                MinX = box?.MinX ?? 0, MinY = box?.MinY ?? 0, MinZ = box?.MinZ ?? 0,
+                MaxX = box?.MaxX ?? 0, MaxY = box?.MaxY ?? 0, MaxZ = box?.MaxZ ?? 0,
+                EyeX = eye.X, EyeY = eye.Y, EyeZ = eye.Z,
+                DirectionX = cp * MathF.Cos(_clashFrame.Yaw), DirectionY = cp * MathF.Sin(_clashFrame.Yaw), DirectionZ = MathF.Sin(_clashFrame.Pitch)
+            };
+
             Win32.AllowSetForegroundWindow(_live.RevitPid);
-            bool sent = linked.Count > 0 ? _live.ShowLinkedElements(linked) : _live.ShowElements(hostIds);
-            if (!sent)
+            if (!_live.ShowClash(hostIds, linked, request))
             {
                 Toast("Revit didn't take the request", important: true);
                 return;
             }
             Sound.Play(SoundId.UiClick);
-            Toast(linked.Count > 0 && hostIds.Count > 0 ? "Showing the linked element in Revit (the host one can't join a linked selection)" : "Showing the pair in Revit…", 3f);
+            Toast("Showing the clash in Revit (“" + ClashViewRequest.DEFAULT_NAME + "” 3D view)…", 3f);
         }
 
         private void AddRevitTarget(int element, DynamicInstance instance, List<long> hostIds, List<LinkedElementRef> linked)
@@ -515,6 +589,11 @@ namespace BimGo.Game
         /// <summary>The pair, opaque, in red (A) and green (B).</summary>
         private void DrawClashPair(in SceneDrawParams q)
         {
+            if (ClashMultiActive)
+            {
+                DrawSelectedClashPairs(q); // C-B3: every selected pair
+                return;
+            }
             if (_clashElementA >= 0) { _renderer.DrawElementHighlight(q, _clashElementA, CLASH_A_TINT); }
             if (_clashDynamicA != null) { _renderer.DrawDynamicHighlight(q, _clashDynamicA, CLASH_A_TINT); }
             if (_clashElementB >= 0) { _renderer.DrawElementHighlight(q, _clashElementB, CLASH_B_TINT); }
@@ -562,6 +641,7 @@ namespace BimGo.Game
                 ClashRecord clash = _clashList[i];
                 if (clash == _clashCurrent) { continue; }
                 var point = new Vector3((float)(clash.X - origin.X), (float)(clash.Y - origin.Y), (float)(clash.Z - origin.Z));
+                if (_clashSelected.Count > 1 && _clashSelected.Contains(clash)) { overlay.Dot(point, S(7.5f), Rgba.Hex(0xFFFFFF)); } // C-B3: selected
                 overlay.Dot(point, S(4.5f), StatusColour(clash.Status));
             }
             if (_clashCurrent != null)

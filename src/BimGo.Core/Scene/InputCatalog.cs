@@ -346,7 +346,7 @@ namespace BimGo.Scene
             Add(InputAction.ClashStatusReviewed, c, "Status: reviewed", P, "3");
             Add(InputAction.ClashStatusApproved, c, "Status: approved", P, "4");
             Add(InputAction.ClashStatusResolved, c, "Status: resolved", P, "5");
-            Add(InputAction.ClashSelectInRevit, c, "Select the pair in Revit (live)", P, "R");
+            Add(InputAction.ClashSelectInRevit, c, "Show in Revit: the pair selected in a clash 3D view (live)", P, "R");
             Add(InputAction.ClashFlyUp, c, "Fly up (hold)", H, "Space", "E");
             Add(InputAction.ClashFlyDown, c, "Fly down (hold)", H, "Ctrl", "Q");
             Add(InputAction.ClashView, c, "Model view: ghost / wireframe / real / hidden", P, "G");

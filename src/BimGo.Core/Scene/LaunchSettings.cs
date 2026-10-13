@@ -298,6 +298,9 @@ namespace BimGo.Scene
         /// <summary>Clash mode (Round C-B): jump straight to a clash instead of a quick flight (per machine).</summary>
         public bool ClashInstantFly { get; set; }
 
+        /// <summary>Clash mode's list shows a picture on each row (Round C-B2: on by default; PICTURES switches it, per machine).</summary>
+        public bool ClashRowPictures { get; set; } = true;
+
         /// <summary>The gun bar at the bottom of the screen (polish round: off by default; the gun wheel's bottom slot switches it).</summary>
         public bool ShowGunBar { get; set; }
 

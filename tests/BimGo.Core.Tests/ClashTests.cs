@@ -690,5 +690,64 @@ namespace BimGo.Tests
         }
 
         #endregion
+
+        #region C-B2: clash comments
+
+        [TestMethod]
+        public void Comments_StatusFollowsTheClash_PriorityByDepth()
+        {
+            // new / active → open, reviewed → in progress, approved / resolved → closed (unknown reads as new → open)
+            Assert.AreEqual(CommentStatus.OPEN, ClashCommentRules.CommentStatusFor(ClashStatus.NEW));
+            Assert.AreEqual(CommentStatus.OPEN, ClashCommentRules.CommentStatusFor(ClashStatus.ACTIVE));
+            Assert.AreEqual(CommentStatus.IN_PROGRESS, ClashCommentRules.CommentStatusFor(ClashStatus.REVIEWED));
+            Assert.AreEqual(CommentStatus.CLOSED, ClashCommentRules.CommentStatusFor(ClashStatus.APPROVED));
+            Assert.AreEqual(CommentStatus.CLOSED, ClashCommentRules.CommentStatusFor(ClashStatus.RESOLVED));
+            Assert.AreEqual(CommentStatus.OPEN, ClashCommentRules.CommentStatusFor("whatever"));
+
+            // High only for a hard clash crossing deeper than 50 mm
+            Assert.AreEqual(CommentPriority.HIGH, ClashCommentRules.PriorityFor(new ClashRecord { Crossing = true, Distance = 0.08 }, ClashKind.HARD));
+            Assert.AreEqual(CommentPriority.NORMAL, ClashCommentRules.PriorityFor(new ClashRecord { Crossing = true, Distance = 0.05 }, ClashKind.HARD));
+            Assert.AreEqual(CommentPriority.NORMAL, ClashCommentRules.PriorityFor(new ClashRecord { Crossing = true, Distance = 0.08 }, ClashKind.CLEARANCE));
+            Assert.AreEqual(CommentPriority.NORMAL, ClashCommentRules.PriorityFor(new ClashRecord { Crossing = false, Distance = 0.08 }, ClashKind.HARD));
+            Assert.AreEqual(CommentPriority.NORMAL, ClashCommentRules.PriorityFor(null, ClashKind.HARD));
+        }
+
+        [TestMethod]
+        public void Comments_ClashLinkReadsAndExportsAsAClashTopic()
+        {
+            // The link is optional: older comments have none (an "Issue"), blank reads as none
+            var plain = new CommentRecord { Text = "Door swing", ClashId = "  " }.Clean();
+            Assert.IsNull(plain.ClashId);
+            Assert.AreEqual("Issue", BcfMapping.ToTopic(plain).TopicType);
+
+            var fromClash = new CommentRecord { Text = "Clash: Structure × Services", ClashId = "abc" }.Clean();
+            Assert.AreEqual("Clash", BcfMapping.ToTopic(fromClash).TopicType);
+
+            // It survives the comment document's JSON
+            string json = System.Text.Json.JsonSerializer.Serialize(new CommentDocument { Comments = { fromClash } });
+            CommentDocument back = System.Text.Json.JsonSerializer.Deserialize<CommentDocument>(json);
+            Assert.AreEqual("abc", back.Comments.Single().ClashId);
+        }
+
+        [TestMethod]
+        public void Framing_SeveralClashes_StandsBackToSeeThemAll()
+        {
+            // C-B3: a 1 m region keeps the usual 2.5 m; a 20 m one is seen whole (its sphere inside the narrower FOV)
+            var small = new Aabb(new Vector3(-0.5f), new Vector3(0.5f));
+            Assert.AreEqual(ClashFraming.DISTANCE, ClashFraming.DistanceToSee(small, 90f, 16f / 9f), 1e-4f);
+
+            var large = new Aabb(new Vector3(-10f, -10f, -2f), new Vector3(10f, 10f, 2f));
+            float distance = ClashFraming.DistanceToSee(large, 90f, 16f / 9f);
+            float radius = large.Size.Length() * 0.5f;
+            float halfV = MathF.Atan(MathF.Tan(MathF.PI / 4f) / (16f / 9f));
+            Assert.IsTrue(distance * MathF.Sin(halfV) >= radius, "the box fits the vertical field of view");
+            Assert.IsTrue(distance < radius / MathF.Sin(halfV) * 1.1f, "not much further than needed");
+
+            // Wider views stand closer; an empty box falls back to the usual distance
+            Assert.IsTrue(ClashFraming.DistanceToSee(large, 110f, 16f / 9f) < distance);
+            Assert.AreEqual(ClashFraming.DISTANCE, ClashFraming.DistanceToSee(Aabb.Empty, 90f, 1.6f), 1e-4f);
+        }
+
+        #endregion
     }
 }

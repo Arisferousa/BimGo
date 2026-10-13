@@ -227,6 +227,7 @@ namespace BimGo.Game
             InitialiseLights(settings);
             ReadEyeSettings(settings);
             _clashInstant = settings.ClashInstantFly;
+            _clashThumbsOn = settings.ClashRowPictures;
             _showGunBar = settings.ShowGunBar;
             ReadVideoSettings(settings);
             UnitFormat.Read(settings);
@@ -1206,6 +1207,7 @@ namespace BimGo.Game
             settings.FieldOfView = _fov;
             settings.MouseSensitivity = _sensitivity;
             settings.ClashInstantFly = _clashInstant;
+            settings.ClashRowPictures = _clashThumbsOn;
             settings.ShowGunBar = _showGunBar;
             settings.InvertY = _invertY;
             settings.VSync = _vsync;

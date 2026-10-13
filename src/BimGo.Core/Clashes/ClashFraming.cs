@@ -92,6 +92,23 @@ namespace BimGo.Clashes
             return best;
         }
 
+        /// <summary>
+        /// How far back to stand to see a whole box (Round C-B3: several clashes framed together): far enough that the
+        /// box's bounding sphere fits the narrower field of view, never closer than <see cref="DISTANCE"/>.
+        /// </summary>
+        /// <param name="box">The box to see (the section boxes of every selected clash together).</param>
+        /// <param name="horizontalFovDegrees">The camera's horizontal field of view.</param>
+        /// <param name="aspect">Width / height of the view.</param>
+        public static float DistanceToSee(in Aabb box, float horizontalFovDegrees, float aspect)
+        {
+            if (!box.IsValid) { return DISTANCE; }
+            float radius = box.Size.Length() * 0.5f;
+            float halfH = Math.Clamp(horizontalFovDegrees, 20f, 150f) * MathF.PI / 360f;
+            float halfV = MathF.Atan(MathF.Tan(halfH) / MathF.Max(aspect, 0.1f));
+            float half = MathF.Min(halfH, halfV);
+            return MathF.Max(DISTANCE, radius / MathF.Sin(half) * 1.05f);
+        }
+
         /// <summary>The horizontal unit axis a box is longest along (zero for a box longest vertically).</summary>
         public static Vector3 LongAxis(in Aabb box)
         {

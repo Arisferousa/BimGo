@@ -107,6 +107,9 @@ namespace BimGo.Game
             // ---- Photo mode: a pending shot renders off-screen first (camera and targets restored afterwards)
             if (_photoShotIn > 0 && --_photoShotIn == 0) { TakePhoto(); }
 
+            // ---- Clash pictures (C-B2): row pictures, TO COMMENT / TO COMMENTS, off-screen (state restored afterwards)
+            RenderClashPictures();
+
             RenderScene(width, height, _target, _msaa, photo: false);
 
             _target.BlitToWindow();
@@ -166,9 +169,11 @@ namespace BimGo.Game
         /// <param name="photo">A photo: no probe baking, no highlights, markers or gizmos.</param>
         private void RenderScene(int width, int height, RenderTarget target, int samples, bool photo)
         {
-            // ---- Sun lighting and shadow maps (only changed cascades re-render)
+            // ---- Sun lighting and shadow maps (only changed cascades re-render). Clash pictures (C-B2) other than the real
+            // model view draw without the sun, so they leave the cascades as the main view needs them
             _renderer.Lighting = CurrentLighting();
-            string shadowError = _renderer.UpdateShadows(Camera, Scene.Bounds, ShadowSceneKey(), _groupVisible, Dynamics, _whitecard,
+            bool clashShotUnlit = _clashShot && _clashView != CLASH_VIEW_REAL;
+            string shadowError = clashShotUnlit ? null : _renderer.UpdateShadows(Camera, Scene.Bounds, ShadowSceneKey(), _groupVisible, Dynamics, _whitecard,
                 ShadowMaps.PresetFor(_shadowQuality));
             if (shadowError != null)
             {
@@ -177,16 +182,29 @@ namespace BimGo.Game
             }
 
             // ---- Artificial lights for this frame (after the sun: daylight dims them), and their cached shadow maps
-            UpdateArtificialLights();
-            string lightShadowError = _renderer.UpdateLightShadows(_groupVisible, Dynamics, ShadowSceneKey());
-            if (lightShadowError != null) { Toast(lightShadowError, 6f, important: true); }
+            // (unlit clash pictures keep the main view's picks, so no light shadow is re-rendered for them)
+            if (!clashShotUnlit)
+            {
+                UpdateArtificialLights();
+                string lightShadowError = _renderer.UpdateLightShadows(_groupVisible, Dynamics, ShadowSceneKey());
+                if (lightShadowError != null) { Toast(lightShadowError, 6f, important: true); }
+            }
 
             // ---- Ambient occlusion and glow: half-resolution geometry pre-pass, AO + blur, bloom source + blur
             bool glow = _renderer.Artificial.Bloom > 0f;
-            bool clashView = ClashViewActive && !photo;
+            // Clash pictures (C-B2) draw the clash view in the photo pass, without AO or glow (their half-resolution
+            // targets stay sized for the window instead of being remade for every picture)
+            bool clashView = ClashViewActive && (!photo || _clashShot);
             bool clashNoAo = clashView && _clashView != CLASH_VIEW_REAL; // the real model view keeps AO
-            string effectsError = _renderer.UpdateScreenEffects(Camera, width, height, _groupVisible, Dynamics, _groundZ, _ambientOcclusion && !clashNoAo, glow);
-            if (effectsError != null) { OnScreenEffectsFailure(effectsError); }
+            if (_clashShot)
+            {
+                _renderer.SkipScreenEffects();
+            }
+            else
+            {
+                string effectsError = _renderer.UpdateScreenEffects(Camera, width, height, _groupVisible, Dynamics, _groundZ, _ambientOcclusion && !clashNoAo, glow);
+                if (effectsError != null) { OnScreenEffectsFailure(effectsError); }
+            }
 
             // ---- Reflection probes: a couple of faces per frame until baked, re-baked a moment after things change
             if (!photo) { UpdateReflectionProbes(); }

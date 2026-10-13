@@ -36,6 +36,11 @@ namespace BimGo.Game
             public string Title, Message, Action;
             public bool Danger, OfferSkip, Skip;
             public Action<bool> Confirmed;
+
+            // C-B3: the tick's own label (null: "Don't ask again this session"), and an optional second action
+            public string SkipLabel;
+            public string AltAction;
+            public Action<bool> AltConfirmed;
         }
 
         private const int DROPDOWN_MAX_ROWS = 12;
@@ -87,6 +92,24 @@ namespace BimGo.Game
         private void OpenConfirm(string title, string message, string action, bool danger, bool offerSkip, Action<bool> confirmed)
         {
             _confirm = new ConfirmState { Title = title, Message = message, Action = action, Danger = danger, OfferSkip = offerSkip, Confirmed = confirmed };
+            _dropdown = null;
+        }
+
+        /// <summary>
+        /// Opens a confirm with a second action and / or a tick of its own (Round C-B3: "update them" / "new only", with
+        /// "replace marked-up pictures too").
+        /// </summary>
+        /// <param name="tickLabel">The tick's text (null: no tick).</param>
+        /// <param name="altAction">The second action's label (null: none).</param>
+        /// <param name="altConfirmed">What the second action does (true when the tick was on).</param>
+        private void OpenChoice(string title, string message, string action, bool danger, string tickLabel, string altAction,
+            Action<bool> confirmed, Action<bool> altConfirmed)
+        {
+            _confirm = new ConfirmState
+            {
+                Title = title, Message = message, Action = action, Danger = danger, Confirmed = confirmed,
+                OfferSkip = tickLabel != null, SkipLabel = tickLabel, AltAction = altAction, AltConfirmed = altConfirmed
+            };
             _dropdown = null;
         }
 
@@ -271,7 +294,7 @@ namespace BimGo.Game
                     _ui.Line(ix + box * 0.22f, cy + box * 0.52f, ix + box * 0.42f, cy + box * 0.72f, S(2), Rgba.Hex(0x06232A));
                     _ui.Line(ix + box * 0.42f, cy + box * 0.72f, ix + box * 0.8f, cy + box * 0.28f, S(2), Rgba.Hex(0x06232A));
                 }
-                _ui.Text(f.Body, ix + box + S(10), cy - S(1), "Don't ask again this session", hoverSkip ? UiTheme.ACCENT : UiTheme.TEXT_SOFT);
+                _ui.Text(f.Body, ix + box + S(10), cy - S(1), c.SkipLabel ?? "Don't ask again this session", hoverSkip ? UiTheme.ACCENT : UiTheme.TEXT_SOFT);
                 if (hoverSkip && _overlayClick)
                 {
                     c.Skip = !c.Skip;
@@ -281,14 +304,20 @@ namespace BimGo.Game
                 cy += S(34);
             }
 
-            float bwButton = S(150);
+            float bwButton = c.AltAction != null ? MathF.Min(S(150), (iw - S(20)) / 3f) : S(150);
             bool cancel = OverlayButton(f, input, ix + iw - bwButton, cy, bwButton, S(36), "CANCEL", danger: false);
             bool act = OverlayButton(f, input, ix + iw - bwButton * 2f - S(10), cy, bwButton, S(36), c.Action, c.Danger);
+            bool alt = c.AltAction != null && OverlayButton(f, input, ix + iw - bwButton * 3f - S(20), cy, bwButton, S(36), c.AltAction, danger: false);
 
             if (act)
             {
                 _confirm = null;
                 c.Confirmed?.Invoke(c.Skip);
+            }
+            else if (alt)
+            {
+                _confirm = null;
+                c.AltConfirmed?.Invoke(c.Skip);
             }
             else if (cancel || (_overlayClick && !Hover(input, x, y, w, h)))
             {

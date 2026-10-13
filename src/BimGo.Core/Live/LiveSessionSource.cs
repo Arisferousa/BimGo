@@ -53,6 +53,13 @@ namespace BimGo.Live
         /// </summary>
         /// <returns>False if not connected.</returns>
         bool ShowLinkedElements(IReadOnlyList<LinkedElementRef> linked);
+
+        /// <summary>
+        /// SHOW IN REVIT (Round C-B2): selects a clash pair (host elements, linked ones, or one of each, together) and
+        /// sets up the clash 3D view (<see cref="ClashViewRequest"/>). An older add-in only selects.
+        /// </summary>
+        /// <returns>False if not connected or there is nothing to select.</returns>
+        bool ShowClash(IReadOnlyList<long> hostIds, IReadOnlyList<LinkedElementRef> linked, ClashViewRequest view);
     }
 
     /// <summary>
@@ -221,6 +228,25 @@ namespace BimGo.Live
             {
                 ElementIds = linked.Select(l => l.LinkInstanceId).Distinct().ToArray(),
                 Linked = linked.ToArray()
+            };
+            return _channel.Send(MessageTypes.SELECT, payload) != null;
+        }
+
+        /// <inheritdoc/>
+        public bool ShowClash(IReadOnlyList<long> hostIds, IReadOnlyList<LinkedElementRef> linked, ClashViewRequest view)
+        {
+            if (!Connected) { return false; }
+            long[] hosts = hostIds?.Where(id => id > 0).Distinct().ToArray() ?? Array.Empty<long>();
+            LinkedElementRef[] links = linked?.Where(l => l != null && l.LinkInstanceId > 0).ToArray() ?? Array.Empty<LinkedElementRef>();
+            if (hosts.Length == 0 && links.Length == 0) { return false; }
+
+            // ElementIds: what an older add-in selects (the host elements and the link instances)
+            var payload = new SelectPayload
+            {
+                ElementIds = hosts.Concat(links.Select(l => l.LinkInstanceId)).Distinct().ToArray(),
+                Linked = links.Length > 0 ? links : null,
+                Hosts = hosts,
+                ClashView = view
             };
             return _channel.Send(MessageTypes.SELECT, payload) != null;
         }

@@ -1,5 +1,6 @@
 using BimGo.Audio;
 using BimGo.Clashes;
+using BimGo.Format;
 using BimGo.Native;
 using BimGo.Platform;
 using BimGo.Rendering;
@@ -13,7 +14,8 @@ namespace BimGo.Game
     /// test (dropdown), filters (status and level dropdowns, search), the view (ghost / wireframe / real / hidden) and
     /// the section box toggle, the clash list (a click goes there), the current clash (pair, depth or gap, level, room,
     /// status 1–5, assignee, notes), SELECT IN REVIT, TESTS… (the CLASHES panel), FLY / INSTANT and EXIT. Row text is
-    /// built when the list changes, never per frame.
+    /// built when the list changes, never per frame. C-B2: a picture on each row (PICTURES on / off), TO COMMENT and
+    /// TO COMMENTS… on the card (<see cref="GameSession"/>.ClashPictures), REVIT shows the clash in Revit.
     /// </summary>
     internal sealed partial class GameSession
     {
@@ -55,6 +57,7 @@ namespace BimGo.Game
         private void SetClashReviewTest(string testId)
         {
             if (testId == _clashReviewTest) { return; }
+            ClearClashSelection(); // C-B3: a selection belongs to one test
             _clashReviewTest = testId;
             _clashLevelFilter = null;
             _clashDockScroll = 0;
@@ -106,6 +109,7 @@ namespace BimGo.Game
                 return byStatus != 0 ? byStatus : q.Clash.Distance.CompareTo(p.Clash.Distance);
             });
             foreach (ClashRow row in _clashDockRows) { _clashList.Add(row.Clash); }
+            PruneClashSelection(); // C-B3: selected clashes the filters now hide drop out
 
             // Levels in elevation order, unknown ones last
             _clashLevels.Sort((a, b) => LevelOrder(a).CompareTo(LevelOrder(b)));
@@ -142,6 +146,11 @@ namespace BimGo.Game
             _ => status == ClashStatus.All[_clashStatusFilter - 2]
         };
 
+        /// <summary>"crossing 32 mm", "crossing", "touching" or "gap 12 mm" (display units).</summary>
+        private static string ClashAmount(ClashRecord clash) => clash.Crossing
+            ? (clash.Distance > 0 ? $"crossing {UnitFormat.Length(clash.Distance, 3)}" : "crossing")
+            : clash.Distance <= 0 ? "touching" : $"gap {UnitFormat.Length(clash.Distance, 3)}";
+
         private static string ClashLevel(ClashRecord clash) =>
             !string.IsNullOrWhiteSpace(clash.A.Level) && clash.A.Level != "—" ? clash.A.Level
             : !string.IsNullOrWhiteSpace(clash.B.Level) && clash.B.Level != "—" ? clash.B.Level : "—";
@@ -160,9 +169,7 @@ namespace BimGo.Game
         /// </summary>
         private static ClashRow MakeClashRow(ClashRecord clash)
         {
-            string amount = clash.Crossing
-                ? (clash.Distance > 0 ? $"crossing {UnitFormat.Length(clash.Distance, 3)}" : "crossing")
-                : clash.Distance <= 0 ? "touching" : $"gap {UnitFormat.Length(clash.Distance, 3)}";
+            string amount = ClashAmount(clash);
             string level = ClashLevel(clash);
             string detail = $"{amount} · {level}{(clash.Approximate ? " · approximate (stand-in box)" : string.Empty)}" +
                 (string.IsNullOrEmpty(clash.AssignedTo) ? string.Empty : $" · {clash.AssignedTo}") +
@@ -311,13 +318,14 @@ namespace BimGo.Game
             else if (input.LeftPressed && _clashSearchFocused) { _clashSearchFocused = false; }
             cy += S(38);
 
-            // The view (dropdown) and the section box toggle
-            float half = (iw - S(6)) * 0.5f;
-            if (DropdownButton(f, input, ix, cy, half, S(30), _clashViewLabel ?? "VIEW", IsDropdownOpen(_clashList, DROP_DOCK_VIEW)))
+            // The view (dropdown), the section box toggle and the row pictures toggle (C-B2)
+            float viewW = (iw - S(12)) * 0.42f, toggleW = (iw - S(12) - viewW) * 0.5f;
+            if (DropdownButton(f, input, ix, cy, viewW, S(30), _clashViewLabel ?? "VIEW", IsDropdownOpen(_clashList, DROP_DOCK_VIEW)))
             {
-                OpenDropdown(_clashList, DROP_DOCK_VIEW, ix, cy, half, S(30), CLASH_VIEW_NAMES, _clashView, SetClashView);
+                OpenDropdown(_clashList, DROP_DOCK_VIEW, ix, cy, viewW, S(30), CLASH_VIEW_NAMES, _clashView, SetClashView);
             }
-            if (SmallButton(f, input, ix + half + S(6), cy, half, S(30), _clashBoxLabel ?? "BOX")) { ToggleClashBox(); }
+            if (SmallButton(f, input, ix + viewW + S(6), cy, toggleW, S(30), _clashBoxLabel ?? "BOX")) { ToggleClashBox(); }
+            if (SmallButton(f, input, ix + viewW + toggleW + S(12), cy, toggleW, S(30), _clashThumbLabel ?? "PICTURES")) { ToggleClashThumbnails(); }
             cy += S(40);
 
             // The current clash's card (bottom, tall enough for its key hint) and the list above it
@@ -330,7 +338,15 @@ namespace BimGo.Game
             DrawOverlays(f, input, x, y, w, h);
 
             // Actions after drawing
-            if (go != null && _clashModeOn) { GoToClash(go, animate: !_clashInstant); }
+            if (_clashMarkupClick != null && _clashModeOn)
+            {
+                // C-B3: the pencil on a row: mark up that clash's comment picture (back to clash mode after)
+                ClashRecord markup = _clashMarkupClick;
+                _clashMarkupClick = null;
+                OpenClashMarkup(markup);
+                return;
+            }
+            if (go != null && _clashModeOn) { ClickClashRow(go, input.IsDown(Win32.VK_CONTROL), input.IsDown(Win32.VK_SHIFT)); }
             if (overDock && input.LeftPressed) { input.ConsumeClicks(); }
         }
 
@@ -357,7 +373,11 @@ namespace BimGo.Game
                 return null;
             }
 
-            float rowH = S(50);
+            // C-B2: with pictures on, each row is tall enough for a 160 × 90 picture (narrower docks shrink it)
+            bool pictures = _clashThumbsOn;
+            float thumbW = pictures ? MathF.Min(S(CLASH_THUMB_W), w * 0.42f) : 0f;
+            float thumbH = thumbW * CLASH_THUMB_H / CLASH_THUMB_W;
+            float rowH = pictures ? MathF.Max(S(50), thumbH + S(10)) : S(50);
             int visible = Math.Max(1, (int)((bottom - y) / rowH));
             int maxScroll = Math.Max(0, _clashDockRows.Count - visible);
             if (_clashScrollToCurrent)
@@ -375,13 +395,39 @@ namespace BimGo.Game
             {
                 ClashRow row = _clashDockRows[i];
                 float ry = y + (i - _clashDockScroll) * rowH;
-                bool current = row.Clash == _clashCurrent;
+                bool current = row.Clash == _clashCurrent || IsClashSelected(row.Clash);
                 bool hover = Hover(input, x, ry, w, rowH - S(4));
                 _ui.Rect(x, ry, w, rowH - S(4), current ? Rgba.Hex(0x22D3EE, 0.14f) : hover ? Rgba.Hex(0xFFFFFF, 0.08f) : ((i & 1) == 0 ? Rgba.Hex(0xFFFFFF, 0.03f) : 0u));
                 _ui.Rect(x, ry, S(4), rowH - S(4), StatusColour(row.Clash.Status));
-                _ui.TextWrapped(f.Body, x + S(12), ry + S(5), w - S(110), row.Title, row.Clash.Status == ClashStatus.RESOLVED ? UiTheme.TEXT_FAINT : UiTheme.TEXT, maxLines: 1);
-                _ui.TextWrapped(f.Small, x + S(12), ry + S(26), w - S(24), row.Detail, UiTheme.TEXT_MUTED, maxLines: 1);
-                _ui.TextRight(f.Small, x + w - S(8), ry + S(7), row.Status, StatusColour(row.Clash.Status));
+                uint titleColour = row.Clash.Status == ClashStatus.RESOLVED ? UiTheme.TEXT_FAINT : UiTheme.TEXT;
+                if (pictures)
+                {
+                    // The picture on the left (asked for when missing or stale), the text beside it
+                    float px = x + S(10), py = ry + S(3);
+                    uint texture = ClashThumbnailTexture(row.Clash);
+                    if (texture != 0)
+                    {
+                        _ui.Image(texture, px, py, thumbW, thumbH, _window.Width, _window.Height);
+                        _ui.Outline(px, py, thumbW, thumbH, MathF.Max(1f, UiScale), Rgba.Hex(0xFFFFFF, 0.15f));
+                    }
+                    else
+                    {
+                        _ui.Panel(px, py, thumbW, thumbH, UiTheme.CONTROL, UiTheme.CONTROL_BORDER);
+                        _ui.TextCentred(f.Small, px + thumbW * 0.5f, py + thumbH * 0.5f - S(7), "…", UiTheme.TEXT_FAINT);
+                    }
+                    if (ClashCommentPencil(f, input, px + thumbW - S(14), py + S(14), row.Clash)) { _clashMarkupClick = row.Clash; }
+                    float tx = px + thumbW + S(10), tw = x + w - S(8) - tx;
+                    _ui.Text(f.Small, tx, ry + S(5), row.Status, StatusColour(row.Clash.Status));
+                    _ui.TextWrapped(f.Body, tx, ry + S(22), tw, row.Title, titleColour, maxLines: 2);
+                    _ui.TextWrapped(f.Small, tx, ry + S(62), tw, row.Detail, UiTheme.TEXT_MUTED, maxLines: 2);
+                }
+                else
+                {
+                    _ui.TextWrapped(f.Body, x + S(12), ry + S(5), w - S(110), row.Title, titleColour, maxLines: 1);
+                    _ui.TextWrapped(f.Small, x + S(12), ry + S(26), w - S(24), row.Detail, UiTheme.TEXT_MUTED, maxLines: 1);
+                    _ui.TextRight(f.Small, x + w - S(8), ry + S(7), row.Status, StatusColour(row.Clash.Status));
+                    if (ClashCommentPencil(f, input, x + w - S(20), ry + S(32), row.Clash)) { _clashMarkupClick = row.Clash; }
+                }
                 if (hover && input.LeftPressed)
                 {
                     input.ConsumeClicks();
@@ -406,14 +452,21 @@ namespace BimGo.Game
             _ui.Rect(x, y - S(6), w, MathF.Max(1f, UiScale), UiTheme.PANEL_BORDER);
             float cy = y + S(4);
             ClashRecord clash = _clashCurrent;
-            if (clash == null)
+            if (_clashBatch != null)
+            {
+                // TO COMMENTS in progress (C-B2): its progress and CANCEL in place of the details
+                BuildClashBatchProgress(f, input, x, cy, w);
+            }
+            else if (clash == null)
             {
                 _ui.Text(f.Body, x, cy, "Pick a clash in the list.", UiTheme.TEXT_MUTED);
             }
             else
             {
                 int index = _clashList.IndexOf(clash);
-                Text.Clear().Append(index >= 0 ? "CLASH " : "CLASH (FILTERED OUT) ");
+                Text.Clear();
+                if (ClashMultiActive) { Text.Append(_clashSelected.Count).Append(" SELECTED · "); } // C-B3
+                Text.Append(index >= 0 ? "CLASH " : "CLASH (FILTERED OUT) ");
                 if (index >= 0) { Text.Append(index + 1).Append(" OF ").AppendGrouped(_clashList.Count); }
                 _ui.Text(f.Small, x, cy, Text.Span, UiTheme.TEXT_MUTED, S(1.2f));
                 cy += S(20);
@@ -453,12 +506,23 @@ namespace BimGo.Game
                 cy += S(34);
             }
 
+            // Comments (C-B3): the selected clashes (or this one) → comments; MARKUP this clash's comment picture
+            if (_clashBatch == null)
+            {
+                float halfW = (w - S(6)) * 0.5f, ty = y + ClashCardButtonsY - S(34);
+                string make = ClashMultiActive ? ClashCommentsLabel()
+                    : clash != null && FindClashComment(clash) != null ? "UPDATE COMMENT" : "TO COMMENT";
+                if (SmallButton(f, input, x, ty, halfW, S(28), make)) { ClashToComment(); }
+                if (SmallButton(f, input, x + halfW + S(6), ty, halfW, S(28), "MARKUP")) { OpenClashMarkup(clash); }
+            }
+
             // Bottom buttons
             float quarter = (w - S(18)) / 4f;
             float by = y + ClashCardButtonsY;
-            if (SmallButton(f, input, x, by, quarter, S(28), "REVIT")) { SelectClashInRevit(); }
+            if (SmallButton(f, input, x, by, quarter, S(28), "REVIT")) { ShowClashInRevit(); }
             if (SmallButton(f, input, x + (quarter + S(6)), by, quarter, S(28), "TESTS…"))
             {
+                if (_clashBatch != null) { FinishClashBatch(cancelled: true); } // runs and resets wait for the comments
                 OpenClashes();
                 return;
             }
@@ -475,8 +539,8 @@ namespace BimGo.Game
             _ui.TextWrapped(f.Small, x, by + S(34), w, CLASH_HINT.Text, UiTheme.TEXT_FAINT, maxLines: 3);
         }
 
-        /// <summary>Where the card's buttons sit (unscaled px below its top).</summary>
-        private float ClashCardButtonsY => S(176);
+        /// <summary>Where the card's bottom buttons sit below its top (the comment buttons are one row above, C-B2).</summary>
+        private float ClashCardButtonsY => S(210);
 
         /// <summary>
         /// The card's height: the details and buttons, then the key hint wrapped to the panel (measured, so the last
@@ -494,6 +558,8 @@ namespace BimGo.Game
             {
                 ClashMerge.SetDetails(clash, text, null, Environment.UserName, DateTime.UtcNow);
                 ClashesChanged();
+                CommentRecord comment = FindClashComment(clash); // C-B2: its comment follows (an empty text clears)
+                if (comment != null) { Comments.SetIssue(comment, assignedTo: text); }
                 _clashListDirty = true;
                 _clashRowsDirty = true;
                 Toast(text.Length == 0 ? "Unassigned" : $"Assigned to {text}", 2f);
