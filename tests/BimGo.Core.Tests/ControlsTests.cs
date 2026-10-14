@@ -613,8 +613,8 @@ namespace BimGo.Tests
 
             map.Assign(InputAction.Gun5, 0, KeyChord.Parse("F7"), swap: false);
             Assert.AreEqual("1 2 3 4 F7 6 7 8 9", map.DescribeRange(InputAction.Gun1, 9));
-            map.Assign(InputAction.MoveLeft, 0, KeyChord.Parse("Ctrl+A"), swap: false);
-            Assert.AreEqual("W Ctrl+A S D", map.DescribeJoined(" ", true, InputAction.MoveForward, InputAction.MoveLeft, InputAction.MoveBack, InputAction.MoveRight));
+            map.Assign(InputAction.MoveLeft, 0, KeyChord.Parse("Ctrl+K"), swap: false);
+            Assert.AreEqual("W Ctrl+K S D", map.DescribeJoined(" ", true, InputAction.MoveForward, InputAction.MoveLeft, InputAction.MoveBack, InputAction.MoveRight));
         }
 
         /// <summary>

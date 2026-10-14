@@ -87,6 +87,7 @@ namespace BimGo.Scene
         // Clash mode (Round C-B)
         ClashNext, ClashPrevious, ClashFrame, ClashStatusNew, ClashStatusActive, ClashStatusReviewed, ClashStatusApproved,
         ClashStatusResolved, ClashSelectInRevit, ClashFlyUp, ClashFlyDown, ClashView, ClashSectionToggle,
+        ClashSelectAll,
 
         // Fixed (not rebindable)
         Back, CloseWindow, Click, DragLook, FineAdjust, PhotoZoom, OpenFile, PadClick, PadMenuBack
@@ -351,6 +352,7 @@ namespace BimGo.Scene
             Add(InputAction.ClashFlyDown, c, "Fly down (hold)", H, "Ctrl", "Q");
             Add(InputAction.ClashView, c, "Model view: ghost / wireframe / real / hidden", P, "G");
             Add(InputAction.ClashSectionToggle, c, "Section box on / off (on: around the current clash)", P, "B");
+            Add(InputAction.ClashSelectAll, c, "Select all shown clashes (focus on them all) / clear", P, "Ctrl+A");
 
             // Fixed
             Fixed(InputAction.Back, "Pause menu · back · cancel · stop", P, true, InputContext.Fixed, "Esc");

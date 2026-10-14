@@ -67,7 +67,8 @@ namespace BimGo.Game
         /// <summary>True while the clash view is drawn: clash mode on and the current clash's pair found.</summary>
         private bool ClashViewActive => _clashModeOn && _clashCurrent != null
             && (_clashElementA >= 0 || _clashDynamicA != null || _clashElementB >= 0 || _clashDynamicB != null
-                || (ClashMultiActive && _clashMultiA.Count + _clashMultiB.Count + _clashMultiDynamicA.Count + _clashMultiDynamicB.Count > 0));
+                || (ClashMultiActive && _clashMultiA.Count + _clashMultiB.Count + _clashMultiDynamicA.Count + _clashMultiDynamicB.Count
+                    + _clashMultiBoth.Count + _clashMultiDynamicBoth.Count > 0));
 
         /// <summary>True when the player's own movement waits (a flight, or typing in the search box).</summary>
         private bool ClashFreezesPlayer => _clashModeOn && (_clashFlying || _clashSearchFocused);
@@ -184,6 +185,7 @@ namespace BimGo.Game
             else if (input.Pressed(InputAction.ClashSelectInRevit)) { ShowClashInRevit(); }
             else if (input.Pressed(InputAction.ClashView)) { SetClashView((_clashView + 1) % CLASH_VIEW_NAMES.Length); }
             else if (input.Pressed(InputAction.ClashSectionToggle)) { ToggleClashBox(); }
+            else if (input.Pressed(InputAction.ClashSelectAll)) { ToggleSelectAllShownClashes(); }
             else
             {
                 for (int k = 0; k < ClashStatus.All.Length; k++)
@@ -454,9 +456,20 @@ namespace BimGo.Game
         /// box (on or off as in BimGo), turned to look the way BimGo does, made active and zoomed to the region. An older
         /// add-in reads the same request as a plain selection (it ignores the view part).
         /// </summary>
-        private void ShowClashInRevit()
+        private void ShowClashInRevit() => ShowClashInRevit(confirmed: false);
+
+        /// <summary>R / REVIT; above <see cref="CLASH_REVIT_WARN"/> selected clashes it asks first (C-B4).</summary>
+        private void ShowClashInRevit(bool confirmed)
         {
             if (_clashCurrent == null) { return; }
+            if (!confirmed && ClashMultiActive && _clashSelected.Count > CLASH_REVIT_WARN && _live != null && _live.Connected)
+            {
+                int elements = _clashMultiA.Count + _clashMultiB.Count + _clashMultiBoth.Count
+                    + _clashMultiDynamicA.Count + _clashMultiDynamicB.Count + _clashMultiDynamicBoth.Count;
+                OpenConfirm("SHOW IN REVIT", $"{_clashSelected.Count:N0} clashes ({elements:N0} elements): Revit can take a while to select that many.",
+                    "SHOW THEM", danger: false, offerSkip: false, ok => { if (ok) { ShowClashInRevit(confirmed: true); } });
+                return;
+            }
             if (_live == null)
             {
                 Toast("Showing a clash in Revit needs a live Revit session (press Go in Revit)");
@@ -477,6 +490,8 @@ namespace BimGo.Game
                 foreach (DynamicInstance instance in _clashMultiDynamicA) { AddRevitTarget(-1, instance, hostIds, linked); }
                 foreach (int element in _clashMultiB) { AddRevitTarget(element, null, hostIds, linked); }
                 foreach (DynamicInstance instance in _clashMultiDynamicB) { AddRevitTarget(-1, instance, hostIds, linked); }
+                foreach (int element in _clashMultiBoth) { AddRevitTarget(element, null, hostIds, linked); }
+                foreach (DynamicInstance instance in _clashMultiDynamicBoth) { AddRevitTarget(-1, instance, hostIds, linked); }
             }
             else
             {
@@ -641,7 +656,7 @@ namespace BimGo.Game
                 ClashRecord clash = _clashList[i];
                 if (clash == _clashCurrent) { continue; }
                 var point = new Vector3((float)(clash.X - origin.X), (float)(clash.Y - origin.Y), (float)(clash.Z - origin.Z));
-                if (_clashSelected.Count > 1 && _clashSelected.Contains(clash)) { overlay.Dot(point, S(7.5f), Rgba.Hex(0xFFFFFF)); } // C-B3: selected
+                if (_clashSelected.Count > 1 && _clashSelectedLookup.Contains(clash)) { overlay.Dot(point, S(7.5f), Rgba.Hex(0xFFFFFF)); } // C-B3: selected
                 overlay.Dot(point, S(4.5f), StatusColour(clash.Status));
             }
             if (_clashCurrent != null)

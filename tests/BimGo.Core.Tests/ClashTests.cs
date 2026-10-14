@@ -384,6 +384,100 @@ namespace BimGo.Tests
         }
 
         [TestMethod]
+        public void Sets_Groups_AnyAllAndNotInside()
+        {
+            // C-B4: rule groups, one level deep (0 ducts L1 "600x300", 1 pipes L2, 2 framing L3 "310UB40", 3 walls L2)
+            SceneData scene = Scene(
+                new BoxSpec(Vector3.Zero, Vector3.One, "ducts", FamilyType: "Rectangular Duct: 600x300", Level: "Level 1"),
+                new BoxSpec(Vector3.Zero, Vector3.One, "pipes", FamilyType: "Pipe Types: Copper", Level: "Level 2"),
+                new BoxSpec(Vector3.Zero, Vector3.One, "framing", FamilyType: "310UB40", Level: "Level 3"),
+                new BoxSpec(Vector3.Zero, Vector3.One, "walls", FamilyType: "Generic - 200mm", Level: "Level 2"));
+            SetRule Rule(string field, string op, params string[] values) => new SetRule { Field = field, Op = op, Values = values.ToList() };
+            RuleGroup Group(bool all, params SetRule[] rules) => new RuleGroup { MatchAll = all, Rules = rules.ToList() };
+
+            // (ducts AND Level 1) OR (walls AND Level 2)
+            var orOfAnds = new SearchSet
+            {
+                MatchAll = false,
+                Groups = new List<RuleGroup>
+                {
+                    Group(true, Rule(RuleField.CATALOG, RuleOp.IS, "ducts"), Rule(RuleField.LEVEL, RuleOp.IS, "Level 1")),
+                    Group(true, Rule(RuleField.CATALOG, RuleOp.IS, "walls"), Rule(RuleField.LEVEL, RuleOp.IS, "Level 2"))
+                }
+            };
+            CollectionAssert.AreEqual(new[] { 0, 3 }, SearchSets.ElementsIn(orOfAnds, scene));
+
+            // ALL of (ANY of ducts, pipes) and (ANY of Level 2, Level 3)
+            var andOfOrs = new SearchSet
+            {
+                MatchAll = true,
+                Groups = new List<RuleGroup>
+                {
+                    Group(false, Rule(RuleField.CATALOG, RuleOp.IS, "ducts"), Rule(RuleField.CATALOG, RuleOp.IS, "pipes")),
+                    Group(false, Rule(RuleField.LEVEL, RuleOp.IS, "Level 2"), Rule(RuleField.LEVEL, RuleOp.IS, "Level 3"))
+                }
+            };
+            CollectionAssert.AreEqual(new[] { 1 }, SearchSets.ElementsIn(andOfOrs, scene));
+
+            // Inside a group a "not" rule is an ordinary condition: framing OR (not Level 2 AND not framing)
+            var notInside = new SearchSet
+            {
+                MatchAll = false,
+                Rules = { Rule(RuleField.CATALOG, RuleOp.IS, "framing") },
+                Groups = new List<RuleGroup> { Group(true, Rule(RuleField.LEVEL, RuleOp.IS_NOT, "Level 2"), Rule(RuleField.CATALOG, RuleOp.IS_NOT, "framing")) }
+            };
+            CollectionAssert.AreEqual(new[] { 0, 2 }, SearchSets.ElementsIn(notInside, scene));
+            var onlyNot = new SearchSet { Groups = new List<RuleGroup> { Group(false, Rule(RuleField.LEVEL, RuleOp.IS_NOT, "Level 2")) } };
+            CollectionAssert.AreEqual(new[] { 0, 2 }, SearchSets.ElementsIn(onlyNot, scene));
+
+            // A top-level "not" rule still takes elements out of the whole set (groups included)
+            var topNot = new SearchSet
+            {
+                Rules = { Rule(RuleField.LEVEL, RuleOp.IS_NOT, "Level 1") },
+                Groups = new List<RuleGroup> { Group(false, Rule(RuleField.CATALOG, RuleOp.IS_ONE_OF, "ducts", "pipes")) }
+            };
+            CollectionAssert.AreEqual(new[] { 1 }, SearchSets.ElementsIn(topNot, scene));
+
+            // A group with no value yet is left out (the set holds every element, as with no rules)
+            var unfinished = new SearchSet { MatchAll = true, Groups = new List<RuleGroup> { Group(true, Rule(RuleField.CATALOG, RuleOp.IS)) } };
+            Assert.AreEqual(4, SearchSets.ElementsIn(unfinished, scene).Count);
+
+            // A copy is deep
+            SearchSet copy = orOfAnds.Copy(newId: true);
+            copy.Groups[0].Rules[0].SetOperator(RuleOp.IS_NOT);
+            Assert.AreEqual(RuleOp.IS, orOfAnds.Groups[0].Rules[0].Op);
+            Assert.AreEqual(4, copy.AllRules().Count(), "four rules in two groups");
+        }
+
+        [TestMethod]
+        public void Sets_Groups_FileRoundTrip()
+        {
+            // A flat document writes no groups (older builds read it as before)
+            ClashDocument document = SearchSets.Seeded();
+            string flat = System.Text.Encoding.UTF8.GetString(ClashFiles.Serialize(document));
+            Assert.IsFalse(flat.Contains("\"groups\"", StringComparison.Ordinal));
+
+            // Groups written and read back; an emptied groups list is left out again
+            document.Sets[0].Groups = new List<RuleGroup>
+            {
+                new RuleGroup { MatchAll = true, Rules = { new SetRule { Field = RuleField.LEVEL, Op = RuleOp.IS_NOT, Values = { "Level 2" } } } },
+                new RuleGroup { MatchAll = false }
+            };
+            ClashDocument again = ClashFiles.Parse(ClashFiles.Serialize(document), out string error);
+            Assert.IsNotNull(again, error);
+            Assert.AreEqual(2, again.Sets[0].Groups.Count);
+            Assert.IsTrue(again.Sets[0].Groups[0].MatchAll);
+            Assert.AreEqual(RuleOp.IS_NOT, again.Sets[0].Groups[0].Rules[0].Op);
+            CollectionAssert.AreEqual(new[] { "Level 2" }, again.Sets[0].Groups[0].Rules[0].Values);
+            Assert.AreEqual(0, again.Sets[0].Groups[1].Rules.Count);
+            Assert.IsNull(again.Sets[1].Groups);
+
+            again.Sets[0].Groups.Clear();
+            string cleared = System.Text.Encoding.UTF8.GetString(ClashFiles.Serialize(again));
+            Assert.IsFalse(cleared.Contains("\"groups\"", StringComparison.Ordinal));
+        }
+
+        [TestMethod]
         public void Sets_OlderRulesReadAsOperators()
         {
             // A C-B1 file: include / exclude switches, one value each

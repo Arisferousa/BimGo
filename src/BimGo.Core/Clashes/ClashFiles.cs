@@ -81,7 +81,7 @@ namespace BimGo.Clashes
             // Rules carry their operator and values, with the earlier fields in step for older builds
             foreach (SearchSet set in document.Sets ?? Enumerable.Empty<SearchSet>())
             {
-                foreach (SetRule rule in set?.Rules ?? Enumerable.Empty<SetRule>()) { rule?.Normalise(); }
+                set?.NormaliseRules(); // C-B4: groups too (empty groups list → left out of the file)
             }
             return JsonSerializer.SerializeToUtf8Bytes(document, BimGoFormat.JSON_COMPACT);
         }

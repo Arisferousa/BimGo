@@ -57,6 +57,12 @@ namespace BimGo.Game
         private static readonly string[] CLASH_KINDS = { "HARD", "CLEARANCE" };
         private static readonly string[] CLASH_MATCH = { "ANY RULE", "ALL RULES" };
 
+        // C-B4: a group's own any / all
+        private static readonly string[] CLASH_GROUP_MATCH = { "ANY OF", "ALL OF" };
+
+        // C-B4: the set editor's lines (a group header has no rule; top-level rules have no group), reused per frame
+        private readonly List<(RuleGroup Group, SetRule Rule)> _clashRuleLines = new();
+
         private bool _clashesOpen;
         private int _clashTab;
         private int _clashScroll, _clashRuleScroll;
@@ -636,86 +642,107 @@ namespace BimGo.Game
                 ClashSetEdited();
             }
             cy += S(44);
-            _ui.TextWrapped(f.Small, x, cy, w, "RULES · \"NOT\" RULES ALWAYS TAKE ELEMENTS OUT · NO OTHER RULE = EVERY ELEMENT", UiTheme.TEXT_MUTED, maxLines: 1);
+            _ui.TextWrapped(f.Small, x, cy, w, "RULES · TOP-LEVEL \"NOT\" RULES TAKE ELEMENTS OUT · IN A GROUP THEY ARE ORDINARY CONDITIONS", UiTheme.TEXT_MUTED, maxLines: 1);
             cy += S(22);
 
-            // Rules
+            // C-B4: the lines: the set's own rules, then each group (a header, then its rules indented)
+            _clashRuleLines.Clear();
+            foreach (SetRule rule in set.Rules) { _clashRuleLines.Add((null, rule)); }
+            foreach (RuleGroup group in set.Groups ?? Enumerable.Empty<RuleGroup>())
+            {
+                _clashRuleLines.Add((group, null));
+                foreach (SetRule rule in group.Rules) { _clashRuleLines.Add((group, rule)); }
+            }
+
             float footer = bottom - S(34) - S(52);
             float ruleH = S(38);
             int visible = Math.Max(1, (int)((footer - cy) / ruleH));
-            int maxScroll = Math.Max(0, set.Rules.Count - visible);
+            int maxScroll = Math.Max(0, _clashRuleLines.Count - visible);
             if (input.Wheel != 0 && Hover(input, x, cy, w, footer - cy)) { _clashRuleScroll -= input.Wheel; }
             _clashRuleScroll = Math.Clamp(_clashRuleScroll, 0, maxScroll);
             SetRule remove = null;
-            int last = Math.Min(set.Rules.Count, _clashRuleScroll + visible);
-            float fieldW = S(150), opW = S(150), delW = S(32), g = S(6);
-            float valueW = MathF.Max(S(80), w - fieldW - opW - delW - g * 3);
+            RuleGroup removeFrom = null, removeGroup = null, addTo = null;
+            int last = Math.Min(_clashRuleLines.Count, _clashRuleScroll + visible);
+            float indent = S(24);
             for (int i = _clashRuleScroll; i < last; i++)
             {
-                SetRule rule = set.Rules[i];
+                (RuleGroup group, SetRule rule) = _clashRuleLines[i];
                 float ry = cy + (i - _clashRuleScroll) * ruleH;
-                float bx = x;
-                (string fieldLabel, string opLabel, string valueLabel) = ClashRuleLabels(rule);
-
-                // Field
-                if (DropdownButton(f, input, bx, ry, fieldW, S(32), fieldLabel, IsDropdownOpen(rule, DROP_RULE_FIELD)))
+                if (rule == null)
                 {
-                    SetRule target = rule;
-                    OpenDropdown(rule, DROP_RULE_FIELD, bx, ry, fieldW, S(32), CLASH_FIELD_LABELS, Array.IndexOf(RuleField.All, RuleField.Normalise(rule.Field)), k =>
+                    // Group header: "GROUP n", ANY OF / ALL OF, ADD RULE, ×
+                    int number = set.Groups.IndexOf(group) + 1;
+                    _ui.Rect(x, ry, w, S(32), Rgba.Hex(0x22D3EE, 0.07f));
+                    _ui.Text(f.Bold, x + S(8), ry + S(8), number == 1 ? "GROUP 1" : "GROUP " + number, UiTheme.ACCENT);
+                    float gx = x + S(90);
+                    int gm = Segmented(f, input, gx, ry, S(190), CLASH_GROUP_MATCH, group.MatchAll ? 1 : 0);
+                    if ((gm == 1) != group.MatchAll)
                     {
-                        if (RuleField.All[k] == RuleField.Normalise(target.Field)) { return; }
-                        target.SetField(RuleField.All[k]);
+                        group.MatchAll = gm == 1;
                         ClashSetEdited();
-                    });
+                    }
+                    float delW = S(32);
+                    if (SmallButton(f, input, x + w - delW - S(6) - S(110), ry, S(110), S(32), "ADD RULE")) { addTo = group; }
+                    if (SmallButton(f, input, x + w - delW, ry, delW, S(32), "×", danger: true)) { removeGroup = group; }
+                    continue;
                 }
-                bx += fieldW + g;
 
-                // Operator ("not" ones in the danger colour: they take elements out)
-                if (DropdownButton(f, input, bx, ry, opW, S(32), opLabel, IsDropdownOpen(rule, DROP_RULE_OP)))
+                float rx = group == null ? x : x + indent;
+                if (group != null) { _ui.Rect(x + S(8), ry, S(3), S(32), Rgba.Hex(0x22D3EE, 0.35f)); }
+                if (BuildClashRuleRow(f, input, rule, rx, ry, group == null ? w : w - indent, inGroup: group != null))
                 {
-                    SetRule target = rule;
-                    OpenDropdown(rule, DROP_RULE_OP, bx, ry, opW, S(32), RuleOp.Labels, RuleOp.IndexOf(rule.Operator), k =>
-                    {
-                        if (RuleOp.All[k] == target.Operator) { return; }
-                        target.SetOperator(RuleOp.All[k]);
-                        ClashSetEdited();
-                    });
+                    remove = rule;
+                    removeFrom = group;
                 }
-                if (RuleOp.IsNegative(rule.Operator)) { _ui.Rect(bx, ry + S(32) - S(3), opW, S(3), Rgba.Hex(0xFCA5A5, 0.7f)); }
-                bx += opW + g;
-
-                // Value: typed for contains, else picked from the model (ticks for the list operators)
-                if (SmallButton(f, input, bx, ry, valueW, S(32), valueLabel))
-                {
-                    if (RuleOp.IsText(rule.Operator)) { BeginClashRuleText(rule); }
-                    else { OpenClashValuePicker(rule); }
-                }
-                bx += valueW + g;
-                if (SmallButton(f, input, bx, ry, delW, S(32), "×", danger: true)) { remove = rule; }
             }
-            if (set.Rules.Count == 0) { _ui.Text(f.Body, x, cy + S(6), "No rules: every element is in this set. ADD RULE.", UiTheme.TEXT_MUTED); }
+            if (_clashRuleLines.Count == 0) { _ui.Text(f.Body, x, cy + S(6), "No rules: every element is in this set. ADD RULE or ADD GROUP.", UiTheme.TEXT_MUTED); }
             else if (maxScroll > 0)
             {
-                Text.Clear().Append(_clashRuleScroll + 1).Append('–').Append(last).Append(" of ").Append(set.Rules.Count).Append(" rules (wheel scrolls)");
+                Text.Clear().Append(_clashRuleScroll + 1).Append('–').Append(last).Append(" of ").Append(_clashRuleLines.Count).Append(" lines (wheel scrolls)");
                 _ui.TextRight(f.Small, x + w, footer - S(4), Text.Span, UiTheme.TEXT_FAINT);
             }
             if (remove != null)
             {
-                set.Rules.Remove(remove);
+                (removeFrom?.Rules ?? set.Rules).Remove(remove);
                 ClashSetEdited();
+            }
+            if (addTo != null)
+            {
+                addTo.Rules.Add(new SetRule { Field = RuleField.CATALOG, Op = RuleOp.IS }.Normalise());
+                ClashSetEdited();
+            }
+            if (removeGroup != null)
+            {
+                RuleGroup target = removeGroup;
+                if (target.Rules.Count == 0) { RemoveClashGroup(set, target); }
+                else
+                {
+                    OpenConfirm("DELETE GROUP", $"Delete group {set.Groups.IndexOf(target) + 1} and its {target.Rules.Count} rule{(target.Rules.Count == 1 ? string.Empty : "s")}?",
+                        "DELETE", danger: true, offerSkip: false, ok => { if (ok) { RemoveClashGroup(set, target); } });
+                }
             }
 
             // Count, then buttons
             _ui.TextWrapped(f.Body, x, footer + S(10), w, row.Detail, UiTheme.TEXT_SOFT, maxLines: 1);
-            float by = bottom - S(34), bw = (w - S(12)) / 3f;
+            float by = bottom - S(34), bw = (w - S(18)) / 4f;
             if (SmallButton(f, input, x, by, bw, S(32), "ADD RULE"))
             {
                 // A row to fill in: BimGo category, IS, nothing picked (left out of matching until it has a value)
                 set.Rules.Add(new SetRule { Field = RuleField.CATALOG, Op = RuleOp.IS }.Normalise());
+                _clashRuleScroll = set.Rules.Count; // the new rule sits before the groups
+                ClashSetEdited();
+            }
+            if (SmallButton(f, input, x + bw + S(6), by, bw, S(32), "ADD GROUP"))
+            {
+                // C-B4: a group (ALL OF, one rule to fill in) at the end; with the set on ANY, groups read as OR of ANDs
+                set.Groups ??= new List<RuleGroup>();
+                var group = new RuleGroup { MatchAll = true };
+                group.Rules.Add(new SetRule { Field = RuleField.CATALOG, Op = RuleOp.IS }.Normalise());
+                set.Groups.Add(group);
                 _clashRuleScroll = int.MaxValue;
                 ClashSetEdited();
             }
-            if (SmallButton(f, input, x + bw + S(6), by, bw, S(32), "DUPLICATE"))
+            if (SmallButton(f, input, x + (bw + S(6)) * 2f, by, bw, S(32), "DUPLICATE"))
             {
                 SearchSet copy = set.Copy(newId: true);
                 copy.Name = set.Name + " (copy)";
@@ -724,7 +751,7 @@ namespace BimGo.Game
                 ClashSetupChanged();
             }
             bool armed = _clashDeleteArmed == set;
-            if (SmallButton(f, input, x + (bw + S(6)) * 2f, by, bw, S(32), armed ? "SURE?" : "DELETE", danger: true))
+            if (SmallButton(f, input, x + (bw + S(6)) * 3f, by, bw, S(32), armed ? "SURE?" : "DELETE", danger: true))
             {
                 if (row.UsedBy > 0)
                 {
@@ -745,6 +772,62 @@ namespace BimGo.Game
                     Toast("Set deleted", 2f);
                 }
             }
+        }
+
+        /// <summary>
+        /// One rule row: field ▾, operator ▾ ("not" ones underlined in the danger colour at the top level, where they take
+        /// elements out; muted inside a group, where they are ordinary conditions), value, ×. True when × was clicked.
+        /// </summary>
+        private bool BuildClashRuleRow(FontAtlas f, InputState input, SetRule rule, float x, float ry, float w, bool inGroup)
+        {
+            float fieldW = S(150), opW = S(150), delW = S(32), g = S(6);
+            float valueW = MathF.Max(S(80), w - fieldW - opW - delW - g * 3);
+            float bx = x;
+            (string fieldLabel, string opLabel, string valueLabel) = ClashRuleLabels(rule);
+
+            // Field
+            if (DropdownButton(f, input, bx, ry, fieldW, S(32), fieldLabel, IsDropdownOpen(rule, DROP_RULE_FIELD)))
+            {
+                SetRule target = rule;
+                OpenDropdown(rule, DROP_RULE_FIELD, bx, ry, fieldW, S(32), CLASH_FIELD_LABELS, Array.IndexOf(RuleField.All, RuleField.Normalise(rule.Field)), k =>
+                {
+                    if (RuleField.All[k] == RuleField.Normalise(target.Field)) { return; }
+                    target.SetField(RuleField.All[k]);
+                    ClashSetEdited();
+                });
+            }
+            bx += fieldW + g;
+
+            // Operator
+            if (DropdownButton(f, input, bx, ry, opW, S(32), opLabel, IsDropdownOpen(rule, DROP_RULE_OP)))
+            {
+                SetRule target = rule;
+                OpenDropdown(rule, DROP_RULE_OP, bx, ry, opW, S(32), RuleOp.Labels, RuleOp.IndexOf(rule.Operator), k =>
+                {
+                    if (RuleOp.All[k] == target.Operator) { return; }
+                    target.SetOperator(RuleOp.All[k]);
+                    ClashSetEdited();
+                });
+            }
+            if (RuleOp.IsNegative(rule.Operator)) { _ui.Rect(bx, ry + S(32) - S(3), opW, S(3), inGroup ? Rgba.Hex(0xFFFFFF, 0.25f) : Rgba.Hex(0xFCA5A5, 0.7f)); }
+            bx += opW + g;
+
+            // Value: typed for contains, else picked from the model (ticks for the list operators)
+            if (SmallButton(f, input, bx, ry, valueW, S(32), valueLabel))
+            {
+                if (RuleOp.IsText(rule.Operator)) { BeginClashRuleText(rule); }
+                else { OpenClashValuePicker(rule); }
+            }
+            bx += valueW + g;
+            return SmallButton(f, input, bx, ry, delW, S(32), "×", danger: true);
+        }
+
+        /// <summary>C-B4: removes a group (the set's groups go back to null when none is left).</summary>
+        private void RemoveClashGroup(SearchSet set, RuleGroup group)
+        {
+            if (set.Groups == null || !set.Groups.Remove(group)) { return; }
+            if (set.Groups.Count == 0) { set.Groups = null; }
+            ClashSetEdited();
         }
 
         /// <summary>A set's rules changed: the tests using it no longer match their last results.</summary>
@@ -1003,7 +1086,8 @@ namespace BimGo.Game
                     Title = set.Name,
                     Elements = members.Count,
                     UsedBy = usedBy,
-                    Detail = $"{members.Count:N0} elements{(linked > 0 ? $" ({linked:N0} in links)" : string.Empty)} · {set.Rules.Count} rule{(set.Rules.Count == 1 ? string.Empty : "s")}" +
+                    Detail = $"{members.Count:N0} elements{(linked > 0 ? $" ({linked:N0} in links)" : string.Empty)} · {set.AllRules().Count()} rule{(set.AllRules().Count() == 1 ? string.Empty : "s")}" +
+                        (set.Groups?.Count > 0 ? $" in {set.Groups.Count} group{(set.Groups.Count == 1 ? string.Empty : "s")}" : string.Empty) +
                         (usedBy > 0 ? $" · used by {usedBy} test{(usedBy == 1 ? string.Empty : "s")}" : string.Empty)
                 });
             }

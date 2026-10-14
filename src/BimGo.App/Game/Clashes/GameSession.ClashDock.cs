@@ -47,6 +47,7 @@ namespace BimGo.Game
         private static readonly KeyHint CLASH_HINT = new(() =>
             $"{Hotkeys.Label(InputAction.ClashPrevious)} {Hotkeys.Label(InputAction.ClashNext)} previous / next · {Hotkeys.Label(InputAction.ClashFrame)} re-frame · " +
             $"1–5 status · {Hotkeys.Label(InputAction.ClashView)} view · {Hotkeys.Label(InputAction.ClashSectionToggle)} box · " +
+            $"{Hotkeys.Label(InputAction.ClashSelectAll)} all · " +
             $"{Hotkeys.Label(InputAction.ClashSelectInRevit)} Revit · RMB-drag looks · {Hotkeys.Label(InputAction.ClashMode)} / Esc leaves");
 
         #endregion
@@ -326,7 +327,11 @@ namespace BimGo.Game
             }
             if (SmallButton(f, input, ix + viewW + S(6), cy, toggleW, S(30), _clashBoxLabel ?? "BOX")) { ToggleClashBox(); }
             if (SmallButton(f, input, ix + viewW + toggleW + S(12), cy, toggleW, S(30), _clashThumbLabel ?? "PICTURES")) { ToggleClashThumbnails(); }
-            cy += S(40);
+            cy += S(38);
+
+            // C-B4: select every clash the list shows (a focus on them all) / clear
+            if (SmallButton(f, input, ix, cy, iw, S(28), ClashSelectAllLabel())) { ToggleSelectAllShownClashes(); }
+            cy += S(36);
 
             // The current clash's card (bottom, tall enough for its key hint) and the list above it
             float cardH = ClashCardHeight(f, iw);

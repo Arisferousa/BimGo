@@ -16,9 +16,10 @@ namespace BimGo.Clashes
         #region Matching
 
         /// <summary>
-        /// True when an element belongs to a set: it matches the adding rules (any, or all with
-        /// <see cref="SearchSet.MatchAll"/>; no adding rule = every element) and no "not" rule (those always take
-        /// elements out). Rules with no value yet are left out. Library templates never belong to a set.
+        /// True when an element belongs to a set: it matches the adding rules and groups (any, or all with
+        /// <see cref="SearchSet.MatchAll"/>; none = every element) and no top-level "not" rule (those always take
+        /// elements out). Rules with no value yet and groups without one are left out. Library templates never belong
+        /// to a set.
         /// </summary>
         /// <param name="set">The set.</param>
         /// <param name="scene">The snapshot (for links).</param>
@@ -40,7 +41,35 @@ namespace BimGo.Clashes
                 anyInclude = true;
                 included = set.MatchAll ? included && hit : included || hit;
             }
+
+            // C-B4: each group with a condition is one more condition (inside it, "not" rules are ordinary conditions)
+            foreach (RuleGroup group in set.Groups ?? Enumerable.Empty<RuleGroup>())
+            {
+                if (group == null || !group.HasConditions) { continue; }
+                bool hit = GroupMatches(group, scene, element);
+                anyInclude = true;
+                included = set.MatchAll ? included && hit : included || hit;
+            }
             return !anyInclude || included;
+        }
+
+        /// <summary>
+        /// C-B4: true when an element meets a group: any (or all, with <see cref="RuleGroup.MatchAll"/>) of its rules
+        /// with a value, a "not" rule being true for elements whose field does not match. No rule with a value: false
+        /// (callers leave such groups out).
+        /// </summary>
+        public static bool GroupMatches(RuleGroup group, SceneData scene, ElementRecord element)
+        {
+            bool any = false, result = group.MatchAll;
+            foreach (SetRule rule in group.Rules ?? Enumerable.Empty<SetRule>())
+            {
+                if (rule == null || !rule.IsComplete) { continue; }
+                bool hit = RuleMatches(rule, scene, element);
+                if (RuleOp.IsNegative(rule.Operator)) { hit = !hit; }
+                any = true;
+                result = group.MatchAll ? result && hit : result || hit;
+            }
+            return any && result;
         }
 
         /// <summary>

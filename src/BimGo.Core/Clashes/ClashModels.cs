@@ -340,6 +340,10 @@ namespace BimGo.Clashes
     /// An element is in the set when it matches the adding rules (any of them, or all of them with
     /// <see cref="MatchAll"/>) and no "not" rule (<see cref="RuleOp.IsNegative"/>). A set with no adding rule holds
     /// every element (minus the "not" rules). Rules with no value yet are left out.
+    /// <para>C-B4: a set can also hold <see cref="Groups"/> (Revit-filter style AND / OR, one level deep): each group
+    /// is one more condition, combined with the set's adding rules by <see cref="MatchAll"/>. Inside a group every rule
+    /// is an ordinary condition ("Level is not Level 2" is just false for Level 2 elements); the set's own top-level
+    /// "not" rules still take elements out of the whole set, as before.</para>
     /// </summary>
     public sealed class SearchSet
     {
@@ -355,11 +359,73 @@ namespace BimGo.Clashes
         /// <summary>The rules (adding ones and "not" ones).</summary>
         public List<SetRule> Rules { get; set; } = new();
 
+        /// <summary>C-B4: rule groups (null or empty: none, the file stays as before).</summary>
+        public List<RuleGroup> Groups { get; set; }
+
+        /// <summary>Every rule: the set's own, then each group's.</summary>
+        public IEnumerable<SetRule> AllRules()
+        {
+            foreach (SetRule rule in Rules ?? Enumerable.Empty<SetRule>()) { yield return rule; }
+            foreach (RuleGroup group in Groups ?? Enumerable.Empty<RuleGroup>())
+            {
+                foreach (SetRule rule in group?.Rules ?? Enumerable.Empty<SetRule>()) { yield return rule; }
+            }
+        }
+
+        /// <summary>Drops null rules / groups, normalises every rule, and leaves <see cref="Groups"/> null when empty.</summary>
+        public void NormaliseRules()
+        {
+            // In place (the editor holds these lists)
+            Rules ??= new List<SetRule>();
+            Rules.RemoveAll(r => r == null);
+            foreach (SetRule rule in Rules) { rule.Normalise(); } // older rules: switches → operator + values
+            Groups?.RemoveAll(g => g == null);
+            foreach (RuleGroup group in Groups ?? Enumerable.Empty<RuleGroup>()) { group.Normalise(); }
+            if (Groups != null && Groups.Count == 0) { Groups = null; }
+        }
+
         /// <summary>A copy (new id when <paramref name="newId"/>).</summary>
         public SearchSet Copy(bool newId = false) => new()
         {
             Id = newId ? Guid.NewGuid().ToString("N") : Id,
             Name = Name,
+            MatchAll = MatchAll,
+            Rules = Rules?.Where(r => r != null).Select(r => r.Copy()).ToList() ?? new List<SetRule>(),
+            Groups = Groups?.Where(g => g != null).Select(g => g.Copy()).ToList()
+        };
+    }
+
+    /// <summary>
+    /// C-B4: a group of rules inside a search set: ANY or ALL of its rules (each an ordinary condition, "not" ones
+    /// included). Rules with no value yet are left out; a group with none is left out of its set.
+    /// </summary>
+    public sealed class RuleGroup
+    {
+        /// <summary>True: every rule must match; false: any one of them.</summary>
+        public bool MatchAll { get; set; }
+
+        /// <summary>The rules.</summary>
+        public List<SetRule> Rules { get; set; } = new();
+
+        /// <summary>Reserved for nesting deeper (not read or written by this build).</summary>
+        [System.Text.Json.Serialization.JsonIgnore]
+        public List<RuleGroup> Groups { get; set; }
+
+        /// <summary>True when at least one rule has a value.</summary>
+        public bool HasConditions => Rules != null && Rules.Any(r => r != null && r.IsComplete);
+
+        /// <summary>Drops null rules and normalises the rest.</summary>
+        public RuleGroup Normalise()
+        {
+            Rules ??= new List<SetRule>();
+            Rules.RemoveAll(r => r == null);
+            foreach (SetRule rule in Rules) { rule.Normalise(); }
+            return this;
+        }
+
+        /// <summary>A copy.</summary>
+        public RuleGroup Copy() => new()
+        {
             MatchAll = MatchAll,
             Rules = Rules?.Where(r => r != null).Select(r => r.Copy()).ToList() ?? new List<SetRule>()
         };
@@ -644,8 +710,7 @@ namespace BimGo.Clashes
             {
                 if (string.IsNullOrWhiteSpace(set.Id) || !setIds.Add(set.Id)) { set.Id = Guid.NewGuid().ToString("N"); setIds.Add(set.Id); }
                 set.Name = string.IsNullOrWhiteSpace(set.Name) ? "Set" : set.Name.Trim();
-                set.Rules = (set.Rules ?? new List<SetRule>()).Where(r => r != null).ToList();
-                foreach (SetRule rule in set.Rules) { rule.Normalise(); } // older rules: switches → operator + values
+                set.NormaliseRules(); // older rules: switches → operator + values; C-B4 groups
             }
 
             var testIds = new HashSet<string>(StringComparer.Ordinal);
