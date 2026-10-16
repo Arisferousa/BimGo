@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Numerics;
 using BimGo.Format;
 using BimGo.Scene;
@@ -31,6 +31,9 @@ namespace BimGo.Extraction
 
         private readonly Document _doc;
         private readonly LaunchSettings _settings;
+
+        /// <summary>Alpha of an opaque material made glass by a keyword (QOL round): ≈ 55 % transparent.</summary>
+        private const int GLASS_KEYWORD_ALPHA = 115;
         private readonly Options _geometryOptions;
         private readonly OperationProgress _progress;
         private Vector3 _origin;
@@ -95,6 +98,7 @@ namespace BimGo.Extraction
             _extractMaterials = settings.ExtractTextures || resolveOnly;
             _resolveOnly = resolveOnly;
             _textureCap = MaterialData.NearestTextureSize(settings.TextureMaxSize);
+            ReflectivityReader.Configure(settings); // QOL round: water / glass overrides
             _emissiveKeywords = (settings.EmissiveKeywords ?? LaunchSettings.DefaultEmissiveKeywords())
                 .Select(k => k.Trim().ToLowerInvariant())
                 .Where(k => k.Length > 0)
@@ -1006,6 +1010,8 @@ namespace BimGo.Extraction
                 {
                     // A material named "mirror" is a mirror even when modelled with a glass appearance: drawn opaque
                     int alpha = ReflectivityReader.IsMirrorByName(material) ? 255 : Math.Clamp(255 - (int)(material.Transparency * 2.55), 64, 255);
+                    // QOL round: a glass keyword makes an opaque material see-through (Revit's default glass is ≈ 55 % transparent)
+                    if (alpha >= 250 && ReflectivityReader.IsGlassByName(material)) { alpha = GLASS_KEYWORD_ALPHA; }
                     colour = Pack(c.Red, c.Green, c.Blue, (byte)alpha);
                 }
                 selfIllumination = ReadSelfIllumination(material);

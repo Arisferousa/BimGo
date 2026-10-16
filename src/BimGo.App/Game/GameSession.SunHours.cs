@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Numerics;
 using BimGo.Audio;
 using BimGo.Format;
@@ -1006,6 +1006,12 @@ namespace BimGo.Game
             _ui.Panel(x, y, w, h, UiTheme.PANEL_STRONG, UiTheme.SUN);
             float ix = x + S(16), iw = w - S(32), cy = y + S(14);
             _ui.Text(f.Small, ix, cy, "SUN AND DAYLIGHT STUDY", UiTheme.SUN, S(1.4f));
+            // QOL round: hop to the sun settings (time, intensities, lights; it closes this panel)
+            if (SmallButton(f, input, ix + iw - S(118), cy - S(3), S(118), S(22), "SUN SETTINGS…"))
+            {
+                OpenSunPanel();
+                return;
+            }
             cy += S(28);
             if (_sunStudiesView)
             {

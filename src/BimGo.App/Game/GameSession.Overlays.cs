@@ -134,6 +134,9 @@ namespace BimGo.Game
         {
             _overlayClick = false;
             _overlayWheel = 0;
+
+            // C-C1: a right-click closes an open list and goes through (a right-click menu may open on another row)
+            if (_dropdown != null && input.RightPressed) { _dropdown = null; }
             if (!OverlayOpen) { return; }
             _overlayClick = input.LeftPressed;
             _overlayWheel = input.Wheel;

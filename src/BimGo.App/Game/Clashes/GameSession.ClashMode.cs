@@ -1,4 +1,4 @@
-using System.Numerics;
+﻿using System.Numerics;
 using BimGo.Audio;
 using BimGo.Clashes;
 using BimGo.Live;
@@ -124,7 +124,8 @@ namespace BimGo.Game
         }
 
         /// <summary>
-        /// Leaves clash mode: the clash view goes, the section box and flying stay.
+        /// Leaves clash mode: the clash view goes, flying stays. QOL round: the clash section box goes too (BOX stays on,
+        /// so coming back puts it round the clash again).
         /// </summary>
         private void ExitClashMode()
         {
@@ -133,10 +134,21 @@ namespace BimGo.Game
             _clashModeOn = false;
             _clashFlying = false;
             _clashSearchFocused = false;
+            _clashMenuLook = false;
             CloseOverlay();
             _window.Input.ReleaseAll();
             if (!_paused && _window.IsActive) { _window.SetCaptured(true); }
-            Toast($"Clash mode off · still flying ({Key(InputAction.Fly)} walks) · the section box stays ({Key(InputAction.SectionClear)} clears)", 3.5f);
+            bool boxCleared = false;
+            if (_clashBoxOn && _section.IsActive)
+            {
+                _section.BoxOn = false;
+                _section.PlaneOn = false;
+                SectionChanged();
+                boxCleared = true;
+            }
+            Toast(boxCleared
+                ? $"Clash mode off · still flying ({Key(InputAction.Fly)} walks) · section box off"
+                : $"Clash mode off · still flying ({Key(InputAction.Fly)} walks)", 3f);
         }
 
         #endregion
@@ -172,7 +184,10 @@ namespace BimGo.Game
             if (input.Pressed(InputAction.HideUi)) { ToggleUiHidden(); }
             if (input.Pressed(InputAction.Fullscreen)) { _window.ToggleFullscreen(); }
             if (input.Pressed(InputAction.Screenshot)) { RequestScreenshot(); }
-            if (input.Down(InputAction.DragLook) && !_clashFlying) { _player.Look(input.MouseDeltaX, input.MouseDeltaY, _sensitivity, _invertY); }
+            // C-C1: RMB pressed over the dock opens a row menu, so it doesn't look until it is released
+            if (input.RightPressed && _clashDockW > 0f && Hover(input, _clashDockX, _clashDockY, _clashDockW, _clashDockH)) { _clashMenuLook = true; }
+            if (!input.RightDown) { _clashMenuLook = false; }
+            if (input.Down(InputAction.DragLook) && !_clashFlying && !_clashMenuLook) { _player.Look(input.MouseDeltaX, input.MouseDeltaY, _sensitivity, _invertY); }
             UpdateRoom();
 
             if (input.PressedOrRepeated(InputAction.ClashNext)) { StepClash(+1); }
@@ -186,6 +201,9 @@ namespace BimGo.Game
             else if (input.Pressed(InputAction.ClashView)) { SetClashView((_clashView + 1) % CLASH_VIEW_NAMES.Length); }
             else if (input.Pressed(InputAction.ClashSectionToggle)) { ToggleClashBox(); }
             else if (input.Pressed(InputAction.ClashSelectAll)) { ToggleSelectAllShownClashes(); }
+            else if (input.Pressed(InputAction.ClashPictures)) { ToggleClashThumbnails(); } // sky round: P / the pad's Back
+            else if (input.Pressed(InputAction.ClashUngroup)) { UngroupFromKeys(); } // C-C1: Ctrl+Shift+G
+            else if (input.Pressed(InputAction.ClashGroup)) { GroupClashes(ClashTargets(), null); } // C-C1: Ctrl+G
             else
             {
                 for (int k = 0; k < ClashStatus.All.Length; k++)
@@ -424,6 +442,11 @@ namespace BimGo.Game
         /// <summary>1–5: the current clash's status (stamped with who and when).</summary>
         private void SetCurrentClashStatus(string status)
         {
+            if (_clashGroupCurrent != null)
+            {
+                SetClashGroupStatus(_clashGroupCurrent, status); // C-C1: a group row picked: the group and every member
+                return;
+            }
             if (_clashCurrent == null)
             {
                 Sound.Play(SoundId.Error);

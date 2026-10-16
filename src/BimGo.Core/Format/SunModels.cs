@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using BimGo.Scene;
 
 // The class belongs to the Format namespace
@@ -85,6 +85,21 @@ namespace BimGo.Format
         /// <summary>Light through transparent materials: 1 = as the material's transparency, 0 = opaque, 2 = double.</summary>
         public float GlassTransmission { get; set; } = 1f;
 
+        /// <summary>Sky round: cloud cover, 0 = clear sky (the default), 1 = overcast. A look only: lighting is unchanged.</summary>
+        public float CloudCover { get; set; }
+
+        /// <summary>Sky round: cloud drift speed multiplier (0 = still, 1 = default, 2 = double).</summary>
+        public float CloudSpeed { get; set; } = 1f;
+
+        /// <summary>Sky round: sun disc size multiplier (0.25–2, 1 = default). A look only.</summary>
+        public float SunSize { get; set; } = 1f;
+
+        /// <summary>Sky round: sun glare (halo) multiplier (0 = none, 1 = default, 2 = double). A look only.</summary>
+        public float SunGlare { get; set; } = 1f;
+
+        /// <summary>Smallest sun disc size multiplier.</summary>
+        public const float MIN_SUN_SIZE = 0.25f;
+
         /// <summary>
         /// A location chosen in BimGo instead of the model's (location override), or null to use the Revit site's.
         /// Older readers ignore it; Revit is never changed.
@@ -101,6 +116,10 @@ namespace BimGo.Format
             SkyIntensity = Clamp(SkyIntensity, MIN_INTENSITY, MAX_INTENSITY, 1f);
             ShadowIntensity = Clamp(ShadowIntensity, 0f, 1f, 1f);
             GlassTransmission = Clamp(GlassTransmission, 0f, 2f, 1f);
+            CloudCover = Clamp(CloudCover, 0f, 1f, 0f);
+            CloudSpeed = Clamp(CloudSpeed, 0f, 2f, 1f);
+            SunSize = Clamp(SunSize, MIN_SUN_SIZE, 2f, 1f);
+            SunGlare = Clamp(SunGlare, 0f, 2f, 1f);
             if (Location != null && !Location.Clean().IsValid) { Location = null; }
             return this;
         }
@@ -114,6 +133,10 @@ namespace BimGo.Format
             SkyIntensity = SkyIntensity,
             ShadowIntensity = ShadowIntensity,
             GlassTransmission = GlassTransmission,
+            CloudCover = CloudCover,
+            CloudSpeed = CloudSpeed,
+            SunSize = SunSize,
+            SunGlare = SunGlare,
             Location = Location?.Copy()
         };
 

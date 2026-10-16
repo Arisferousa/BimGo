@@ -92,6 +92,7 @@ namespace BimGo.Game
         private void ClickClashRow(ClashRecord clash, bool ctrl, bool shift)
         {
             if (clash == null) { return; }
+            _clashGroupCurrent = null; // C-C1: a clash row shows the clash card
             if (!ctrl && !shift)
             {
                 _clashAnchor = clash;
@@ -146,6 +147,8 @@ namespace BimGo.Game
         /// <summary>Back to a single clash (the current one stays on screen).</summary>
         private void ClearClashSelection()
         {
+            _clashGroupCurrent = null; // C-C1: the group card goes with the selection
+            _clashGroupPicks.Clear();
             _clashSelected.Clear();
             _clashSelectedLookup.Clear();
             _clashMultiBoth.Clear();
@@ -187,6 +190,7 @@ namespace BimGo.Game
         /// </summary>
         private void ToggleSelectAllShownClashes()
         {
+            _clashGroupCurrent = null; // C-C1
             if (AllShownClashesSelected)
             {
                 ClashRecord keep = _clashCurrent;

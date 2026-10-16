@@ -1,4 +1,4 @@
-using System.Numerics;
+﻿using System.Numerics;
 using BimGo.Audio;
 using BimGo.Format;
 using BimGo.Platform;
@@ -31,6 +31,20 @@ namespace BimGo.Game
 
         // Slider ids (the pause menu uses 0–2)
         private const int SLIDER_TIME = 10, SLIDER_SUN = 11, SLIDER_SKY = 12, SLIDER_SHADOW = 13, SLIDER_GLASS = 14;
+
+        /// <summary>Sky round: the SKY tab's sliders (unique across the menu's sliders).</summary>
+        private const int SLIDER_CLOUDS = 20, SLIDER_CLOUD_SPEED = 21, SLIDER_SUN_SIZE = 22, SLIDER_SUN_GLARE = 23;
+
+        /// <summary>Sky round: the sun panel's lower tabs.</summary>
+        private static readonly string[] SUN_TABS = { "LIGHTING", "SKY" };
+
+        /// <summary>Cloud drift at speed 1 (noise units per second) and its direction (from the west-south-west).</summary>
+        private const float CLOUD_DRIFT = 0.012f;
+        private static readonly Vector2 CLOUD_WIND = Vector2.Normalize(new Vector2(0.92f, 0.38f));
+
+        // Open lower tab (0 lighting, 1 sky; per session) and where the clouds have drifted to
+        private int _sunTab;
+        private Vector2 _cloudOffset;
 
         private static readonly string[] QUALITY_OPTIONS = { "Low", "Medium", "High" };
         private static readonly string[] COMPASS = { "N", "NE", "E", "SE", "S", "SW", "W", "NW" };
@@ -232,6 +246,23 @@ namespace BimGo.Game
             if (_sunSidecarPath == null || _sidecarSunRevision == _sunRevision) { return; }
             _sidecarSunRevision = _sunRevision;
             if (!SunFiles.Write(_sunSidecarPath, _sun, out string error)) { Toast(error, 4f, important: true); }
+        }
+
+        /// <summary>
+        /// Sky round: drifts the clouds and hands the sky look to the renderer (every frame; allocation-free).
+        /// </summary>
+        private void AdvanceSky(float dt)
+        {
+            if (_renderer == null || _sun == null) { return; }
+            _cloudOffset += CLOUD_WIND * (CLOUD_DRIFT * _sun.CloudSpeed * dt);
+            if (_cloudOffset.LengthSquared() > 1e8f) { _cloudOffset = Vector2.Zero; } // days of drift: keep the noise precise
+            _renderer.Sky = new SkyLook
+            {
+                CloudCover = _sun.CloudCover,
+                CloudOffset = _cloudOffset,
+                SunSize = _sun.SunSize,
+                SunGlare = _sun.SunGlare
+            };
         }
 
         /// <summary>
@@ -477,7 +508,7 @@ namespace BimGo.Game
         {
             if (!input.LeftDown) { _activeSlider = -1; }
 
-            float w = S(340), h = S(600);
+            float w = S(340), h = S(624); // sky round: + the LIGHTING / SKY tabs
             SunIconRect(out _, out float iconY, out _);
             float x = _window.Width - S(20) - w;
             float y = MathF.Max(S(20), iconY - S(10) - h);
@@ -500,12 +531,18 @@ namespace BimGo.Game
             _ui.Text(f.Small, ix, cy, "SUN, SHADOWS & LIGHTS", UiTheme.SUN_LABEL, S(2f));
             _ui.TextRight(f.Small, ix + iw, cy, HINT_SUN_CLOSE.Text, UiTheme.TEXT_FAINT, S(0.6f));
             cy += S(22);
-            float changeW = S(78);
+            float changeW = S(78), studyW = S(70);
             uint placeColour = HasLocationOverride ? UiTheme.SUN : _locationKnown ? UiTheme.TEXT_MUTED : UiTheme.MEASURE_LABEL;
-            _ui.TextWrapped(f.Small, ix, cy + S(3), iw - changeW - S(8), _sunPlaceLabel, placeColour, maxLines: 1);
+            _ui.TextWrapped(f.Small, ix, cy + S(3), iw - changeW - studyW - S(14), _sunPlaceLabel, placeColour, maxLines: 1);
             if (SmallButton(f, input, ix + iw - changeW, cy - S(2), changeW, S(22), "CHANGE…"))
             {
                 OpenLocationPicker();
+                return;
+            }
+            // QOL round: hop to the sun / daylight study (it closes this panel)
+            if (SmallButton(f, input, ix + iw - changeW - S(6) - studyW, cy - S(2), studyW, S(22), "STUDY…"))
+            {
+                OpenSunHours();
                 return;
             }
             cy += S(26);
@@ -575,8 +612,20 @@ namespace BimGo.Game
             BuildSunInfo();
             _ui.Text(f.Small, ix, cy, Text.Span, _sunAltitude > 0 ? UiTheme.TEXT_MUTED : UiTheme.MEASURE_LABEL, S(0.4f));
             cy += S(24);
-            _ui.Rect(ix, cy, iw, MathF.Max(1f, UiScale), Rgba.Hex(0xFFFFFF, 0.1f));
-            cy += S(12);
+
+            // Sky round (the tabs' line is the divider now): LIGHTING (intensities, lights) · SKY (clouds, the sun disc)
+            int sunTab = Tabs(f, input, ix, cy, iw, SUN_TABS, _sunTab);
+            if (sunTab != _sunTab)
+            {
+                _sunTab = sunTab;
+                _activeSlider = -1;
+            }
+            cy += S(34);
+            if (_sunTab == 1)
+            {
+                BuildSkyTab(f, input, ix, cy, iw);
+                return;
+            }
 
             // Intensities
             IntensitySlider(f, input, SLIDER_SUN, ix, cy, iw, "Sunlight", _sun.SunIntensity, 2f);
@@ -601,6 +650,30 @@ namespace BimGo.Game
         }
 
         /// <summary>
+        /// Sky round: the SKY tab: cloud cover and drift, the sun disc's size and glare (a look only), RESET SKY.
+        /// </summary>
+        private void BuildSkyTab(FontAtlas f, InputState input, float ix, float cy, float iw)
+        {
+            IntensitySlider(f, input, SLIDER_CLOUDS, ix, cy, iw, "Cloud cover", _sun.CloudCover, 1f);
+            cy += S(54);
+            IntensitySlider(f, input, SLIDER_CLOUD_SPEED, ix, cy, iw, "Cloud drift", _sun.CloudSpeed, 2f);
+            cy += S(54);
+            IntensitySlider(f, input, SLIDER_SUN_SIZE, ix, cy, iw, "Sun size", _sun.SunSize, 2f);
+            cy += S(54);
+            IntensitySlider(f, input, SLIDER_SUN_GLARE, ix, cy, iw, "Sun glare", _sun.SunGlare, 2f);
+            cy += S(54);
+            _ui.TextWrapped(f.Small, ix, cy, iw, "A look only: clouds and the sun disc don't change the lighting, shadows or studies. Saved with the model.",
+                UiTheme.TEXT_FAINT, maxLines: 3);
+            cy += S(52);
+            if (SmallButton(f, input, ix, cy, S(150), S(28), "RESET SKY"))
+            {
+                _sun.CloudCover = 0f;
+                _sun.CloudSpeed = _sun.SunSize = _sun.SunGlare = 1f;
+                SunChanged();
+            }
+        }
+
+        /// <summary>
         /// A 0–max percentage slider (5 % steps) for one of the sun settings; records a change when the value moves.
         /// </summary>
         private void IntensitySlider(FontAtlas f, InputState input, int id, float x, float y, float w, string label, float value, float max)
@@ -617,6 +690,10 @@ namespace BimGo.Game
                     case SLIDER_SKY: _sun.SkyIntensity = result; break;
                     case SLIDER_SHADOW: _sun.ShadowIntensity = result; break;
                     case SLIDER_GLASS: _sun.GlassTransmission = result; break;
+                    case SLIDER_CLOUDS: _sun.CloudCover = result; break;
+                    case SLIDER_CLOUD_SPEED: _sun.CloudSpeed = result; break;
+                    case SLIDER_SUN_SIZE: _sun.SunSize = result; break;
+                    case SLIDER_SUN_GLARE: _sun.SunGlare = result; break;
                 }
                 SunChanged();
             }

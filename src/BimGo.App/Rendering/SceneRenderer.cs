@@ -1,4 +1,4 @@
-using System.Numerics;
+﻿using System.Numerics;
 using System.Runtime.InteropServices;
 using BimGo.Native;
 using BimGo.Physics;
@@ -89,7 +89,7 @@ namespace BimGo.Rendering
         private GeometryUniforms _geometryUniforms, _groundGeometryUniforms;
         private int _groundGeometryCenter, _groundGeometryHalf, _geometryGlow;
         private int _skyInvViewProj, _skyEye, _groundViewProj, _groundCenter, _groundHalf, _groundEye, _groundFog;
-        private int _skySun, _skySunDir, _skyZenith, _skyHorizon, _skyDisc;
+        private int _skySun, _skySunDir, _skyZenith, _skyHorizon, _skyDisc, _skySunShape, _skyCloudCover, _skyCloudOffset;
         private int _depthViewProj, _depthModel, _transmitViewProj, _transmitModel, _transmitGlass, _transmitWhitecard;
 
         // Sun and shadows
@@ -163,6 +163,15 @@ namespace BimGo.Rendering
 
         /// <summary>This frame's sun and sky (Enabled = false: the classic fixed light, no shadows).</summary>
         public SunLighting Lighting;
+
+        /// <summary>Sky round: clouds and the sun disc's look (set each frame; a look only, lighting unchanged).</summary>
+        public SkyLook Sky = SkyLook.Default;
+
+        /// <summary>Grass round: water's body colour (rgb) and how much it replaces the material's (w; 0 = Revit's).</summary>
+        public Vector4 WaterTint;
+
+        /// <summary>Grass round: water's reflection strength (0–1).</summary>
+        public float WaterReflect = 1f;
 
         /// <summary>The fog / clear colour: the sky's horizon when the sun is on.</summary>
         public Vector3 FogColour => Lighting.Enabled ? Lighting.Horizon : FOG_COLOUR;
@@ -296,7 +305,7 @@ namespace BimGo.Rendering
         {
             public int ViewProj, Model, Eye, LightDir, FogColor, FogDensity, Whitecard, Plan, ClipZ, Override, Ghost;
             public int Realistic, Reflections, SkyZenith, SkyHorizon, TintMode;
-            public int ReflectThreshold, ReflectGain, ReflectDebug, Time;
+            public int ReflectThreshold, ReflectGain, ReflectDebug, Time, CloudCover, CloudOffset, WaterTint, WaterReflect;
             public int ProbesOn, ProbeGridOrigin, ProbeGridCell, ProbeGridSize, ProbeMaxLod;
             public int ClipCount, ClipPlanes;
 
@@ -343,6 +352,10 @@ namespace BimGo.Rendering
                 ProbeGridCell = p.Uniform("uProbeGridCell"),
                 ProbeGridSize = p.Uniform("uProbeGridSize"),
                 ProbeMaxLod = p.Uniform("uProbeMaxLod"),
+                CloudCover = p.Uniform("uCloudCover"),
+                CloudOffset = p.Uniform("uCloudOffset"),
+                WaterTint = p.Uniform("uWaterTint"),
+                WaterReflect = p.Uniform("uWaterReflect"),
                 ClipCount = p.Uniform("uClipCount"),
                 ClipPlanes = p.Uniform("uClipPlanes")
             };
@@ -387,6 +400,9 @@ namespace BimGo.Rendering
             _skyZenith = _skyProgram.Uniform("uZenith");
             _skyHorizon = _skyProgram.Uniform("uHorizon");
             _skyDisc = _skyProgram.Uniform("uSunDisc");
+            _skySunShape = _skyProgram.Uniform("uSunShape");
+            _skyCloudCover = _skyProgram.Uniform("uCloudCover");
+            _skyCloudOffset = _skyProgram.Uniform("uCloudOffset");
             _depthViewProj = _shadowDepthProgram.Uniform("uViewProj");
             _depthModel = _shadowDepthProgram.Uniform("uModel");
             _transmitViewProj = _shadowTransmitProgram.Uniform("uViewProj");
@@ -530,6 +546,21 @@ namespace BimGo.Rendering
         /// missing images" setting). Set before <see cref="Initialise"/>.
         /// </summary>
         public bool AutoProxy { get; set; } = true;
+
+        /// <summary>
+        /// QOL round: the water override (Water asset toggle, keywords, opaque too). Before <see cref="Initialise"/> it
+        /// just sets the rule; afterwards it rebuilds the material table (cheap: images stay).
+        /// </summary>
+        public void SetWaterOverride(bool fromAsset, IReadOnlyList<string> keywords, bool keywordsOpaque)
+        {
+            _materials.WaterFromAsset = fromAsset;
+            _materials.WaterKeywords = keywords ?? Array.Empty<string>();
+            _materials.WaterKeywordsOpaque = keywordsOpaque;
+            _materials.RefreshTable();
+        }
+
+        /// <summary>Water materials in the current table (QOL round: shown under the override).</summary>
+        public int WaterMaterialCount => _materials.Ready ? _materials.WaterCount : 0;
 
         /// <summary>Proxies take the material's colour (see <see cref="MaterialTextures.ProxyMaterialColour"/>).</summary>
         public bool ProxyMaterialColour
@@ -1195,6 +1226,10 @@ namespace BimGo.Rendering
             Gl.Uniform3(_skyZenith, l.Zenith.X, l.Zenith.Y, l.Zenith.Z);
             Gl.Uniform3(_skyHorizon, l.Horizon.X, l.Horizon.Y, l.Horizon.Z);
             Gl.Uniform3(_skyDisc, l.SunDisc.X, l.SunDisc.Y, l.SunDisc.Z);
+            SkyLook sky = Sky;
+            Gl.Uniform3(_skySunShape, MathF.Cos(SkyLook.DISC_OUTER * sky.SunSize), MathF.Cos(SkyLook.DISC_INNER * sky.SunSize), sky.SunGlare);
+            Gl.Uniform1(_skyCloudCover, sky.CloudCover);
+            Gl.Uniform2(_skyCloudOffset, sky.CloudOffset.X, sky.CloudOffset.Y);
             Gl.BindVertexArray(_emptyVao);
             Gl.DrawArrays(Gl.TRIANGLES, 0, 3);
             Gl.DepthMask(true);
@@ -1321,6 +1356,10 @@ namespace BimGo.Rendering
             Gl.Uniform1(u.ReflectGain, p.ReflectGain > 0f ? p.ReflectGain : 1f);
             Gl.Uniform1(u.ReflectDebug, p.ReflectDebug);
             Gl.Uniform1(u.Time, p.Time);
+            Gl.Uniform1(u.CloudCover, Sky.CloudCover);
+            Gl.Uniform2(u.CloudOffset, Sky.CloudOffset.X, Sky.CloudOffset.Y);
+            Gl.Uniform4(u.WaterTint, WaterTint.X, WaterTint.Y, WaterTint.Z, WaterTint.W);
+            Gl.Uniform1(u.WaterReflect, WaterReflect);
             bool probes = (p.Probes || p.ReflectDebug == 2) && _probesActive;
             Gl.Uniform1(u.ProbesOn, probes ? 1 : 0);
             if (probes)
@@ -1357,6 +1396,7 @@ namespace BimGo.Rendering
             _groundGeometryProgram?.Dispose();
             DisposeSection();
             DisposePhoto();
+            DisposeGrass();
             _shadows.Dispose();
             _effects.Dispose();
             _lightShadows.Dispose();

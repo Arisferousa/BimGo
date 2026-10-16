@@ -1,4 +1,4 @@
-using BimGo.Audio;
+﻿using BimGo.Audio;
 using BimGo.Clashes;
 using BimGo.Format;
 using BimGo.Native;
@@ -42,12 +42,18 @@ namespace BimGo.Game
         private string _clashCardDetail, _clashCardAssign, _clashCardNotes;
 
         // Dropdown slots on the dock (owner: the dock's list)
-        private const int DROP_DOCK_TEST = 11, DROP_DOCK_STATUS = 12, DROP_DOCK_LEVEL = 13, DROP_DOCK_VIEW = 14;
+        private const int DROP_DOCK_TEST = 11, DROP_DOCK_STATUS = 12, DROP_DOCK_LEVEL = 13, DROP_DOCK_VIEW = 14, DROP_DOCK_REPORT = 15;
+
+        /// <summary>QOL round: the clash report's choices (moved here from the Clashes panel).</summary>
+        private static readonly string[] CLASH_REPORT_ACTIONS = { "EXPORT REPORT…", "IMPORT REPORT…" };
+
+        // A REPORT… pick, run after the dock is drawn (it opens a file dialog): 0 none, 1 export, 2 import
+        private int _clashReportAction;
 
         private static readonly KeyHint CLASH_HINT = new(() =>
             $"{Hotkeys.Label(InputAction.ClashPrevious)} {Hotkeys.Label(InputAction.ClashNext)} previous / next · {Hotkeys.Label(InputAction.ClashFrame)} re-frame · " +
             $"1–5 status · {Hotkeys.Label(InputAction.ClashView)} view · {Hotkeys.Label(InputAction.ClashSectionToggle)} box · " +
-            $"{Hotkeys.Label(InputAction.ClashSelectAll)} all · " +
+            $"{Hotkeys.Label(InputAction.ClashSelectAll)} all · {Hotkeys.Label(InputAction.ClashGroup)} group · right-click rows · " +
             $"{Hotkeys.Label(InputAction.ClashSelectInRevit)} Revit · RMB-drag looks · {Hotkeys.Label(InputAction.ClashMode)} / Esc leaves");
 
         #endregion
@@ -75,6 +81,7 @@ namespace BimGo.Game
             if (!_clashListDirty) { return; }
             _clashListDirty = false;
             _clashListUnits = UnitFormat.Revision;
+            EnsureClashGroupIndex(); // C-C1: rows know their group (search matches group names too)
 
             string search = _clashSearchLength == 0 ? null : new string(_clashSearch, 0, _clashSearchLength).Trim();
             string[] words = string.IsNullOrEmpty(search) ? Array.Empty<string>() : search.Split(' ', StringSplitOptions.RemoveEmptyEntries);
@@ -95,9 +102,11 @@ namespace BimGo.Game
                 if (_clashLevelFilter != null && level != _clashLevelFilter) { continue; }
                 ClashRow row = MakeClashRow(clash);
                 bool all = true;
+                string groupName = words.Length == 0 ? null : ClashGroupSearchText(clash);
                 foreach (string word in words)
                 {
-                    if (!row.Search.Contains(word, StringComparison.CurrentCultureIgnoreCase)) { all = false; break; }
+                    if (!row.Search.Contains(word, StringComparison.CurrentCultureIgnoreCase)
+                        && !groupName.Contains(word, StringComparison.CurrentCultureIgnoreCase)) { all = false; break; }
                 }
                 if (!all) { continue; }
                 _clashDockRows.Add(row);
@@ -109,7 +118,7 @@ namespace BimGo.Game
                 int byStatus = ClashStatus.IndexOf(p.Clash.Status).CompareTo(ClashStatus.IndexOf(q.Clash.Status));
                 return byStatus != 0 ? byStatus : q.Clash.Distance.CompareTo(p.Clash.Distance);
             });
-            foreach (ClashRow row in _clashDockRows) { _clashList.Add(row.Clash); }
+            BuildClashDisplay(); // C-C1: group rows among the clashes; _clashList in display order (every member)
             PruneClashSelection(); // C-B3: selected clashes the filters now hide drop out
 
             // Levels in elevation order, unknown ones last
@@ -117,7 +126,8 @@ namespace BimGo.Game
 
             ClashTest test = _clashDocument.FindTest(_clashReviewTest);
             _clashDockTestName = test == null ? "No test" : test.Name;
-            _clashDockCounts = $"{_clashList.Count:N0} shown · {_clashTestCount:N0} in the test";
+            _clashDockCounts = $"{_clashList.Count:N0} shown · {_clashTestCount:N0} in the test" +
+                (_clashGroupsInTest > 0 ? $" · {_clashGroupsInTest:N0} group{(_clashGroupsInTest == 1 ? string.Empty : "s")}" : string.Empty);
             _clashStatusLabel = "STATUS: " + CLASH_STATUS_FILTERS[_clashStatusFilter];
             _clashLevelLabel = "LEVEL: " + (_clashLevelFilter ?? "ALL");
             RefreshClashViewLabels();
@@ -128,6 +138,7 @@ namespace BimGo.Game
         /// <summary>The current clash card's text (built when the clash or its details change, not per frame).</summary>
         private void RefreshClashCard()
         {
+            RefreshClashGroupCard(); // C-C1
             ClashRecord clash = _clashCurrent;
             if (clash == null)
             {
@@ -249,6 +260,8 @@ namespace BimGo.Game
             float x = width - w - S(16), y = S(16), h = height - S(32);
             _ui.Panel(x, y, w, h, UiTheme.PANEL_STRONG, UiTheme.PANEL_BORDER);
             bool overDock = Hover(input, x, y, w, h);
+            (_clashDockX, _clashDockY, _clashDockW, _clashDockH) = (x, y, w, h);
+            if (overDock && input.RightPressed) { _clashMenuLook = true; } // C-C1: a right-click on the dock is a menu, not a look
 
             float ix = x + S(14), iw = w - S(28);
             float cy = y + S(12);
@@ -329,8 +342,29 @@ namespace BimGo.Game
             if (SmallButton(f, input, ix + viewW + toggleW + S(12), cy, toggleW, S(30), _clashThumbLabel ?? "PICTURES")) { ToggleClashThumbnails(); }
             cy += S(38);
 
-            // C-B4: select every clash the list shows (a focus on them all) / clear
-            if (SmallButton(f, input, ix, cy, iw, S(28), ClashSelectAllLabel())) { ToggleSelectAllShownClashes(); }
+            // C-B4: select every clash the list shows (a focus on them all) / clear · QOL round: the clash report
+            float reportW = MathF.Min(S(120), iw * 0.32f), selectW = iw - reportW - S(6);
+            if (SmallButton(f, input, ix, cy, selectW, S(28), ClashSelectAllLabel())) { ToggleSelectAllShownClashes(); }
+            if (DropdownButton(f, input, ix + selectW + S(6), cy, reportW, S(28), "REPORT…", IsDropdownOpen(_clashList, DROP_DOCK_REPORT)))
+            {
+                OpenDropdown(_clashList, DROP_DOCK_REPORT, ix + selectW + S(6), cy, reportW, S(28), CLASH_REPORT_ACTIONS, -1, i => _clashReportAction = i + 1);
+            }
+            cy += S(36);
+
+            // C-C1: grouping (GROUP / UNGROUP act on the selection or the group on the card; AUTO GROUP on the test)
+            float autoW = MathF.Min(S(120), iw * 0.28f), showW = MathF.Min(S(140), iw * 0.32f), groupW = (iw - autoW - showW - S(18)) * 0.5f;
+            if (SmallButton(f, input, ix, cy, groupW, S(28), _clashGroupButtonLabel ?? "GROUP")) { GroupClashes(ClashTargets(), null); }
+            if (SmallButton(f, input, ix + groupW + S(6), cy, groupW, S(28), _clashUngroupButtonLabel ?? "UNGROUP")) { UngroupFromKeys(); }
+            float showX = ix + groupW * 2f + S(12);
+            if (DropdownButton(f, input, showX, cy, showW, S(28), CLASH_SHOW_LABELS[_clashGroupFilter], IsDropdownOpen(_clashList, DROP_DOCK_SHOW)))
+            {
+                OpenDropdown(_clashList, DROP_DOCK_SHOW, showX, cy, showW, S(28), CLASH_SHOW_CHOICES, _clashGroupFilter, SetClashGroupFilter);
+            }
+            float autoX = showX + showW + S(6);
+            if (DropdownButton(f, input, autoX, cy, autoW, S(28), "AUTO GROUP", IsDropdownOpen(_clashList, DROP_DOCK_AUTO)))
+            {
+                OpenDropdown(_clashList, DROP_DOCK_AUTO, autoX, cy, autoW, S(28), CLASH_AUTO_ACTIONS, -1, RunClashAutoGroup);
+            }
             cy += S(36);
 
             // The current clash's card (bottom, tall enough for its key hint) and the list above it
@@ -343,6 +377,14 @@ namespace BimGo.Game
             DrawOverlays(f, input, x, y, w, h);
 
             // Actions after drawing
+            if (_clashReportAction != 0)
+            {
+                int action = _clashReportAction;
+                _clashReportAction = 0;
+                if (action == 1) { ExportClashReport(); }
+                else { ImportClashReport(); }
+                return;
+            }
             if (_clashMarkupClick != null && _clashModeOn)
             {
                 // C-B3: the pencil on a row: mark up that clash's comment picture (back to clash mode after)
@@ -352,7 +394,28 @@ namespace BimGo.Game
                 return;
             }
             if (go != null && _clashModeOn) { ClickClashRow(go, input.IsDown(Win32.VK_CONTROL), input.IsDown(Win32.VK_SHIFT)); }
-            if (overDock && input.LeftPressed) { input.ConsumeClicks(); }
+
+            if (_clashGroupMarkupClick != null && _clashModeOn)
+            {
+                // Feedback: the pencil on a group row: mark up the group comment's picture
+                ClashGroup markupGroup = _clashGroupMarkupClick;
+                _clashGroupMarkupClick = null;
+                OpenClashGroupMarkup(markupGroup);
+                return;
+            }
+
+            // C-C1: a chevron, a group row, a right-click (the menu opens now, drawn from the next frame)
+            ClashGroup chevron = _clashGroupChevron, groupClick = _clashGroupClick;
+            ClashDisplayRow menuRow = _clashMenuRow;
+            _clashGroupChevron = _clashGroupClick = null;
+            _clashMenuRow = null;
+            if (_clashModeOn)
+            {
+                if (chevron != null) { ToggleClashGroupExpanded(chevron); }
+                else if (groupClick != null) { ClickClashGroupRow(groupClick, input.IsDown(Win32.VK_CONTROL)); }
+                if (menuRow != null) { OpenClashRowMenu(menuRow, _clashMenuAt); }
+            }
+            if (overDock && (input.LeftPressed || input.RightPressed)) { input.ConsumeClicks(); }
         }
 
         /// <summary>The test dropdown's pick: show that test's clashes and go to the first.</summary>
@@ -367,11 +430,13 @@ namespace BimGo.Game
 
         /// <summary>
         /// The list rows (wheel scrolls while the mouse is over the panel; the current row stays in view after a step).
+        /// C-C1: group rows (chevron, name, count, status, MIXED; a click selects the members, the chevron expands) with
+        /// their members indented when expanded; a right-click on any row opens its menu (after the dock is drawn).
         /// </summary>
-        /// <returns>The row clicked this frame, or null.</returns>
+        /// <returns>The clash row clicked this frame, or null.</returns>
         private ClashRecord BuildClashDockRows(FontAtlas f, InputState input, float x, float y, float w, float bottom, bool overDock)
         {
-            if (_clashDockRows.Count == 0)
+            if (_clashDisplay.Count == 0)
             {
                 string why = _clashTestCount == 0 ? "This test has no clashes yet: TESTS… runs it." : "No clash matches the filters.";
                 _ui.TextWrapped(f.Body, x, y + S(6), w, why, UiTheme.TEXT_MUTED, maxLines: 3);
@@ -384,68 +449,219 @@ namespace BimGo.Game
             float thumbH = thumbW * CLASH_THUMB_H / CLASH_THUMB_W;
             float rowH = pictures ? MathF.Max(S(50), thumbH + S(10)) : S(50);
             int visible = Math.Max(1, (int)((bottom - y) / rowH));
-            int maxScroll = Math.Max(0, _clashDockRows.Count - visible);
+            int maxScroll = Math.Max(0, _clashDisplay.Count - visible);
             if (_clashScrollToCurrent)
             {
                 _clashScrollToCurrent = false;
-                int current = _clashCurrent == null ? -1 : _clashList.IndexOf(_clashCurrent);
+                int current = ClashDisplayIndexOf(_clashCurrent);
                 if (current >= 0 && (current < _clashDockScroll || current >= _clashDockScroll + visible)) { _clashDockScroll = current - visible / 2; }
             }
             if (overDock && input.Wheel != 0) { _clashDockScroll -= input.Wheel * 3; }
             _clashDockScroll = Math.Clamp(_clashDockScroll, 0, maxScroll);
 
+            // Feedback: a vertical scroll bar (drag the thumb, or click the track to jump there)
+            float listBottom = y + visible * rowH;
+            if (maxScroll > 0)
+            {
+                float barW = S(8);
+                w -= barW + S(6);
+                BuildClashScrollBar(input, x + w + S(6), y, barW, listBottom - y - S(4), visible, maxScroll);
+            }
+            else { _clashScrollDragging = false; }
+
             ClashRecord picked = null;
-            int last = Math.Min(_clashDockRows.Count, _clashDockScroll + visible);
+            int last = Math.Min(_clashDisplay.Count, _clashDockScroll + visible);
             for (int i = _clashDockScroll; i < last; i++)
             {
-                ClashRow row = _clashDockRows[i];
+                ClashDisplayRow line = _clashDisplay[i];
                 float ry = y + (i - _clashDockScroll) * rowH;
-                bool current = row.Clash == _clashCurrent || IsClashSelected(row.Clash);
                 bool hover = Hover(input, x, ry, w, rowH - S(4));
-                _ui.Rect(x, ry, w, rowH - S(4), current ? Rgba.Hex(0x22D3EE, 0.14f) : hover ? Rgba.Hex(0xFFFFFF, 0.08f) : ((i & 1) == 0 ? Rgba.Hex(0xFFFFFF, 0.03f) : 0u));
-                _ui.Rect(x, ry, S(4), rowH - S(4), StatusColour(row.Clash.Status));
-                uint titleColour = row.Clash.Status == ClashStatus.RESOLVED ? UiTheme.TEXT_FAINT : UiTheme.TEXT;
-                if (pictures)
+                if (line.Row == null)
                 {
-                    // The picture on the left (asked for when missing or stale), the text beside it
-                    float px = x + S(10), py = ry + S(3);
-                    uint texture = ClashThumbnailTexture(row.Clash);
-                    if (texture != 0)
-                    {
-                        _ui.Image(texture, px, py, thumbW, thumbH, _window.Width, _window.Height);
-                        _ui.Outline(px, py, thumbW, thumbH, MathF.Max(1f, UiScale), Rgba.Hex(0xFFFFFF, 0.15f));
-                    }
-                    else
-                    {
-                        _ui.Panel(px, py, thumbW, thumbH, UiTheme.CONTROL, UiTheme.CONTROL_BORDER);
-                        _ui.TextCentred(f.Small, px + thumbW * 0.5f, py + thumbH * 0.5f - S(7), "…", UiTheme.TEXT_FAINT);
-                    }
-                    if (ClashCommentPencil(f, input, px + thumbW - S(14), py + S(14), row.Clash)) { _clashMarkupClick = row.Clash; }
-                    float tx = px + thumbW + S(10), tw = x + w - S(8) - tx;
-                    _ui.Text(f.Small, tx, ry + S(5), row.Status, StatusColour(row.Clash.Status));
-                    _ui.TextWrapped(f.Body, tx, ry + S(22), tw, row.Title, titleColour, maxLines: 2);
-                    _ui.TextWrapped(f.Small, tx, ry + S(62), tw, row.Detail, UiTheme.TEXT_MUTED, maxLines: 2);
+                    BuildClashGroupRow(f, input, line, x, ry, w, rowH, pictures, thumbW, thumbH, hover);
                 }
                 else
                 {
-                    _ui.TextWrapped(f.Body, x + S(12), ry + S(5), w - S(110), row.Title, titleColour, maxLines: 1);
-                    _ui.TextWrapped(f.Small, x + S(12), ry + S(26), w - S(24), row.Detail, UiTheme.TEXT_MUTED, maxLines: 1);
-                    _ui.TextRight(f.Small, x + w - S(8), ry + S(7), row.Status, StatusColour(row.Clash.Status));
-                    if (ClashCommentPencil(f, input, x + w - S(20), ry + S(32), row.Clash)) { _clashMarkupClick = row.Clash; }
+                    // Members sit indented under their group (a faint rule down the left)
+                    float indent = line.Member ? S(14) : 0f;
+                    if (line.Member) { _ui.Rect(x + S(5), ry, S(2), rowH, Rgba.Hex(0xFFFFFF, 0.12f)); }
+                    BuildClashRowBody(f, input, line.Row, x + indent, ry, w - indent, rowH, pictures, thumbW, thumbH, hover, (i & 1) == 0);
+                    if (hover && input.LeftPressed)
+                    {
+                        input.ConsumeClicks();
+                        Sound.Play(SoundId.UiClick);
+                        picked = line.Row.Clash;
+                    }
                 }
-                if (hover && input.LeftPressed)
+                if (hover && input.RightPressed)
                 {
-                    input.ConsumeClicks();
-                    Sound.Play(SoundId.UiClick);
-                    picked = row.Clash;
+                    _clashMenuRow = line;
+                    _clashMenuAt = input.MousePosition;
                 }
             }
             if (maxScroll > 0)
             {
-                Text.Clear().Append(_clashDockScroll + 1).Append('–').Append(last).Append(" of ").AppendGrouped(_clashDockRows.Count);
+                Text.Clear().Append(_clashDockScroll + 1).Append('–').Append(last).Append(" of ").AppendGrouped(_clashDisplay.Count);
                 _ui.TextRight(f.Small, x + w, bottom - S(2), Text.Span, UiTheme.TEXT_FAINT);
             }
             return picked;
+        }
+
+        /// <summary>
+        /// The list's scroll bar: the thumb's size is the share of rows on screen; dragging it scrolls (it keeps the
+        /// grab point while the button is held, even off the bar), a click on the track jumps there.
+        /// </summary>
+        private void BuildClashScrollBar(InputState input, float x, float y, float w, float h, int visible, int maxScroll)
+        {
+            int total = maxScroll + visible;
+            float thumbH = MathF.Max(S(24), h * visible / total);
+            float travel = MathF.Max(1f, h - thumbH);
+            float thumbY = y + travel * _clashDockScroll / maxScroll;
+            bool overThumb = Hover(input, x - S(3), thumbY, w + S(6), thumbH);
+            bool overTrack = Hover(input, x - S(3), y, w + S(6), h);
+            float mouseY = input.MousePosition.Y;
+
+            if (input.LeftPressed && overTrack)
+            {
+                input.ConsumeClicks();
+                _clashScrollDragging = true;
+                _clashScrollGrab = overThumb ? mouseY - thumbY : thumbH * 0.5f; // the track: centre the thumb on the click
+            }
+            if (_clashScrollDragging)
+            {
+                if (!input.LeftDown) { _clashScrollDragging = false; }
+                else
+                {
+                    float t = Math.Clamp((mouseY - _clashScrollGrab - y) / travel, 0f, 1f);
+                    _clashDockScroll = (int)MathF.Round(t * maxScroll);
+                    thumbY = y + travel * _clashDockScroll / maxScroll;
+                }
+            }
+
+            _ui.Rect(x, y, w, h, Rgba.Hex(0xFFFFFF, 0.06f));
+            uint thumb = _clashScrollDragging ? UiTheme.ACCENT : overThumb ? Rgba.Hex(0xFFFFFF, 0.45f) : Rgba.Hex(0xFFFFFF, 0.28f);
+            _ui.Rect(x, thumbY, w, thumbH, thumb);
+        }
+
+        /// <summary>The display row showing a clash: its own row, or its group's row when the group is collapsed (−1: none).</summary>
+        private int ClashDisplayIndexOf(ClashRecord clash)
+        {
+            if (clash == null) { return -1; }
+            int groupRow = -1;
+            ClashGroup group = ClashGroupOf(clash);
+            for (int i = 0; i < _clashDisplay.Count; i++)
+            {
+                ClashDisplayRow line = _clashDisplay[i];
+                if (line.Row != null && line.Row.Clash == clash) { return i; }
+                if (line.Row == null && group != null && line.Group == group) { groupRow = i; }
+            }
+            return groupRow;
+        }
+
+        /// <summary>One clash row (as before C-C1): status bar, picture or text layout, status, the comment pencil.</summary>
+        private void BuildClashRowBody(FontAtlas f, InputState input, ClashRow row, float x, float ry, float w, float rowH, bool pictures,
+            float thumbW, float thumbH, bool hover, bool even)
+        {
+            bool current = row.Clash == _clashCurrent || IsClashSelected(row.Clash);
+            _ui.Rect(x, ry, w, rowH - S(4), current ? Rgba.Hex(0x22D3EE, 0.14f) : hover ? Rgba.Hex(0xFFFFFF, 0.08f) : (even ? Rgba.Hex(0xFFFFFF, 0.03f) : 0u));
+            _ui.Rect(x, ry, S(4), rowH - S(4), StatusColour(row.Clash.Status));
+            uint titleColour = row.Clash.Status == ClashStatus.RESOLVED ? UiTheme.TEXT_FAINT : UiTheme.TEXT;
+            if (pictures)
+            {
+                // The picture on the left (asked for when missing or stale), the text beside it
+                float px = x + S(10), py = ry + S(3);
+                DrawClashRowPicture(f, row.Clash, px, py, thumbW, thumbH);
+                if (ClashCommentPencil(f, input, px + thumbW - S(14), py + S(14), row.Clash)) { _clashMarkupClick = row.Clash; }
+                float tx = px + thumbW + S(10), tw = x + w - S(8) - tx;
+                _ui.Text(f.Small, tx, ry + S(5), row.Status, StatusColour(row.Clash.Status));
+                _ui.TextWrapped(f.Body, tx, ry + S(22), tw, row.Title, titleColour, maxLines: 2);
+                _ui.TextWrapped(f.Small, tx, ry + S(62), tw, row.Detail, UiTheme.TEXT_MUTED, maxLines: 2);
+            }
+            else
+            {
+                _ui.TextWrapped(f.Body, x + S(12), ry + S(5), w - S(110), row.Title, titleColour, maxLines: 1);
+                _ui.TextWrapped(f.Small, x + S(12), ry + S(26), w - S(24), row.Detail, UiTheme.TEXT_MUTED, maxLines: 1);
+                _ui.TextRight(f.Small, x + w - S(8), ry + S(7), row.Status, StatusColour(row.Clash.Status));
+                if (ClashCommentPencil(f, input, x + w - S(20), ry + S(32), row.Clash)) { _clashMarkupClick = row.Clash; }
+            }
+        }
+
+        /// <summary>A row picture (asked for when missing or stale) or its placeholder.</summary>
+        private void DrawClashRowPicture(FontAtlas f, ClashRecord clash, float px, float py, float thumbW, float thumbH)
+        {
+            uint texture = clash == null ? 0u : ClashThumbnailTexture(clash);
+            if (texture != 0)
+            {
+                _ui.Image(texture, px, py, thumbW, thumbH, _window.Width, _window.Height);
+                _ui.Outline(px, py, thumbW, thumbH, MathF.Max(1f, UiScale), Rgba.Hex(0xFFFFFF, 0.15f));
+            }
+            else
+            {
+                _ui.Panel(px, py, thumbW, thumbH, UiTheme.CONTROL, UiTheme.CONTROL_BORDER);
+                _ui.TextCentred(f.Small, px + thumbW * 0.5f, py + thumbH * 0.5f - S(7), "…", UiTheme.TEXT_FAINT);
+            }
+        }
+
+        /// <summary>
+        /// A group row (C-C1): a chevron (expand / collapse), the first shown member's picture stacked (pictures on), the
+        /// group's status and MIXED, its name and "n clashes · counts · assignee". Picked when it is the card's group or
+        /// all its shown members are selected.
+        /// </summary>
+        private void BuildClashGroupRow(FontAtlas f, InputState input, ClashDisplayRow line, float x, float ry, float w, float rowH, bool pictures,
+            float thumbW, float thumbH, bool hover)
+        {
+            ClashGroup group = line.Group;
+            bool current = group == _clashGroupCurrent || (_clashGroupPicks.Contains(group) && ClashMultiActive);
+            float h = rowH - S(4);
+            _ui.Rect(x, ry, w, h, current ? Rgba.Hex(0x22D3EE, 0.18f) : hover ? Rgba.Hex(0xFFFFFF, 0.1f) : Rgba.Hex(0xFFFFFF, 0.06f));
+            _ui.Rect(x, ry, S(4), h, StatusColour(group.Status));
+            _ui.Outline(x, ry, w, h, MathF.Max(1f, UiScale), current ? UiTheme.ACCENT : Rgba.Hex(0xFFFFFF, 0.14f));
+
+            // The chevron: right when collapsed, down when expanded
+            bool expanded = _clashGroupExpanded.Contains(group.Id);
+            float cw = S(26), ccx = x + S(4) + cw * 0.5f, ccy = ry + h * 0.5f, r = S(5);
+            bool chevronHover = Hover(input, x + S(4), ry, cw, h);
+            uint chevronColour = chevronHover ? UiTheme.ACCENT : UiTheme.TEXT_SOFT;
+            if (expanded) { _ui.Triangle(ccx - r, ccy - r * 0.5f, ccx + r, ccy - r * 0.5f, ccx, ccy + r * 0.6f, chevronColour); }
+            else { _ui.Triangle(ccx - r * 0.5f, ccy - r, ccx - r * 0.5f, ccy + r, ccx + r * 0.6f, ccy, chevronColour); }
+
+            float tx = x + S(4) + cw;
+            if (pictures)
+            {
+                // Two offset frames behind the first member's picture read as "several"
+                float px = tx, py = ry + S(3);
+                float pw = thumbW - S(8), ph = thumbH - S(6);
+                _ui.Outline(px + S(8), py, pw, ph, MathF.Max(1f, UiScale), Rgba.Hex(0xFFFFFF, 0.2f));
+                _ui.Outline(px + S(4), py + S(3), pw, ph, MathF.Max(1f, UiScale), Rgba.Hex(0xFFFFFF, 0.3f));
+                DrawClashRowPicture(f, line.First, px, py + S(6), pw, ph);
+                if (CommentPencil(input, px + pw - S(14), py + S(6) + S(14), FindClashGroupComment(group))) { _clashGroupMarkupClick = group; }
+                tx = px + thumbW + S(6);
+            }
+            float tw = x + w - S(8) - tx;
+            float after = tx + _ui.Text(f.Small, tx, ry + S(5), line.Status, StatusColour(group.Status)) + S(8);
+            if (line.Mixed) { after += _ui.Text(f.Small, after, ry + S(5), "MIXED", Rgba.Hex(0xF59E0B)) + S(8); }
+            float tagW = _ui.TextRight(f.Small, x + w - S(8), ry + S(5), "GROUP", UiTheme.TEXT_FAINT);
+            if (pictures)
+            {
+                _ui.TextWrapped(f.Body, tx, ry + S(22), tw, line.Title, UiTheme.TEXT, maxLines: 2);
+                _ui.TextWrapped(f.Small, tx, ry + S(62), tw, line.Detail, UiTheme.TEXT_MUTED, maxLines: 2);
+            }
+            else
+            {
+                // Text rows: status, MIXED and the counts on the first line, the name under them
+                float detailW = x + w - S(16) - tagW - after;
+                if (detailW > S(40)) { _ui.TextWrapped(f.Small, after, ry + S(5), detailW, line.Detail, UiTheme.TEXT_MUTED, maxLines: 1); }
+                bool pencil = CommentPencil(input, x + w - S(20), ry + S(32), FindClashGroupComment(group));
+                if (pencil) { _clashGroupMarkupClick = group; }
+                _ui.TextWrapped(f.Body, tx, ry + S(23), tw - (FindClashGroupComment(group) != null ? S(30) : 0f), line.Title, UiTheme.TEXT, maxLines: 1);
+            }
+
+            if (hover && input.LeftPressed)
+            {
+                input.ConsumeClicks();
+                if (chevronHover) { _clashGroupChevron = group; }
+                else { _clashGroupClick = group; }
+            }
         }
 
         /// <summary>
@@ -461,6 +677,10 @@ namespace BimGo.Game
             {
                 // TO COMMENTS in progress (C-B2): its progress and CANCEL in place of the details
                 BuildClashBatchProgress(f, input, x, cy, w);
+            }
+            else if (_clashGroupCurrent != null)
+            {
+                BuildClashGroupCard(f, input, x, cy, w); // C-C1: a group row was clicked
             }
             else if (clash == null)
             {
@@ -515,10 +735,21 @@ namespace BimGo.Game
             if (_clashBatch == null)
             {
                 float halfW = (w - S(6)) * 0.5f, ty = y + ClashCardButtonsY - S(34);
-                string make = ClashMultiActive ? ClashCommentsLabel()
-                    : clash != null && FindClashComment(clash) != null ? "UPDATE COMMENT" : "TO COMMENT";
-                if (SmallButton(f, input, x, ty, halfW, S(28), make)) { ClashToComment(); }
-                if (SmallButton(f, input, x + halfW + S(6), ty, halfW, S(28), "MARKUP")) { OpenClashMarkup(clash); }
+                ClashGroup group = _clashGroupCurrent;
+                if (group != null)
+                {
+                    // C-C1: one comment for the whole group
+                    string makeGroup = FindClashGroupComment(group) != null ? "UPDATE GROUP COMMENT" : "GROUP TO COMMENT";
+                    if (SmallButton(f, input, x, ty, halfW, S(28), makeGroup)) { ClashGroupToComment(group); }
+                    if (SmallButton(f, input, x + halfW + S(6), ty, halfW, S(28), "MARKUP")) { OpenClashGroupMarkup(group); }
+                }
+                else
+                {
+                    string make = ClashMultiActive ? ClashCommentsLabel()
+                        : clash != null && FindClashComment(clash) != null ? "UPDATE COMMENT" : "TO COMMENT";
+                    if (SmallButton(f, input, x, ty, halfW, S(28), make)) { ClashToComment(); }
+                    if (SmallButton(f, input, x + halfW + S(6), ty, halfW, S(28), "MARKUP")) { OpenClashMarkup(clash); }
+                }
             }
 
             // Bottom buttons

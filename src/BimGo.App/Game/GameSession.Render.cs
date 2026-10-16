@@ -1,4 +1,4 @@
-using System.Numerics;
+﻿using System.Numerics;
 using BimGo.Audio;
 using BimGo.Format;
 using BimGo.Game.Guns;
@@ -48,7 +48,7 @@ namespace BimGo.Game
                 (J(" · ", InputAction.GoHome, InputAction.SetHome), "Go home · Set home here"),
                 ((m.DescribeRange(InputAction.Gun1, 9) + " · " + m.DescribeJoined(" · ", false, InputAction.PreviousGun, InputAction.NextGun)).ToUpperInvariant(), "Select gun (9 Place: family library)"),
                 (J(" / ", InputAction.GunModePrevious, InputAction.GunModeNext), "Gun mode (Measure, Demolish)"),
-                (J(" ", InputAction.Unarmed), "Unarmed: no gun, no gun panel or hints (again takes it out)"),
+                (J(" ", InputAction.Unarmed), "None: no gun, no gun panel or hints (again takes it out)"),
                 (m.Label(InputAction.Gun2).ToUpperInvariant() + " AGAIN", "Measure: distance / area / angle / clearance"),
                 (J(" ", InputAction.GizmoDrop), "Gizmo / Clone / Place: drop onto the surface below"),
                 (J(" · ", InputAction.ScanHide, InputAction.ScanIsolate), "Scan gun: hide target · isolate its category"),
@@ -70,7 +70,7 @@ namespace BimGo.Game
                 (J(" ", InputAction.PhotoMode), "Photo mode: hi-res stills and 360° panoramas"),
                 (J(" · ", InputAction.Fullscreen, InputAction.Screenshot), "Fullscreen · Screenshot"),
                 ("ESC → CONTROLS", "Every key, and changing them"),
-                (J(" ", InputAction.Help), "Hide help · BimGo " + Program.Version)
+                (J(" ", InputAction.Help), "Hide help · BimGo " + Program.Version + " · Revit® is a trademark of Autodesk, Inc.")
             };
             if (pad)
             {
@@ -221,6 +221,7 @@ namespace BimGo.Game
             Gl.Disable(Gl.BLEND);
 
             _renderer.DrawSky(Camera);
+            UpdateGrass(); // grass round: builds / uploads the grass field when needed
 
             var p = new SceneDrawParams
             {
@@ -259,6 +260,7 @@ namespace BimGo.Game
                     _renderer.DrawSectionCaps(Camera.ViewProjection, Camera.Planes, Camera.Position, _groupVisible, Dynamics, _capColour, extent);
                 }
                 _renderer.DrawGround(Camera, _groundZ);
+                DrawGrass(p); // grass round: blades over the grass materials (Realistic)
 
                 // Gun highlights (scan target, primed demolitions, gizmo target…)
                 Gun active = _guns[_activeGun];

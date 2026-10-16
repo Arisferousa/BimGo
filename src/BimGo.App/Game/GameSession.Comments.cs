@@ -463,6 +463,14 @@ namespace BimGo.Game
                     changed = true;
                 }
             }
+            foreach (BimGo.Clashes.ClashGroup group in _clashDocument.Groups ?? Enumerable.Empty<BimGo.Clashes.ClashGroup>())
+            {
+                if (group.CommentId != null && ids.Contains(group.CommentId))
+                {
+                    group.CommentId = null; // C-C1: a deleted group comment
+                    changed = true;
+                }
+            }
             if (changed)
             {
                 ClashesChanged();

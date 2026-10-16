@@ -1,4 +1,4 @@
-// The class belongs to the Scene namespace
+﻿// The class belongs to the Scene namespace
 namespace BimGo.Scene
 {
     /// <summary>
@@ -25,6 +25,9 @@ namespace BimGo.Scene
 
         /// <summary>Clash mode (Round C-B): the docked clash list, free cursor, flying.</summary>
         Clashes,
+
+        /// <summary>Sky round: the pause menu's own keys (the options preview).</summary>
+        PauseMenu,
 
         /// <summary>Keys that can't be rebound (Esc, menus and panels' mouse, Alt+F4). Listed for reference and clash checks.</summary>
         Fixed
@@ -87,7 +90,10 @@ namespace BimGo.Scene
         // Clash mode (Round C-B)
         ClashNext, ClashPrevious, ClashFrame, ClashStatusNew, ClashStatusActive, ClashStatusReviewed, ClashStatusApproved,
         ClashStatusResolved, ClashSelectInRevit, ClashFlyUp, ClashFlyDown, ClashView, ClashSectionToggle,
-        ClashSelectAll,
+        ClashSelectAll, ClashPictures, ClashGroup, ClashUngroup,
+
+        // Pause menu (sky round)
+        MenuPreview,
 
         // Fixed (not rebindable)
         Back, CloseWindow, Click, DragLook, FineAdjust, PhotoZoom, OpenFile, PadClick, PadMenuBack
@@ -272,7 +278,7 @@ namespace BimGo.Scene
             Add(InputAction.NextGun, c, "Next gun", P, "Shift+WheelDown");
             Add(InputAction.GunModePrevious, c, "Gun mode: previous (Measure, Demolish)", P, "WheelUp");
             Add(InputAction.GunModeNext, c, "Gun mode: next (Measure, Demolish)", P, "WheelDown");
-            Add(InputAction.Unarmed, c, "Unarmed: no gun (again, or a gun key, arms)", P, "0");
+            Add(InputAction.Unarmed, c, "None: no gun (again, or a gun key, arms)", P, "0");
             Add(InputAction.GunPrimary, c, "Gun primary (fire)", P, "LMB");
             Add(InputAction.GunSecondary, c, "Gun secondary", P, "RMB");
             Add(InputAction.ClearMarkers, c, "Clear this gun's markers", P, "X");
@@ -353,6 +359,12 @@ namespace BimGo.Scene
             Add(InputAction.ClashView, c, "Model view: ghost / wireframe / real / hidden", P, "G");
             Add(InputAction.ClashSectionToggle, c, "Section box on / off (on: around the current clash)", P, "B");
             Add(InputAction.ClashSelectAll, c, "Select all shown clashes (focus on them all) / clear", P, "Ctrl+A");
+            Add(InputAction.ClashPictures, c, "Row pictures on / off", P, "P");
+            Add(InputAction.ClashGroup, c, "Group the selected clashes", P, "Ctrl+G");
+            Add(InputAction.ClashUngroup, c, "Ungroup the picked group / take the selected clashes out of their groups", P, "Ctrl+Shift+G");
+
+            // Pause menu (sky round)
+            Add(InputAction.MenuPreview, InputContext.PauseMenu, "Options preview: the scene with the graphics settings only (again or Esc returns)", P, "Tab");
 
             // Fixed
             Fixed(InputAction.Back, "Pause menu · back · cancel · stop", P, true, InputContext.Fixed, "Esc");
@@ -427,6 +439,12 @@ namespace BimGo.Scene
             Pad(InputAction.ClashSelectInRevit, "PadX");
             Pad(InputAction.ClashFlyUp, "PadRT");
             Pad(InputAction.ClashFlyDown, "PadLT");
+            Pad(InputAction.ClashView, "PadUp");               // sky round: the rest of clash mode on the pad
+            Pad(InputAction.ClashSectionToggle, "PadDown");
+            Pad(InputAction.ClashSelectAll, "PadRB+PadX");
+            Pad(InputAction.ClashPictures, "PadBack");
+            Pad(InputAction.Unarmed, "PadRB+PadB");
+            Pad(InputAction.MenuPreview, "PadY");
 
             return list.ToArray();
         }
@@ -457,7 +475,7 @@ namespace BimGo.Scene
             InputContext.General, InputContext.Movement, InputContext.Guns, InputContext.Tools,
             InputContext.ScanGun, InputContext.MeasureGun, InputContext.CommentGun, InputContext.DemolishGun, InputContext.GizmoGuns,
             InputContext.Holding, InputContext.Markup, InputContext.SectionEditor, InputContext.PhotoMode, InputContext.SunPanel,
-            InputContext.Tour, InputContext.Clashes, InputContext.Fixed
+            InputContext.Tour, InputContext.Clashes, InputContext.PauseMenu, InputContext.Fixed
         };
 
         /// <summary>A group's heading.</summary>
@@ -479,6 +497,7 @@ namespace BimGo.Scene
             InputContext.SunPanel => "Sun panel",
             InputContext.Tour => "Bookmark tour",
             InputContext.Clashes => "Clash mode",
+            InputContext.PauseMenu => "Pause menu",
             _ => "Fixed (not rebindable)"
         };
 
@@ -494,6 +513,7 @@ namespace BimGo.Scene
             InputContext.SunPanel => "Shadows / sun panel or Esc closes it; the sun time keys work.",
             InputContext.Tour => "While a bookmark tour plays (Esc stops it).",
             InputContext.Clashes => "Clash detection's docked list (the clash mode key or Esc leaves): the move keys fly, run speeds up, RMB-drag looks, the wheel scrolls the list.",
+            InputContext.PauseMenu => "While the pause menu shows (not in its panels).",
             InputContext.Fixed => "Text boxes also keep Enter, Tab, Backspace, ↑ / ↓, Ctrl+V and Esc. Gamepad in menus and editors: the look stick moves the cursor, the move stick scrolls (menus) or looks (editors).",
             _ => null
         };
@@ -545,7 +565,7 @@ namespace BimGo.Scene
                     InputAction.Click, InputAction.DragLook)),
                 new InputSituation("Recording a video", Array.Empty<InputContext>(), new[] { InputAction.Fullscreen }),
                 new InputSituation("Start screen", Array.Empty<InputContext>(), Join(padMenu, InputAction.OpenFile, InputAction.Click)),
-                new InputSituation("Pause menu and panels", Array.Empty<InputContext>(), Join(padMenu,
+                new InputSituation("Pause menu and panels", new[] { InputContext.PauseMenu }, Join(padMenu,
                     InputAction.Help, InputAction.Fullscreen, InputAction.Screenshot, InputAction.Refresh, InputAction.Save, InputAction.SaveAs,
                     InputAction.Undo, InputAction.Redo, InputAction.Click))
             };

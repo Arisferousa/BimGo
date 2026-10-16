@@ -1,4 +1,4 @@
-// The class belongs to the Rendering namespace
+﻿// The class belongs to the Rendering namespace
 namespace BimGo.Rendering
 {
     /// <summary>
@@ -154,6 +154,56 @@ void main()
         /// tint is worked out in display values). uTintMode: 0 = Revit tint off, otherwise multiply (Revit's blend,
         /// confirmed on the same model).</para>
         /// </summary>
+        /// <summary>
+        /// Sky round: a procedural cloud layer (value-noise fbm on a plane above the eye, drifting by uCloudOffset;
+        /// uCloudCover 0 = clear, 1 = overcast). Shared by the sky and the scene's sky reflections. Costs nothing at
+        /// 0 % cover (one uniform branch).
+        /// </summary>
+        public const string CLOUD_GLSL = @"
+uniform float uCloudCover;
+uniform vec2 uCloudOffset;
+float cloudHash(vec2 p)
+{
+    p = fract(p * vec2(123.34, 456.21));
+    p += dot(p, p + 45.32);
+    return fract(p.x * p.y);
+}
+float cloudNoise(vec2 p)
+{
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    vec2 u = f * f * (3.0 - 2.0 * f);
+    return mix(mix(cloudHash(i), cloudHash(i + vec2(1.0, 0.0)), u.x),
+               mix(cloudHash(i + vec2(0.0, 1.0)), cloudHash(i + vec2(1.0, 1.0)), u.x), u.y);
+}
+float cloudFbm(vec2 p)
+{
+    float a = 0.5;
+    float s = 0.0;
+    for (int i = 0; i < 5; i++)
+    {
+        s += a * cloudNoise(p);
+        p = p * 2.03 + vec2(17.1, 9.2);
+        a *= 0.5;
+    }
+    return s / 0.96875;
+}
+// Clouds in a direction: rgb = colour, a = cover. light = the sun's colour (dims at night), sky = the horizon colour.
+vec4 cloudLayer(vec3 dir, vec3 sunDir, vec3 light, vec3 sky)
+{
+    if (uCloudCover <= 0.001 || dir.z <= 0.0) return vec4(0.0);
+    vec2 p = dir.xy / (dir.z + 0.06) * 1.6 + uCloudOffset;
+    float n = cloudFbm(p);
+    float t = mix(0.72, -0.25, uCloudCover);
+    float a = smoothstep(t, t + 0.35, n) * smoothstep(0.0, 0.12, dir.z);
+    float thick = clamp((n - t) * 1.5, 0.0, 1.0);
+    vec3 lit = sky * 0.75 + light * 0.3;
+    vec3 col = mix(lit, lit * 0.68, thick * (0.4 + 0.6 * uCloudCover));
+    col += light * 0.35 * pow(max(dot(dir, sunDir), 0.0), 12.0) * (1.0 - thick);
+    return vec4(col, a);
+}
+";
+
         public const string MATERIALS_GLSL = @"
 uniform int uRealistic;
 uniform sampler2D uMaterialTable;
@@ -162,6 +212,8 @@ uniform sampler2DArray uTex1;
 uniform sampler2DArray uTex2;
 uniform sampler2DArray uTex3;
 uniform int uReflections;
+uniform vec4 uWaterTint;
+uniform float uWaterReflect;
 uniform vec3 uSkyZenith;
 uniform vec3 uSkyHorizon;
 uniform int uTintMode;
@@ -232,7 +284,11 @@ vec4 realisticColour(int id, vec2 uv, vec2 dx, vec2 dy)
 vec3 skyColour(vec3 dir)
 {
     float h = dir.z;
-    return h >= 0.0 ? mix(uSkyHorizon, uSkyZenith, pow(clamp(h, 0.0, 1.0), 0.55)) : uSkyHorizon * 0.55;
+    if (h < 0.0) return uSkyHorizon * 0.55;
+    vec3 c = mix(uSkyHorizon, uSkyZenith, pow(clamp(h, 0.0, 1.0), 0.55));
+    // Sky round: the clouds in reflections (the sun's colour lights them; uSunDir / uSunColor from SUN_GLSL)
+    vec4 cloud = cloudLayer(dir, uSunDir, uSun == 1 ? uSunColor * 2.6 : vec3(0.6), uSkyHorizon);
+    return mix(c, cloud.rgb, cloud.a);
 }
 
 // t5: shine (0-1), roughness (0-1), flags (1 = metal, 2 = water), ripple strength
@@ -580,7 +636,7 @@ vec3 shoulder(vec3 c)
 }
 ";
 
-        public const string SCENE_FS = "#version 330 core\n" + CLIP_GLSL + SUN_GLSL + AO_GLSL + LIGHTS_GLSL + MATERIALS_GLSL + @"
+        public const string SCENE_FS = "#version 330 core\n" + CLIP_GLSL + SUN_GLSL + AO_GLSL + LIGHTS_GLSL + CLOUD_GLSL + MATERIALS_GLSL + @"
 in vec3 vWorld;
 in vec3 vNormal;
 in vec4 vColor;
@@ -614,6 +670,8 @@ void main()
         base.rgb = r.rgb;
         reflectivity = r.a;
         shine = reflectionInfo(vMaterial);
+        // Grass round: water's body colour (rgb, a = how much) when one is picked
+        if ((int(shine.z + 0.5) & 2) != 0 && uWaterTint.a > 0.0) base.rgb = mix(base.rgb, uWaterTint.rgb, uWaterTint.a);
         if (uReflectDebug == 1) base.rgb = reflectionDebugColour(shine, reflectivity);
         else if (uReflectDebug == 2) base.rgb = probeDebugColour(vWorld, gl_FrontFacing ? normalize(vNormal) : -normalize(vNormal));
     }
@@ -693,6 +751,7 @@ void main()
                 else fresnel *= weight;
                 // Metals: the reflection takes the metal's colour (kept fairly bright: chrome is near white)
                 if (metal) env *= mix(base.rgb, vec3(1.0), 0.5);
+                if (water) fresnel *= uWaterReflect; // grass round: water's reflection strength
                 lit = mix(lit, env, fresnel);
                 // Water: the sun glints on the ripples (water is usually outdoors, so no shadow lookup)
                 if (water)
@@ -776,7 +835,7 @@ void main()
     gl_Position = vec4(p, 0.0, 1.0);
 }";
 
-        public const string SKY_FS = @"#version 330 core
+        public const string SKY_FS = "#version 330 core\n" + CLOUD_GLSL + @"
 in vec2 vNdc;
 uniform mat4 uInvViewProj;
 uniform vec3 uEye;
@@ -785,6 +844,7 @@ uniform vec3 uSunDir;
 uniform vec3 uZenith;
 uniform vec3 uHorizon;
 uniform vec3 uSunDisc;
+uniform vec3 uSunShape;
 out vec4 oColor;
 void main()
 {
@@ -799,11 +859,15 @@ void main()
         : mix(horizon * 0.88, ground, clamp(-h * 5.0, 0.0, 1.0));
     float line = 1.0 - smoothstep(0.0, 0.0035, abs(h));
     c = mix(c, horizon * 0.72, line * 0.7);
+    // Sky round: uSunShape = (cos of the disc's outer edge, cos of its inner edge, glare multiplier)
     if (uSun == 1)
     {
         float d = max(dot(dir, uSunDir), 0.0);
-        c += uSunDisc * (smoothstep(0.99955, 0.99975, d) + 0.35 * pow(d, 64.0) + 0.15 * pow(d, 8.0));
+        float glare = uSunShape.z * (1.0 - 0.75 * uCloudCover);
+        c += uSunDisc * (smoothstep(uSunShape.x, uSunShape.y, d) + glare * (0.35 * pow(d, 64.0) + 0.15 * pow(d, 8.0)));
     }
+    vec4 cloud = cloudLayer(dir, uSunDir, uSun == 1 ? uSunDisc * 0.9 : vec3(0.6), horizon);
+    c = mix(c, cloud.rgb, cloud.a);
     oColor = vec4(c, 1.0);
 }";
 
@@ -844,6 +908,145 @@ void main()
     if (uLightCount > 0) { c += albedo * artificialLight(vWorld, vec3(0.0, 0.0, 1.0), ao); }
     c = mix(c, uFogColor, clamp(d / 1200.0, 0.0, 1.0));
     oColor = vec4(shoulder(c), 1.0);
+}";
+
+        #endregion
+
+        #region Grass (grass round, build B)
+
+        /// <summary>
+        /// Grass blades: one instance per blade on a world-anchored grid around the eye (so blades stay put as you
+        /// walk), placed from the grass map (RG32F: height, palette index + 1; 0 = no grass). Seven vertices per blade
+        /// (a three-segment tapering strip, bent by its lean and the wind). Blades with no grass under them, behind the
+        /// eye or past the distance collapse to nothing. A second, sparser grid with wider blades covers the far ring.
+        /// </summary>
+        public const string GRASS_VS = @"#version 330 core
+uniform mat4 uViewProj;
+uniform vec3 uEye;
+uniform sampler2D uGrassMap;
+uniform vec3 uGrassArea;
+uniform vec2 uGrassSize;
+uniform vec3 uGrassPalette[16];
+uniform float uSpacing;
+uniform int uSide;
+uniform float uInner;
+uniform float uFadeIn;
+uniform float uFadeOut;
+uniform float uRadius;
+uniform float uBladeHeight;
+uniform float uBladeWidth;
+uniform float uTime;
+out vec3 vWorld;
+out vec3 vNormal;
+out vec3 vColour;
+out float vT;
+float bladeHash(vec2 p, float k)
+{
+    p = fract(p * vec2(0.1031, 0.1030) + k * 0.0973);
+    p += dot(p, p.yx + 33.33);
+    return fract((p.x + p.y) * p.x);
+}
+void collapse()
+{
+    gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+    vWorld = vec3(0.0);
+    vNormal = vec3(0.0, 0.0, 1.0);
+    vColour = vec3(0.0);
+    vT = 0.0;
+}
+void main()
+{
+    // Nine vertices per blade (the first and last repeated: degenerate joins in one strip), a clump per instance
+    int blade = gl_VertexID / 9;
+    int v = clamp(gl_VertexID - blade * 9 - 1, 0, 6);
+    float k = float(blade) * 7.13;
+
+    // The clump's grid cell (world-anchored), each blade jittered inside it
+    int ix = gl_InstanceID % uSide;
+    int iy = gl_InstanceID / uSide;
+    vec2 cell = floor(uEye.xy / uSpacing) + vec2(float(ix - uSide / 2), float(iy - uSide / 2));
+    float h0 = bladeHash(cell, 1.0 + k), h1 = bladeHash(cell, 2.0 + k), h2 = bladeHash(cell, 3.0 + k), h3 = bladeHash(cell, 4.0 + k);
+    vec2 root = (cell + vec2(h0, h1)) * uSpacing;
+    float d = length(root - uEye.xy);
+    if (d < uInner || d > uRadius) { collapse(); return; }
+
+    // The grass map: nothing here, or the height and colour
+    vec2 g = (root - uGrassArea.xy) / uGrassArea.z;
+    ivec2 t = ivec2(floor(g));
+    if (t.x < 0 || t.y < 0 || t.x >= int(uGrassSize.x) || t.y >= int(uGrassSize.y)) { collapse(); return; }
+    vec2 texel = texelFetch(uGrassMap, t, 0).rg;
+    if (texel.g < 0.5) { collapse(); return; }
+
+    // Behind the eye or well off screen (a margin for tall blades): skip
+    vec4 clipRoot = uViewProj * vec4(root, texel.r, 1.0);
+    if (clipRoot.w < -0.5 || abs(clipRoot.x) > clipRoot.w * 1.3 + 1.0 || abs(clipRoot.y) > clipRoot.w * 1.3 + 1.0) { collapse(); return; }
+
+    // Shape: grows in over the inner band and shrinks over the outer one (the two grids cross-fade; the far edge
+    // blends into the textured ground), varied per blade
+    float fade = smoothstep(uInner, uFadeIn, d) * (1.0 - smoothstep(uFadeOut, uRadius, d));
+    if (uFadeIn <= uInner) fade = 1.0 - smoothstep(uFadeOut, uRadius, d);
+    float height = uBladeHeight * (0.55 + 0.9 * h2 * h2) * fade;
+    if (height < 0.004) { collapse(); return; }
+    float width = uBladeWidth * (0.7 + 0.6 * h3);
+    float yaw = h0 * 6.2831853;
+    vec3 right = vec3(cos(yaw), sin(yaw), 0.0);
+    vec3 facing = vec3(-right.y, right.x, 0.0);
+    float lean = (h1 - 0.5) * 0.9;
+    float sway = sin(uTime * 1.7 + root.x * 0.35 + root.y * 0.22) * 0.16 + sin(uTime * 3.1 + h2 * 6.28) * 0.05;
+    vec3 bend = facing * lean + vec3(0.71, 0.71, 0.0) * sway;
+
+    // Vertex: two per level (0, 0.35, 0.7), then the tip; a curved taper
+    float level = v >= 6 ? 1.0 : float(v / 2) * 0.35;
+    float side = v >= 6 ? 0.0 : (v % 2 == 0 ? -0.5 : 0.5);
+    vec3 world = vec3(root, texel.r)
+        + right * (side * width * (1.0 - level * level * 0.8))
+        + vec3(0.0, 0.0, height * level)
+        + bend * (height * level * level);
+    vWorld = world;
+    vec3 along = normalize(vec3(0.0, 0.0, 1.0) + bend * (2.0 * level));
+    vNormal = normalize(mix(normalize(cross(right, along)), vec3(0.0, 0.0, 1.0), 0.55));
+    int palette = clamp(int(texel.g + 0.5) - 1, 0, 15);
+    vec3 base = uGrassPalette[palette] * (0.8 + 0.4 * h3);
+    vColour = base * vec3(1.0 + 0.16 * (h1 - 0.5), 1.0 + 0.06 * (h0 - 0.5), 1.0 - 0.15 * h0);
+    vT = level;
+    gl_Position = uViewProj * vec4(world, 1.0);
+}";
+
+        /// <summary>
+        /// Grass blades' colours: darker at the root, the sun (with shadows), a little light through the blade when
+        /// looking towards the sun, the artificial lights, fog; both sides lit alike.
+        /// </summary>
+        public const string GRASS_FS = "#version 330 core\n" + CLIP_GLSL + SUN_GLSL + AO_GLSL + LIGHTS_GLSL + @"
+in vec3 vWorld;
+in vec3 vNormal;
+in vec3 vColour;
+in float vT;
+uniform vec3 uEye;
+uniform vec3 uFogColor;
+uniform float uFogDensity;
+out vec4 oColor;
+void main()
+{
+    if (sectionCut(vWorld)) discard;
+    vec3 n = normalize(vNormal);
+    float ao = mix(0.35, 1.0, vT);
+    // Darker at the root, lighter and a little yellower at the tip
+    vec3 albedo = mix(vColour * 0.55, vColour * 1.15 + vec3(0.05, 0.05, -0.01), vT);
+    vec3 c;
+    if (uSun == 1)
+    {
+        c = albedo * sunLight(n, vWorld, uEye, ao);
+        vec3 view = normalize(vWorld - uEye);
+        c += albedo * uSunColor * (0.35 * pow(max(dot(view, uSunDir), 0.0), 3.0) * vT);
+    }
+    else
+    {
+        c = albedo * (0.45 * ao + 0.45 * max(n.z, 0.0));
+    }
+    if (uLightCount > 0) c += albedo * artificialLight(vWorld, n, ao);
+    float dist = length(vWorld - uEye);
+    float fog = clamp(1.0 - exp(-dist * uFogDensity), 0.0, 0.65);
+    oColor = vec4(shoulder(mix(c, uFogColor, fog)), 1.0);
 }";
 
         #endregion

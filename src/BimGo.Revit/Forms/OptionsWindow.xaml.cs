@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using BimGo.Scene;
 using Media = System.Windows.Media;
 using Win = System.Windows;
@@ -282,6 +282,22 @@ namespace BimGo.Forms
         {
             CheckTextures.IsChecked = _settings.ExtractTextures;
             CheckProxyTextures.IsChecked = _settings.ProxyMissingTextures;
+            CheckWaterAsset.IsChecked = _settings.WaterFromAsset;
+            TextWaterKeywords.Text = MaterialOverrides.FormatKeywords(_settings.WaterKeywords);
+            CheckWaterOpaque.IsChecked = _settings.WaterKeywordsOpaque;
+            TextGlassKeywords.Text = MaterialOverrides.FormatKeywords(_settings.GlassKeywords);
+            TextGrassKeywords.Text = MaterialOverrides.FormatKeywords(_settings.GrassKeywords);
+            ComboWaterColour.Items.Clear();
+            foreach ((string label, string _) in MaterialOverrides.WATER_PRESETS) { ComboWaterColour.Items.Add(label); }
+            ComboWaterColour.Items.Add("Custom");
+            int waterPreset = MaterialOverrides.WaterPresetIndex(_settings.WaterColour);
+            ComboWaterColour.SelectedIndex = waterPreset >= 0 ? waterPreset : MaterialOverrides.WATER_PRESETS.Length;
+            TextWaterColour.Text = _settings.WaterColour ?? string.Empty;
+            SliderWaterReflection.Value = Math.Round(_settings.WaterReflection * 100.0);
+            CheckGrassBlades.IsChecked = _settings.GrassBlades;
+            ComboGrassDensity.Items.Clear();
+            foreach (string density in new[] { "Low", "Medium", "High" }) { ComboGrassDensity.Items.Add(density); }
+            ComboGrassDensity.SelectedIndex = Math.Clamp(_settings.GrassDensity, 0, 2);
             ButtonReviewTextures.Visibility = _textureServices?.Review != null ? Win.Visibility.Visible : Win.Visibility.Collapsed;
             UpdateOverrideSummary();
             ComboTextureSize.Items.Clear();
@@ -474,6 +490,15 @@ namespace BimGo.Forms
                 : ColourMode.Whitecard;
             _settings.ExtractTextures = CheckTextures.IsChecked == true;
             _settings.ProxyMissingTextures = CheckProxyTextures.IsChecked == true;
+            _settings.WaterFromAsset = CheckWaterAsset.IsChecked == true;
+            _settings.WaterKeywords = MaterialOverrides.ParseKeywords(TextWaterKeywords.Text);
+            _settings.WaterKeywordsOpaque = CheckWaterOpaque.IsChecked == true;
+            _settings.GlassKeywords = MaterialOverrides.ParseKeywords(TextGlassKeywords.Text);
+            _settings.GrassKeywords = MaterialOverrides.ParseKeywords(TextGrassKeywords.Text);
+            _settings.WaterColour = (TextWaterColour.Text ?? string.Empty).Trim(); // Sanitise keeps a valid #RRGGBB, else empty
+            _settings.WaterReflection = (float)(SliderWaterReflection.Value / 100.0);
+            _settings.GrassBlades = CheckGrassBlades.IsChecked == true;
+            _settings.GrassDensity = Math.Clamp(ComboGrassDensity.SelectedIndex, 0, 2);
             _settings.TextureMaxSize = MaterialData.TEXTURE_SIZES[Math.Clamp(ComboTextureSize.SelectedIndex, 0, MaterialData.TEXTURE_SIZES.Length - 1)];
             _settings.MaxStepHeightMm = step;
             _settings.SetEyeHeight(EyePreset.Standing, eyeStanding);
@@ -510,6 +535,22 @@ namespace BimGo.Forms
             _settings.Sanitise();
 
             DialogResult = true;
+        }
+
+        /// <summary>
+        /// Grass round: a water colour preset fills the hex box ("Custom" leaves it to type).
+        /// </summary>
+        private void ComboWaterColour_SelectionChanged(object sender, Wpf.SelectionChangedEventArgs e)
+        {
+            int index = ComboWaterColour.SelectedIndex;
+            if (index < 0 || index >= MaterialOverrides.WATER_PRESETS.Length || TextWaterColour == null) { return; }
+            TextWaterColour.Text = MaterialOverrides.WATER_PRESETS[index].Hex;
+        }
+
+        /// <summary>Grass round: the water reflection slider's readout.</summary>
+        private void SliderWaterReflection_ValueChanged(object sender, Win.RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (TextWaterReflection != null && sender is Wpf.Slider slider) { TextWaterReflection.Text = $"{slider.Value:0} %"; }
         }
 
         /// <summary>

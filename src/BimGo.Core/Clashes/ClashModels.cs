@@ -672,6 +672,12 @@ namespace BimGo.Clashes
         /// <summary>Run history, oldest first (at most <see cref="ClashDefaults.MAX_RUNS"/>).</summary>
         public List<ClashRunRecord> Runs { get; set; } = new();
 
+        /// <summary>
+        /// C-C1: clash groups (<see cref="ClashGroup"/>; null when there are none, so files without groups stay as they
+        /// were). Additive: version 1 readers ignore it.
+        /// </summary>
+        public List<ClashGroup> Groups { get; set; }
+
         /// <summary>The set with an id, or null (no allocation: the panels call it every frame).</summary>
         public SearchSet FindSet(string id)
         {
@@ -743,6 +749,7 @@ namespace BimGo.Clashes
                 }
             }
             if (Runs.Count > ClashDefaults.MAX_RUNS) { Runs.RemoveRange(0, Runs.Count - ClashDefaults.MAX_RUNS); }
+            ClashGroups.Clean(this); // C-C1: after the clash ids are fixed
             return this;
         }
     }

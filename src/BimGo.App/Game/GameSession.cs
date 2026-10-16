@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Numerics;
 using BimGo.Audio;
 using BimGo.Edits;
@@ -230,6 +230,7 @@ namespace BimGo.Game
             _clashThumbsOn = settings.ClashRowPictures;
             _showGunBar = settings.ShowGunBar;
             ReadVideoSettings(settings);
+            ReadAppearanceSettings(settings);
             UnitFormat.Read(settings);
             Hotkeys.Read(settings);
             Gamepad.Read(settings);
@@ -263,6 +264,7 @@ namespace BimGo.Game
 
             DrawLoadingFrame("Uploading geometry…");
             _renderer = new SceneRenderer { AutoProxy = _proxyMissing, ProxyMaterialColour = _proxyMaterialColour };
+            ApplyWaterOverride(); // QOL round: the water rule for the material table
             _renderer.Initialise(Scene, _batches);
             _renderer.Probes.SetOccluders(_bvh, ProbeOccluderMask());
             InitialiseTextures();
@@ -531,6 +533,7 @@ namespace BimGo.Game
                 previous = now;
                 _clock += dt;
                 _frameTime = dt;
+                AdvanceSky(dt); // sky round: clouds drift, the sky look reaches the renderer
 
                 if (_window.IsMinimised)
                 {
@@ -678,7 +681,7 @@ namespace BimGo.Game
             {
                 if (_wheelOpen) { CloseGunWheel(pick: false); }
                 else if (captured) { current.OnCancel(); }
-                else if (_paused && (ClosePush() || CloseComments() || CloseBookmarks() || CloseTextures() || CloseLibrary() || CloseRooms() || CloseClashes() || CloseGeometry() || CloseControls())) { /* back to the pause menu */ }
+                else if (_paused && (CloseMenuPreview() || ClosePush() || CloseComments() || CloseBookmarks() || CloseTextures() || CloseLibrary() || CloseRooms() || CloseClashes() || CloseGeometry() || CloseControls())) { /* back to the pause menu */ }
                 else { SetPaused(!_paused); }
             }
             if (input.Pressed(InputAction.Help)) { _showHelp = !_showHelp; }
@@ -963,7 +966,7 @@ namespace BimGo.Game
             if (unarmed) { _guns[_activeGun].OnDeselect(); }
             _unarmed = unarmed;
             Sound.Play(SoundId.UiClick);
-            Toast(unarmed ? $"Unarmed ({Hotkeys.Label(InputAction.Unarmed)} or a gun key takes a gun out)" : _guns[_activeGun].Name, 1.6f);
+            Toast(unarmed ? $"No gun ({Hotkeys.Label(InputAction.Unarmed)} or a gun key takes a gun out)" : _guns[_activeGun].Name, 1.6f);
         }
 
         private void SelectGun(int index)
@@ -998,6 +1001,7 @@ namespace BimGo.Game
         private void SetPaused(bool paused)
         {
             _paused = paused;
+            _menuPreview = false; // QOL round: the options preview never outlives the pause menu
             CloseOverlay(); // a dropdown / confirm belongs to the screen it was opened on
             if (paused) { ShowUi(); } // e.g. focus lost while hidden: come back to a normal HUD
             _window.SetCaptured(!paused && _window.IsActive && !CursorModeOpen);
@@ -1198,6 +1202,7 @@ namespace BimGo.Game
             settings.ProbeResolution = _probeHigh ? 256 : 128;
             settings.RevitTint = _tintMode;
             settings.ProxyMissingTextures = _proxyMissing;
+            WriteAppearanceSettings(settings);
             settings.ProxyMaterialColour = _proxyMaterialColour;
             settings.Msaa = _msaa;
             settings.AmbientOcclusion = _ambientOcclusion;

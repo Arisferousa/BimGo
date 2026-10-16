@@ -1,4 +1,4 @@
-using BimGo.Audio;
+﻿using BimGo.Audio;
 using BimGo.Clashes;
 using BimGo.Native;
 using BimGo.Platform;
@@ -127,6 +127,7 @@ namespace BimGo.Game
         {
             if (!_clashesOpen) { return false; }
             if (CloseOverlay()) { return true; }
+            if (CancelClashImport()) { return true; } // QOL round: Esc leaves the import card first
             if (_clashPickerRule != null)
             {
                 _clashPickerRule = null;
@@ -201,7 +202,7 @@ namespace BimGo.Game
             float ix = x + S(24), iw = w - S(48);
             float cy = y + S(18);
             _ui.Text(f.Small, ix, cy + S(8), "CLASHES", UiTheme.ACCENT, S(2f));
-            int tab = Segmented(f, input, ix + iw - S(260), cy, S(260), CLASH_TABS, _clashTab);
+            int tab = _clashImport != null ? _clashTab : Segmented(f, input, ix + iw - S(260), cy, S(260), CLASH_TABS, _clashTab);
             if (tab != _clashTab)
             {
                 _clashTab = tab;
@@ -216,6 +217,21 @@ namespace BimGo.Game
             float lw = MathF.Min(S(400), iw * 0.42f);
             float rx = ix + lw + S(24), rw = iw - lw - S(24);
             float bottom = buttonsY - S(16);
+
+            // QOL round: an import waiting on decisions takes the body and the buttons
+            if (_clashImport != null)
+            {
+                BuildClashImportCard(f, input, ix, cy, iw, bottom);
+                float iwBtn = S(200);
+                bool doImport = MenuButton(f, ix, buttonsY, iwBtn, "IMPORT", primary: true, danger: false, height: S(44));
+                bool cancel = MenuButton(f, ix + iwBtn + S(12), buttonsY, iwBtn, "CANCEL", false, false, height: S(44));
+                DrawOverlays(f, input, x, y, w, h);
+                if (!_clashesOpen || _clashImport == null) { return; }
+                if (doImport) { FinishClashImport(_clashImport); }
+                else if (cancel) { CancelClashImport(); }
+                return;
+            }
+
             _ui.Rect(rx - S(12), cy, MathF.Max(1f, UiScale), bottom - cy, UiTheme.CARD_BORDER);
 
             ClashTest run = null, review = null;
@@ -237,9 +253,10 @@ namespace BimGo.Game
             float bx = ix;
             bool runAll = MenuButton(f, bx, buttonsY, bw, "RUN ALL", primary: true, danger: false, enabled: AnyClashTestEnabled(), height: S(44));
             bx += bw + gap;
-            bool export = MenuButton(f, bx, buttonsY, bw, "EXPORT REPORT…", false, false, height: S(44));
+            // QOL round: the tab's own tests / sets go to and from files (the clash report lives in clash mode now)
+            bool export = MenuButton(f, bx, buttonsY, bw, _clashTab == 0 ? "EXPORT TESTS…" : "EXPORT SETS…", false, false, height: S(44));
             bx += bw + gap;
-            bool import = MenuButton(f, bx, buttonsY, bw, "IMPORT REPORT…", false, false, height: S(44));
+            bool import = MenuButton(f, bx, buttonsY, bw, _clashTab == 0 ? "IMPORT TESTS…" : "IMPORT SETS…", false, false, height: S(44));
             bx += bw + gap;
             bool resetAll = MenuButton(f, bx, buttonsY, bw, "RESET ALL…", false, danger: true, height: S(44));
             bool close = MenuButton(f, ix + iw - closeW, buttonsY, closeW, _clashModeOn ? "← CLASH MODE" : "CLOSE", false, false, height: S(44));
@@ -258,8 +275,8 @@ namespace BimGo.Game
             if (run != null) { RequestClashRun(new[] { run }); return; }
             if (review != null) { EnterClashMode(null, review.Id); return; }
             if (runAll) { RequestClashRun(_clashDocument.Tests.Where(t => t.Enabled).ToList()); return; }
-            if (export) { ExportClashReport(); return; }
-            if (import) { ImportClashReport(); return; }
+            if (export) { ExportClashSetup(_clashTab == 0 ? ClashSetupKind.Tests : ClashSetupKind.Sets); return; }
+            if (import) { ImportClashSetup(_clashTab == 0 ? ClashSetupKind.Tests : ClashSetupKind.Sets); return; }
             if (resetAll) { RequestClashReset(_clashDocument.Tests); }
         }
 

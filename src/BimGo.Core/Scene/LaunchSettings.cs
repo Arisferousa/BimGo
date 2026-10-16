@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using System.Text.Json.Serialization;
 
 // The class belongs to the Scene namespace
@@ -261,6 +261,65 @@ namespace BimGo.Scene
 
         /// <summary>The default emissive keywords.</summary>
         public static List<string> DefaultEmissiveKeywords() => new() { "lamp", "bulb", "led", "lens", "diffuser", "emissive", "glow", "illum", "light source", "luminaire" };
+
+        /// <summary>
+        /// QOL round: materials with Revit's Water appearance asset are water (animated ripples). On by default; off =
+        /// only <see cref="WaterKeywords"/> make water. Applied at Go / Export and again in the session (pause menu →
+        /// Appearance).
+        /// </summary>
+        public bool WaterFromAsset { get; set; } = true;
+
+        /// <summary>
+        /// Material name fragments (case-insensitive) that make a material water. By default only see-through materials
+        /// match (so "Water Heater" stays opaque); <see cref="WaterKeywordsOpaque"/> lets opaque ones match too.
+        /// </summary>
+        public List<string> WaterKeywords { get; set; } = DefaultWaterKeywords();
+
+        /// <summary>The default water keywords (the 2026-10-08 name rule).</summary>
+        public static List<string> DefaultWaterKeywords() => new() { "water" };
+
+        /// <summary>Water keywords also match opaque materials (off by default).</summary>
+        public bool WaterKeywordsOpaque { get; set; }
+
+        /// <summary>
+        /// Material name fragments (case-insensitive) that make an opaque material see-through glass at Go / Export
+        /// (empty by default: glass is found by transparency and glass schemas). Not applied to "mirror" materials.
+        /// Transparency is baked into the geometry, so changing it in the session takes effect at the next Go / Export.
+        /// </summary>
+        public List<string> GlassKeywords { get; set; } = new();
+
+        /// <summary>
+        /// Sky round: material name fragments (case-insensitive) that the grass build draws as grass blades in the
+        /// Realistic mode (stored now; the blades come in the grass build).
+        /// </summary>
+        public List<string> GrassKeywords { get; set; } = DefaultGrassKeywords();
+
+        /// <summary>The default grass keywords.</summary>
+        public static List<string> DefaultGrassKeywords() => new() { "grass", "lawn", "turf" };
+
+        /// <summary>Grass round: grass blades on the grass materials in the Realistic mode (on by default).</summary>
+        public bool GrassBlades { get; set; } = true;
+
+        /// <summary>Grass round: blade density, 0 low, 1 medium (default), 2 high.</summary>
+        public int GrassDensity { get; set; } = 1;
+
+        /// <summary>Grass round: blade height (mm; blades vary ±40 % around it).</summary>
+        public int GrassHeightMm { get; set; } = 120;
+
+        /// <summary>Grass round: how far blades reach from the eye (m); the textured surface carries on beyond.</summary>
+        public int GrassDistance { get; set; } = 40;
+
+        /// <summary>Grass height range (mm) and distance range (m).</summary>
+        public const int MIN_GRASS_HEIGHT = 30, MAX_GRASS_HEIGHT = 400, MIN_GRASS_DISTANCE = 15, MAX_GRASS_DISTANCE = 80;
+
+        /// <summary>
+        /// Grass round: water's body colour (#RRGGBB), or empty for the material's own (Revit's) colour. Presets in
+        /// <see cref="MaterialOverrides.WATER_PRESETS"/>.
+        /// </summary>
+        public string WaterColour { get; set; } = string.Empty;
+
+        /// <summary>Grass round: how much water reflects the sky / room (0–1, 1 = as before).</summary>
+        public float WaterReflection { get; set; } = 1f;
 
         /// <summary>Mouse sensitivity multiplier.</summary>
         public float MouseSensitivity { get; set; } = 1.0f;
@@ -662,6 +721,14 @@ namespace BimGo.Scene
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .Take(40)
                 .ToList();
+            WaterKeywords = MaterialOverrides.CleanKeywords(WaterKeywords ?? DefaultWaterKeywords());
+            GlassKeywords = MaterialOverrides.CleanKeywords(GlassKeywords);
+            GrassKeywords = MaterialOverrides.CleanKeywords(GrassKeywords ?? DefaultGrassKeywords());
+            GrassDensity = Math.Clamp(GrassDensity, 0, 2);
+            GrassHeightMm = Math.Clamp(GrassHeightMm, MIN_GRASS_HEIGHT, MAX_GRASS_HEIGHT);
+            GrassDistance = Math.Clamp(GrassDistance, MIN_GRASS_DISTANCE, MAX_GRASS_DISTANCE);
+            WaterColour = TryParseColour(WaterColour, out _) ? "#" + WaterColour.Trim().TrimStart('#').ToUpperInvariant() : string.Empty;
+            WaterReflection = float.IsFinite(WaterReflection) ? Math.Clamp(WaterReflection, 0f, 1f) : 1f;
             TriangleThreshold = Math.Clamp(TriangleThreshold, 100, 5_000_000);
             Msaa = Msaa >= 4 ? 4 : Msaa >= 2 ? 2 : 0;
             MouseSensitivity = Math.Clamp(MouseSensitivity, 0.1f, 3f);

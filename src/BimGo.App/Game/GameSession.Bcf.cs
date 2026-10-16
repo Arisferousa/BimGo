@@ -104,6 +104,17 @@ namespace BimGo.Game
                         AddClashComponent(topic.Viewpoint.Selection, clash.A, system);
                         AddClashComponent(topic.Viewpoint.Selection, clash.B, system);
                     }
+                    else if (record.ClashId != null && clashes != null && BimGo.Clashes.ClashGroups.Find(_clashDocument, record.ClashId) is BimGo.Clashes.ClashGroup group)
+                    {
+                        // A group comment (C-C1): every element of every member, once each
+                        var seen = new HashSet<string>(StringComparer.Ordinal);
+                        foreach (string id in group.ClashIds)
+                        {
+                            if (!clashes.TryGetValue(id, out BimGo.Clashes.ClashRecord member)) { continue; }
+                            if (seen.Add(member.A.Key)) { AddClashComponent(topic.Viewpoint.Selection, member.A, system); }
+                            if (seen.Add(member.B.Key)) { AddClashComponent(topic.Viewpoint.Selection, member.B, system); }
+                        }
+                    }
                     else
                     {
                         BcfComponent component = ComponentFor(record, system);
