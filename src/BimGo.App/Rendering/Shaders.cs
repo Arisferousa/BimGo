@@ -140,7 +140,8 @@ void main()
         /// strength (metals 0.30 / 0.55 / 0.90, other surfaces half that, Fresnel adds the rest at grazing angles);
         /// roughness blurs the sky towards its average and takes away most of the grazing boost. Glass: Revit's
         /// value × 2.5, kept within 10–50 %. uReflectGain is the user's strength slider. Water tilts the normal with six
-        /// travelling waves (uTime), faded with distance, and adds a sun glint (no shadow test).</para>
+        /// travelling waves (uTime: the water clock, which runs at the ripple speed), scaled by uWaterWaves (ripple strength; 0
+        /// skips the waves) and stretched by uWaveScale (wave size: the wavelengths × it, the slope unchanged) and faded with distance, and adds a sun glint (no shadow test).</para>
         /// <para>Probes (build B): where the plan grid (uProbeGrid) names a baked probe, the reflection reads it instead
         /// of the sky: box-projected against the probe's room box, the mip level from roughness, two probes blended near
         /// room boundaries. Faces use the light-shadow face table (FACE_F / FACE_U / LIGHT_PAD from LIGHTS_GLSL, which
@@ -214,6 +215,8 @@ uniform sampler2DArray uTex3;
 uniform int uReflections;
 uniform vec4 uWaterTint;
 uniform float uWaterReflect;
+uniform float uWaterWaves;
+uniform float uWaveScale;
 uniform vec3 uSkyZenith;
 uniform vec3 uSkyHorizon;
 uniform int uTintMode;
@@ -327,10 +330,10 @@ vec3 waterNormal(vec3 world, vec3 n, float amount, float dist)
     vec2 slope = vec2(0.0);
     for (int i = 0; i < 6; i++)
     {
-        float phase = dot(WAVE_DIR[i], world.xy) * WAVE_K[i] + uTime * WAVE_SPEED[i];
+        float phase = dot(WAVE_DIR[i], world.xy) * (WAVE_K[i] / uWaveScale) + uTime * WAVE_SPEED[i];
         slope += WAVE_DIR[i] * (WAVE_AMP[i] * WAVE_K[i] * cos(phase));
     }
-    slope *= amount * 0.2 / (1.0 + dist * 0.06);
+    slope *= amount * uWaterWaves * 0.2 / (1.0 + dist * 0.06);
     return normalize(n + vec3(-slope, 0.0));
 }
 
@@ -696,7 +699,7 @@ void main()
     int shineFlags = int(shine.z + 0.5);
     float dist = length(vWorld - uEye);
     bool reflecting = uRealistic == 1 && uReflections == 1 && uReflectDebug == 0;
-    if (reflecting && (shineFlags & 2) != 0 && n.z > 0.3) n = waterNormal(vWorld, n, shine.w, dist);
+    if (reflecting && (shineFlags & 2) != 0 && n.z > 0.3 && uWaterWaves > 0.001) n = waterNormal(vWorld, n, shine.w, dist);
     float ao = ambientOcclusion(vWorld, uEye);
     vec3 lit;
     if (uSun == 1)
@@ -935,6 +938,7 @@ uniform float uFadeOut;
 uniform float uRadius;
 uniform float uBladeHeight;
 uniform float uBladeWidth;
+uniform float uSway;
 uniform float uTime;
 out vec3 vWorld;
 out vec3 vNormal;
@@ -992,7 +996,7 @@ void main()
     vec3 right = vec3(cos(yaw), sin(yaw), 0.0);
     vec3 facing = vec3(-right.y, right.x, 0.0);
     float lean = (h1 - 0.5) * 0.9;
-    float sway = sin(uTime * 1.7 + root.x * 0.35 + root.y * 0.22) * 0.16 + sin(uTime * 3.1 + h2 * 6.28) * 0.05;
+    float sway = (sin(uTime * 1.7 + root.x * 0.35 + root.y * 0.22) * 0.16 + sin(uTime * 3.1 + h2 * 6.28) * 0.05) * uSway;
     vec3 bend = facing * lean + vec3(0.71, 0.71, 0.0) * sway;
 
     // Vertex: two per level (0, 0.35, 0.7), then the tip; a curved taper
@@ -1250,6 +1254,57 @@ void main()
         #endregion
 
         #region Overlay and UI
+
+        /// <summary>
+        /// Grids round A: grid lines and level outlines. Each segment is a quad whose corners share the segment's end
+        /// point and direction; the vertex shader pushes them sideways to a constant pixel width (screen-facing, like
+        /// Overlay3D.Line). aAlong is metres along the grid (for the dash-dot pattern; negative = solid, the level
+        /// outlines).
+        /// </summary>
+        public const string GRID_VS = @"#version 330 core
+layout(location = 0) in vec3 aPos;
+layout(location = 1) in vec3 aDir;
+layout(location = 2) in float aAlong;
+layout(location = 3) in float aSide;
+layout(location = 4) in vec4 aColor;
+uniform mat4 uViewProj;
+uniform vec3 uEye;
+uniform float uHalfWidth;
+out vec4 vColor;
+out float vAlong;
+void main()
+{
+    vec3 toEye = uEye - aPos;
+    vec3 side = cross(aDir, toEye);
+    float sideLength = length(side);
+    side = sideLength > 1e-6 ? side / sideLength : vec3(0.0);
+    float hw = uHalfWidth * max(length(toEye), 0.05);
+    vColor = aColor;
+    vAlong = aAlong;
+    gl_Position = uViewProj * vec4(aPos + side * (aSide * hw), 1.0);
+}";
+
+        /// <summary>
+        /// Grids round A: a Revit-like dash-dot (2.4 m dash, 0.5 m gap, 0.3 m dot, 0.5 m gap) in world metres; once
+        /// the dot would be under ~3 pixels (far away) the line turns solid so it doesn't shimmer. uDashed 0 (grids round
+        /// B, the default): solid lines.
+        /// </summary>
+        public const string GRID_FS = @"#version 330 core
+in vec4 vColor;
+in float vAlong;
+uniform float uAlpha;
+uniform int uDashed;
+out vec4 oColor;
+void main()
+{
+    if (uDashed == 1 && vAlong >= 0.0 && fwidth(vAlong) < 0.1)
+    {
+        float t = mod(vAlong, 3.7);
+        bool on = t < 2.4 || (t >= 2.9 && t < 3.2);
+        if (!on) discard;
+    }
+    oColor = vec4(vColor.rgb, vColor.a * uAlpha);
+}";
 
         public const string OVERLAY_VS = @"#version 330 core
 layout(location = 0) in vec3 aPos;

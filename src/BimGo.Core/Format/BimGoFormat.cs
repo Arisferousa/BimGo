@@ -82,6 +82,9 @@ namespace BimGo.Format
         internal const string ENTRY_MATERIAL_STREAMS = "material.bin";
         internal const string ENTRY_LIBRARY = "library.json";
 
+        /// <summary>Optional (grids round A): the host's and extracted links' grids (<see cref="GridsDto"/>).</summary>
+        internal const string ENTRY_GRIDS = "grids.json";
+
         /// <summary>Optional picture of the view at the last save (review tools round: the start screen's card).</summary>
         internal const string ENTRY_THUMBNAIL = "thumbnail.jpg";
 

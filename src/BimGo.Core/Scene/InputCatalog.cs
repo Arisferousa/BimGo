@@ -72,7 +72,7 @@ namespace BimGo.Scene
         // Views and tools
         AddBookmark, Bookmark1, Bookmark2, Bookmark3, Bookmark4, Bookmark5, Bookmark6, Bookmark7, Bookmark8, Bookmark9,
         Coordinates, Lights, Shadows, SunPanel, SunEarlier, SunEarlierFine, SunLater, SunLaterFine, SunStudy, PhotoMode,
-        SectionBox, SectionPlane, SectionClear, ClashMode,
+        SectionBox, SectionPlane, SectionClear, ClashMode, GridsPanel, GridsCycle,
 
         // Gun keys
         ScanSelectInRevit, ScanHide, ScanIsolate, MeasureNormal, CommentEdit, DemolishMode, GizmoSnap, GizmoDrop,
@@ -302,6 +302,8 @@ namespace BimGo.Scene
             Add(InputAction.SectionPlane, c, "Cut at the aimed surface", P, "Shift+P");
             Add(InputAction.SectionClear, c, "Clear all cuts", P, "Ctrl+P");
             Add(InputAction.ClashMode, c, "Clash mode on / off (docked clash list)", P, "Y");
+            Add(InputAction.GridsPanel, c, "Grids panel (also in clash mode)", P, "Shift+G");
+            Add(InputAction.GridsCycle, c, "Grids: off / level underfoot / all levels (also in clash mode)", P, "C");
 
             // Gun keys (while that gun is selected)
             Add(InputAction.ScanSelectInRevit, InputContext.ScanGun, "Select in Revit (live)", P, "R");
@@ -562,7 +564,9 @@ namespace BimGo.Scene
                 new InputSituation("Clash mode", new[] { InputContext.Clashes }, Join(padMenu,
                     InputAction.MoveForward, InputAction.MoveBack, InputAction.MoveLeft, InputAction.MoveRight, InputAction.Run,
                     InputAction.ClashMode, InputAction.Help, InputAction.HideUi, InputAction.Fullscreen, InputAction.Screenshot,
-                    InputAction.Click, InputAction.DragLook)),
+                    InputAction.Click, InputAction.DragLook, InputAction.GridsPanel, InputAction.GridsCycle)),
+                new InputSituation("Grids panel", Array.Empty<InputContext>(), Join(padMenu,
+                    InputAction.GridsPanel, InputAction.GridsCycle, InputAction.Fullscreen, InputAction.Click, InputAction.FineAdjust)),
                 new InputSituation("Recording a video", Array.Empty<InputContext>(), new[] { InputAction.Fullscreen }),
                 new InputSituation("Start screen", Array.Empty<InputContext>(), Join(padMenu, InputAction.OpenFile, InputAction.Click)),
                 new InputSituation("Pause menu and panels", new[] { InputContext.PauseMenu }, Join(padMenu,

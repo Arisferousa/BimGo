@@ -73,6 +73,7 @@ namespace BimGo.Game
                 saved = VisibilityFiles.Read(_visibilitySidecarPath, out string error);
                 if (error != null) { Utilities.Log_Utils.Write(error); }
             }
+            RestoreGrids(saved?.Grids); // grids round A (before the early return: grids alone make a saved state)
             if (saved == null || saved.IsEmpty) { return; }
 
             // The ground plane as it was left (relative to the default, so it survives a re-extraction)
@@ -187,7 +188,8 @@ namespace BimGo.Game
             var settings = new VisibilitySettings
             {
                 GroundOffset = MathF.Abs(groundOffset) > 0.001f ? MathF.Round(groundOffset * 1000f) / 1000f : null,
-                Section = _section.IsActive ? _section.Clone() : null
+                Section = _section.IsActive ? _section.Clone() : null,
+                Grids = GridsForSave() // grids round A
             };
             foreach (CategoryDef def in CategoryCatalog.All)
             {

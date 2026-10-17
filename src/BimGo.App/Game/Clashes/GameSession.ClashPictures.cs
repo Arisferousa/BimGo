@@ -127,6 +127,13 @@ namespace BimGo.Game
                 return;
             }
 
+            if (_clashReportJob != null)
+            {
+                _clashThumbWanted.Clear();
+                StepClashReport(); // C-C3: the report's pictures
+                return;
+            }
+
             if (!_clashThumbsOn || _paused || _clashThumbWanted.Count == 0)
             {
                 _clashThumbWanted.Clear();
@@ -557,11 +564,13 @@ namespace BimGo.Game
         }
 
         /// <summary>
-        /// A clash comment's text: "Clash: test · A × B · crossing 32 mm · Level 2", then the clash's notes.
+        /// A clash comment's text: "Clash: test · A × B · crossing 32 mm · Level 2" (grids round B: " · Near C-4 : Level 2"
+        /// when the grids panel's "In clash comments" is on), then the clash's notes.
         /// </summary>
-        private static string ClashCommentText(ClashRecord clash, ClashTest test)
+        private string ClashCommentText(ClashRecord clash, ClashTest test)
         {
-            string text = $"Clash: {test?.Name ?? "clash test"} · {clash.A.Label} × {clash.B.Label} · {ClashAmount(clash)} · {ClashLevel(clash)}";
+            string text = $"Clash: {test?.Name ?? "clash test"} · {clash.A.Label} × {clash.B.Label} · {ClashAmount(clash)} · {ClashLevel(clash)}" +
+                (_grids.ClashComments ? ClashGridSuffix(clash, offset: false) : string.Empty);
             return string.IsNullOrWhiteSpace(clash.Notes) ? text : text + " · Notes: " + clash.Notes.Trim();
         }
 

@@ -294,6 +294,10 @@ namespace BimGo.Forms
             ComboWaterColour.SelectedIndex = waterPreset >= 0 ? waterPreset : MaterialOverrides.WATER_PRESETS.Length;
             TextWaterColour.Text = _settings.WaterColour ?? string.Empty;
             SliderWaterReflection.Value = Math.Round(_settings.WaterReflection * 100.0);
+            SliderWaterRipple.Value = Math.Round(LaunchSettings.CleanLookScale(_settings.WaterRipple) * 100.0);
+            SliderWaterRippleSpeed.Value = Math.Round(LaunchSettings.CleanLookScale(_settings.WaterRippleSpeed) * 100.0);
+            SliderGrassSway.Value = Math.Round(LaunchSettings.CleanLookScale(_settings.GrassSway) * 100.0);
+            SliderWaterWaveScale.Value = Math.Round(LaunchSettings.CleanWaveScale(_settings.WaterWaveScale) * 100.0);
             CheckGrassBlades.IsChecked = _settings.GrassBlades;
             ComboGrassDensity.Items.Clear();
             foreach (string density in new[] { "Low", "Medium", "High" }) { ComboGrassDensity.Items.Add(density); }
@@ -497,6 +501,10 @@ namespace BimGo.Forms
             _settings.GrassKeywords = MaterialOverrides.ParseKeywords(TextGrassKeywords.Text);
             _settings.WaterColour = (TextWaterColour.Text ?? string.Empty).Trim(); // Sanitise keeps a valid #RRGGBB, else empty
             _settings.WaterReflection = (float)(SliderWaterReflection.Value / 100.0);
+            _settings.WaterRipple = LaunchSettings.CleanLookScale((float)(SliderWaterRipple.Value / 100.0));
+            _settings.WaterRippleSpeed = LaunchSettings.CleanLookScale((float)(SliderWaterRippleSpeed.Value / 100.0));
+            _settings.GrassSway = LaunchSettings.CleanLookScale((float)(SliderGrassSway.Value / 100.0));
+            _settings.WaterWaveScale = LaunchSettings.CleanWaveScale((float)(SliderWaterWaveScale.Value / 100.0));
             _settings.GrassBlades = CheckGrassBlades.IsChecked == true;
             _settings.GrassDensity = Math.Clamp(ComboGrassDensity.SelectedIndex, 0, 2);
             _settings.TextureMaxSize = MaterialData.TEXTURE_SIZES[Math.Clamp(ComboTextureSize.SelectedIndex, 0, MaterialData.TEXTURE_SIZES.Length - 1)];
@@ -551,6 +559,23 @@ namespace BimGo.Forms
         private void SliderWaterReflection_ValueChanged(object sender, Win.RoutedPropertyChangedEventArgs<double> e)
         {
             if (TextWaterReflection != null && sender is Wpf.Slider slider) { TextWaterReflection.Text = $"{slider.Value:0} %"; }
+        }
+
+        /// <summary>
+        /// Water round W: the ripple strength / speed, wave size and grass sway sliders' readouts (0 % reads as still / paused).
+        /// Fires while the XAML loads, before every readout exists, hence the null checks.
+        /// </summary>
+        private void SliderLookScale_ValueChanged(object sender, Win.RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (sender is not Wpf.Slider slider) { return; }
+            Wpf.TextBlock readout = ReferenceEquals(slider, SliderWaterRipple) ? TextWaterRipple
+                : ReferenceEquals(slider, SliderWaterRippleSpeed) ? TextWaterRippleSpeed
+                : ReferenceEquals(slider, SliderGrassSway) ? TextGrassSway
+                : ReferenceEquals(slider, SliderWaterWaveScale) ? TextWaterWaveScale
+                : null;
+            if (readout == null) { return; }
+            string zero = ReferenceEquals(slider, SliderWaterRippleSpeed) ? "Paused" : "Still";
+            readout.Text = slider.Value <= 0.0 ? zero : $"{slider.Value:0} %";
         }
 
         /// <summary>

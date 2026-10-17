@@ -98,6 +98,8 @@ namespace BimGo.Format
                     {
                         WriteLibrary(zip, scene);
                     }
+                    GridsDto grids = GridFiles.ToDto(scene.Grids); // grids round A (optional)
+                    if (grids != null) { WriteJson(zip, BimGoFormat.ENTRY_GRIDS, grids, BimGoFormat.JSON_COMPACT); }
                     MaterialData materials = document.Materials ?? scene.Materials;
                     if (materials != null && !materials.IsEmpty && materials.VertexMaterial.Length == scene.Vertices.Length)
                     {
@@ -190,7 +192,7 @@ namespace BimGo.Format
 
             foreach (LevelInfo level in scene.Levels)
             {
-                model.Levels.Add(new LevelDto { Name = level.Name, Elevation = level.Elevation });
+                model.Levels.Add(new LevelDto { Name = level.Name, Elevation = level.Elevation, Storey = level.IsStorey ? null : false });
             }
 
             foreach (RoomInfo room in scene.Rooms)

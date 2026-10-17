@@ -173,6 +173,18 @@ namespace BimGo.Rendering
         /// <summary>Grass round: water's reflection strength (0–1).</summary>
         public float WaterReflect = 1f;
 
+        /// <summary>Water round W: ripple strength (0–2, 1 = as before; 0 skips the waves).</summary>
+        public float WaterWaves = 1f;
+
+        /// <summary>Water round W: wave size (0.25–4, 1 = as before; the wavelengths × it).</summary>
+        public float WaveScale = 1f;
+
+        /// <summary>
+        /// Water round W: the water clock (seconds; the session advances it at the ripple speed, so a speed change
+        /// doesn't jump the waves). Drives the ripples instead of the frame time.
+        /// </summary>
+        public float WaterClock;
+
         /// <summary>The fog / clear colour: the sky's horizon when the sun is on.</summary>
         public Vector3 FogColour => Lighting.Enabled ? Lighting.Horizon : FOG_COLOUR;
 
@@ -305,7 +317,7 @@ namespace BimGo.Rendering
         {
             public int ViewProj, Model, Eye, LightDir, FogColor, FogDensity, Whitecard, Plan, ClipZ, Override, Ghost;
             public int Realistic, Reflections, SkyZenith, SkyHorizon, TintMode;
-            public int ReflectThreshold, ReflectGain, ReflectDebug, Time, CloudCover, CloudOffset, WaterTint, WaterReflect;
+            public int ReflectThreshold, ReflectGain, ReflectDebug, Time, CloudCover, CloudOffset, WaterTint, WaterReflect, WaterWaves, WaveScale;
             public int ProbesOn, ProbeGridOrigin, ProbeGridCell, ProbeGridSize, ProbeMaxLod;
             public int ClipCount, ClipPlanes;
 
@@ -356,6 +368,8 @@ namespace BimGo.Rendering
                 CloudOffset = p.Uniform("uCloudOffset"),
                 WaterTint = p.Uniform("uWaterTint"),
                 WaterReflect = p.Uniform("uWaterReflect"),
+                WaterWaves = p.Uniform("uWaterWaves"),
+                WaveScale = p.Uniform("uWaveScale"),
                 ClipCount = p.Uniform("uClipCount"),
                 ClipPlanes = p.Uniform("uClipPlanes")
             };
@@ -1355,11 +1369,13 @@ namespace BimGo.Rendering
             Gl.Uniform1(u.ReflectThreshold, p.ReflectThreshold > 0f ? p.ReflectThreshold : 0.5f);
             Gl.Uniform1(u.ReflectGain, p.ReflectGain > 0f ? p.ReflectGain : 1f);
             Gl.Uniform1(u.ReflectDebug, p.ReflectDebug);
-            Gl.Uniform1(u.Time, p.Time);
+            Gl.Uniform1(u.Time, WaterClock); // uTime only moves the water here (water round W)
             Gl.Uniform1(u.CloudCover, Sky.CloudCover);
             Gl.Uniform2(u.CloudOffset, Sky.CloudOffset.X, Sky.CloudOffset.Y);
             Gl.Uniform4(u.WaterTint, WaterTint.X, WaterTint.Y, WaterTint.Z, WaterTint.W);
             Gl.Uniform1(u.WaterReflect, WaterReflect);
+            Gl.Uniform1(u.WaterWaves, WaterWaves);
+            Gl.Uniform1(u.WaveScale, Math.Clamp(WaveScale, 0.25f, 4f));
             bool probes = (p.Probes || p.ReflectDebug == 2) && _probesActive;
             Gl.Uniform1(u.ProbesOn, probes ? 1 : 0);
             if (probes)

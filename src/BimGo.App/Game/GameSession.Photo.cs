@@ -61,6 +61,7 @@ namespace BimGo.Game
             if (_photoOpen) { return; }
             if (_paused) { SetPaused(false); }
             CloseSunPanel();
+            CloseGridsPanel(); // grids round A: one panel at a time
             CloseSunHours();
             CloseSectionEditor();
             ShowUi();

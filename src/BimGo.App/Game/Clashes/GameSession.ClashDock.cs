@@ -45,9 +45,11 @@ namespace BimGo.Game
         private const int DROP_DOCK_TEST = 11, DROP_DOCK_STATUS = 12, DROP_DOCK_LEVEL = 13, DROP_DOCK_VIEW = 14, DROP_DOCK_REPORT = 15;
 
         /// <summary>QOL round: the clash report's choices (moved here from the Clashes panel).</summary>
-        private static readonly string[] CLASH_REPORT_ACTIONS = { "EXPORT REPORT…", "IMPORT REPORT…" };
+        /// <summary>REPORT… (C-C3: the HTML / XML report's card first; the BimGo JSON exchange as before).</summary>
+        private static readonly string[] CLASH_REPORT_ACTIONS = { "EXPORT REPORT (HTML / XML)…", "EXPORT BIMGO REPORT (JSON)…", "IMPORT BIMGO REPORT (JSON)…" };
 
-        // A REPORT… pick, run after the dock is drawn (it opens a file dialog): 0 none, 1 export, 2 import
+        // A REPORT… pick or the report card's EXPORT…, run after the dock is drawn (they open file dialogs): 0 none,
+        // 1 the report card, 2 export JSON, 3 import JSON, 4 the card's EXPORT…, 5 the same after its large-report confirm
         private int _clashReportAction;
 
         private static readonly KeyHint CLASH_HINT = new(() =>
@@ -64,6 +66,7 @@ namespace BimGo.Game
         private void SetClashReviewTest(string testId)
         {
             if (testId == _clashReviewTest) { return; }
+            LeaveClashTool(); // C-C2: a tool works on one test's list
             ClearClashSelection(); // C-B3: a selection belongs to one test
             _clashReviewTest = testId;
             _clashLevelFilter = null;
@@ -146,7 +149,7 @@ namespace BimGo.Game
                 return;
             }
             ClashRow row = MakeClashRow(clash);
-            _clashCardDetail = row.Detail + (_clashCurrentRoom == null ? string.Empty : " · " + _clashCurrentRoom);
+            _clashCardDetail = row.Detail + (_clashCurrentRoom == null ? string.Empty : " · " + _clashCurrentRoom) + ClashGridSuffix(clash, offset: true); // grids round B
             _clashCardAssign = string.IsNullOrEmpty(clash.AssignedTo) ? "ASSIGN…" : "ASSIGNED: " + clash.AssignedTo;
             _clashCardNotes = string.IsNullOrEmpty(clash.Notes) ? "NOTES…" : "NOTES (EDIT)…";
         }
@@ -163,9 +166,7 @@ namespace BimGo.Game
             ? (clash.Distance > 0 ? $"crossing {UnitFormat.Length(clash.Distance, 3)}" : "crossing")
             : clash.Distance <= 0 ? "touching" : $"gap {UnitFormat.Length(clash.Distance, 3)}";
 
-        private static string ClashLevel(ClashRecord clash) =>
-            !string.IsNullOrWhiteSpace(clash.A.Level) && clash.A.Level != "—" ? clash.A.Level
-            : !string.IsNullOrWhiteSpace(clash.B.Level) && clash.B.Level != "—" ? clash.B.Level : "—";
+        private static string ClashLevel(ClashRecord clash) => ClashGrouping.LevelOf(clash); // C-C2: one rule, in Core
 
         private int LevelOrder(string name)
         {
@@ -242,7 +243,10 @@ namespace BimGo.Game
         {
             BuildStatusPanel(f);
             BuildCoordinatePanel(f, S(20), S(20) + S(146) + S(10));
+            DrawGridLabels(f); // grids round A: bubbles and tags under the dock
             BuildClashDock(f, _window.Input, width, height);
+            DrawGridHoverLabel(f); // grids round B
+            BuildGridsPanel(f, _window.Input);
             BuildHelp(f, height);
             BuildRoomBanner(f, width);
             BuildLiveBanner(f, width, height);
@@ -257,6 +261,17 @@ namespace BimGo.Game
             RefreshClashList();
             BeginOverlays(input); // an open dropdown takes this frame's click and wheel
             float w = MathF.Min(S(420), width * 0.42f);
+
+            // C-C2: GROUP BY BOX… folds the dock away (its bar only); PICK POINTS and CLUSTER keep it beside their bar
+            if (_clashTool == CLASH_TOOL_BOX)
+            {
+                _clashDockW = 0f;
+                BuildClashToolBar(f, input, width, height, width);
+                DrawOverlays(f, input, 0f, 0f, width, height);
+                RunClashToolBarAction();
+                return;
+            }
+            if (_clashTool != CLASH_TOOL_NONE) { BuildClashToolBar(f, input, width, height, width - w - S(16)); }
             float x = width - w - S(16), y = S(16), h = height - S(32);
             _ui.Panel(x, y, w, h, UiTheme.PANEL_STRONG, UiTheme.PANEL_BORDER);
             bool overDock = Hover(input, x, y, w, h);
@@ -284,7 +299,7 @@ namespace BimGo.Game
             }
             cy += S(38);
 
-            // Filters: status, level (dropdowns), search
+            // Filters: status, level, show (C-C2: SHOW joins them; search moved down beside SELECT ALL)
             float third = (iw - S(12)) / 3f;
             if (DropdownButton(f, input, ix, cy, third, S(30), _clashStatusLabel ?? "STATUS", IsDropdownOpen(_clashList, DROP_DOCK_STATUS)))
             {
@@ -308,28 +323,11 @@ namespace BimGo.Game
                     _clashDockScroll = 0;
                 });
             }
-            float sx = ix + (third + S(6)) * 2f;
-            bool searchHover = Hover(input, sx, cy, third, S(30));
-            _ui.Panel(sx, cy, third, S(30), UiTheme.CONTROL, _clashSearchFocused ? UiTheme.ACCENT : UiTheme.CONTROL_BORDER);
-            if (_clashSearchLength == 0 && !_clashSearchFocused)
+            float showX = ix + (third + S(6)) * 2f;
+            if (DropdownButton(f, input, showX, cy, third, S(30), CLASH_SHOW_LABELS[_clashGroupFilter], IsDropdownOpen(_clashList, DROP_DOCK_SHOW)))
             {
-                _ui.Text(f.Small, sx + S(8), cy + S(8), "search…", UiTheme.TEXT_FAINT);
+                OpenDropdown(_clashList, DROP_DOCK_SHOW, showX, cy, third, S(30), CLASH_SHOW_CHOICES, _clashGroupFilter, SetClashGroupFilter);
             }
-            else
-            {
-                float used = _ui.Text(f.Small, sx + S(8), cy + S(8), _clashSearch.AsSpan(0, _clashSearchLength), UiTheme.TEXT);
-                if (_clashSearchFocused && ((int)(_clock * 2f) & 1) == 0) { _ui.Rect(sx + S(9) + used, cy + S(7), S(1.5f), S(16), UiTheme.TEXT_SOFT); }
-            }
-            if (input.LeftPressed && overDock)
-            {
-                bool focus = searchHover;
-                if (focus != _clashSearchFocused)
-                {
-                    _clashSearchFocused = focus;
-                    if (focus) { input.ReleaseAll(); }
-                }
-            }
-            else if (input.LeftPressed && _clashSearchFocused) { _clashSearchFocused = false; }
             cy += S(38);
 
             // The view (dropdown), the section box toggle and the row pictures toggle (C-B2)
@@ -342,28 +340,51 @@ namespace BimGo.Game
             if (SmallButton(f, input, ix + viewW + toggleW + S(12), cy, toggleW, S(30), _clashThumbLabel ?? "PICTURES")) { ToggleClashThumbnails(); }
             cy += S(38);
 
-            // C-B4: select every clash the list shows (a focus on them all) / clear · QOL round: the clash report
-            float reportW = MathF.Min(S(120), iw * 0.32f), selectW = iw - reportW - S(6);
-            if (SmallButton(f, input, ix, cy, selectW, S(28), ClashSelectAllLabel())) { ToggleSelectAllShownClashes(); }
-            if (DropdownButton(f, input, ix + selectW + S(6), cy, reportW, S(28), "REPORT…", IsDropdownOpen(_clashList, DROP_DOCK_REPORT)))
+            // Search · C-B4: select every clash the list shows / clear · QOL round: the clash report (C-C2: one row)
+            float reportW = MathF.Min(S(100), iw * 0.24f), selectW = MathF.Min(S(140), iw * 0.32f);
+            float searchW = iw - reportW - selectW - S(12);
+            float sx = ix;
+            bool searchHover = Hover(input, sx, cy, searchW, S(28));
+            _ui.Panel(sx, cy, searchW, S(28), UiTheme.CONTROL, _clashSearchFocused ? UiTheme.ACCENT : UiTheme.CONTROL_BORDER);
+            if (_clashSearchLength == 0 && !_clashSearchFocused)
             {
-                OpenDropdown(_clashList, DROP_DOCK_REPORT, ix + selectW + S(6), cy, reportW, S(28), CLASH_REPORT_ACTIONS, -1, i => _clashReportAction = i + 1);
+                _ui.Text(f.Small, sx + S(8), cy + S(7), "search…", UiTheme.TEXT_FAINT);
+            }
+            else
+            {
+                float used = _ui.Text(f.Small, sx + S(8), cy + S(7), _clashSearch.AsSpan(0, _clashSearchLength), UiTheme.TEXT);
+                if (_clashSearchFocused && ((int)(_clock * 2f) & 1) == 0) { _ui.Rect(sx + S(9) + used, cy + S(6), S(1.5f), S(16), UiTheme.TEXT_SOFT); }
+            }
+            if (input.LeftPressed && overDock)
+            {
+                bool focus = searchHover;
+                if (focus != _clashSearchFocused)
+                {
+                    _clashSearchFocused = focus;
+                    if (focus) { input.ReleaseAll(); }
+                }
+            }
+            else if (input.LeftPressed && _clashSearchFocused) { _clashSearchFocused = false; }
+            float selectX = sx + searchW + S(6);
+            if (SmallButton(f, input, selectX, cy, selectW, S(28), ClashSelectAllLabel())) { ToggleSelectAllShownClashes(); }
+            float reportX = selectX + selectW + S(6);
+            if (DropdownButton(f, input, reportX, cy, reportW, S(28), "REPORT…", IsDropdownOpen(_clashList, DROP_DOCK_REPORT)))
+            {
+                float menuW = MathF.Max(reportW, S(260));
+                OpenDropdown(_clashList, DROP_DOCK_REPORT, reportX + reportW - menuW, cy, menuW, S(28), CLASH_REPORT_ACTIONS, -1, i => _clashReportAction = i + 1);
             }
             cy += S(36);
 
-            // C-C1: grouping (GROUP / UNGROUP act on the selection or the group on the card; AUTO GROUP on the test)
-            float autoW = MathF.Min(S(120), iw * 0.28f), showW = MathF.Min(S(140), iw * 0.32f), groupW = (iw - autoW - showW - S(18)) * 0.5f;
+            // C-C1 / C-C2: GROUP and UNGROUP act on the selection or the group on the card; TOOLS ▾ holds the grouping
+            // tools (box, pick points, cluster) and the automatic methods
+            float toolsW = MathF.Min(S(150), iw * 0.36f), groupW = (iw - toolsW - S(12)) * 0.5f;
             if (SmallButton(f, input, ix, cy, groupW, S(28), _clashGroupButtonLabel ?? "GROUP")) { GroupClashes(ClashTargets(), null); }
             if (SmallButton(f, input, ix + groupW + S(6), cy, groupW, S(28), _clashUngroupButtonLabel ?? "UNGROUP")) { UngroupFromKeys(); }
-            float showX = ix + groupW * 2f + S(12);
-            if (DropdownButton(f, input, showX, cy, showW, S(28), CLASH_SHOW_LABELS[_clashGroupFilter], IsDropdownOpen(_clashList, DROP_DOCK_SHOW)))
+            float toolsX = ix + groupW * 2f + S(12);
+            if (DropdownButton(f, input, toolsX, cy, toolsW, S(28), "TOOLS", IsDropdownOpen(_clashList, DROP_DOCK_AUTO)))
             {
-                OpenDropdown(_clashList, DROP_DOCK_SHOW, showX, cy, showW, S(28), CLASH_SHOW_CHOICES, _clashGroupFilter, SetClashGroupFilter);
-            }
-            float autoX = showX + showW + S(6);
-            if (DropdownButton(f, input, autoX, cy, autoW, S(28), "AUTO GROUP", IsDropdownOpen(_clashList, DROP_DOCK_AUTO)))
-            {
-                OpenDropdown(_clashList, DROP_DOCK_AUTO, autoX, cy, autoW, S(28), CLASH_AUTO_ACTIONS, -1, RunClashAutoGroup);
+                float menuW = MathF.Min(S(300), iw);
+                OpenDropdown(_clashList, DROP_DOCK_AUTO, ix + iw - menuW, cy, menuW, S(28), CLASH_TOOL_ACTIONS, -1, RunClashToolAction);
             }
             cy += S(36);
 
@@ -373,17 +394,24 @@ namespace BimGo.Game
             ClashRecord go = BuildClashDockRows(f, input, ix, cy, iw, cardY - S(10), overDock);
             BuildClashCard(f, input, ix, cardY, iw);
 
-            // The open dropdown, on top (a pick acts here)
+            // C-C3: the label of the dot under the mouse (in the view), then the open dropdown on top (a pick acts here)
+            if (_clashTool == CLASH_TOOL_NONE) { DrawClashHoverLabel(f, input, width); }
             DrawOverlays(f, input, x, y, w, h);
+            if (RunClashToolBarAction()) { return; } // C-C2: the tool bar's buttons (they may leave the tool or open a menu)
 
             // Actions after drawing
             if (_clashReportAction != 0)
             {
                 int action = _clashReportAction;
                 _clashReportAction = 0;
-                if (action == 1) { ExportClashReport(); }
-                else { ImportClashReport(); }
-                return;
+                switch (action)
+                {
+                    case 1: OpenClashReportCard(); break; // C-C3
+                    case 2: ExportClashReport(); return;
+                    case 3: ImportClashReport(); return;
+                    case 4: StartClashReport(); return;
+                    case 5: StartClashReport(confirmed: true); return;
+                }
             }
             if (_clashMarkupClick != null && _clashModeOn)
             {
@@ -393,7 +421,13 @@ namespace BimGo.Game
                 OpenClashMarkup(markup);
                 return;
             }
-            if (go != null && _clashModeOn) { ClickClashRow(go, input.IsDown(Win32.VK_CONTROL), input.IsDown(Win32.VK_SHIFT)); }
+            if (go != null && _clashModeOn)
+            {
+                // C-C2: while picking points a row click toggles its pick; with the cluster sphere it moves the centre
+                if (_clashTool == CLASH_TOOL_PICK) { ToggleClashPick(go); }
+                else if (_clashTool == CLASH_TOOL_SPHERE) { MoveClashSphere(go); }
+                else { ClickClashRow(go, input.IsDown(Win32.VK_CONTROL), input.IsDown(Win32.VK_SHIFT)); }
+            }
 
             if (_clashGroupMarkupClick != null && _clashModeOn)
             {
@@ -412,7 +446,8 @@ namespace BimGo.Game
             if (_clashModeOn)
             {
                 if (chevron != null) { ToggleClashGroupExpanded(chevron); }
-                else if (groupClick != null) { ClickClashGroupRow(groupClick, input.IsDown(Win32.VK_CONTROL)); }
+                else if (groupClick != null && _clashTool == CLASH_TOOL_PICK) { ToggleClashPicks(ShownClashGroupMembers(groupClick)); } // C-C2
+                else if (groupClick != null && _clashTool == CLASH_TOOL_NONE) { ClickClashGroupRow(groupClick, input.IsDown(Win32.VK_CONTROL)); }
                 if (menuRow != null) { OpenClashRowMenu(menuRow, _clashMenuAt); }
             }
             if (overDock && (input.LeftPressed || input.RightPressed)) { input.ConsumeClicks(); }
@@ -678,6 +713,14 @@ namespace BimGo.Game
                 // TO COMMENTS in progress (C-B2): its progress and CANCEL in place of the details
                 BuildClashBatchProgress(f, input, x, cy, w);
             }
+            else if (_clashReportJob != null)
+            {
+                BuildClashReportProgress(f, input, x, cy, w); // C-C3: the report's pictures
+            }
+            else if (_clashReportCardOpen)
+            {
+                BuildClashReportCard(f, input, x, cy, w); // C-C3: REPORT… → EXPORT REPORT (HTML / XML)…
+            }
             else if (_clashGroupCurrent != null)
             {
                 BuildClashGroupCard(f, input, x, cy, w); // C-C1: a group row was clicked
@@ -732,7 +775,7 @@ namespace BimGo.Game
             }
 
             // Comments (C-B3): the selected clashes (or this one) → comments; MARKUP this clash's comment picture
-            if (_clashBatch == null)
+            if (_clashBatch == null && _clashReportJob == null && !_clashReportCardOpen)
             {
                 float halfW = (w - S(6)) * 0.5f, ty = y + ClashCardButtonsY - S(34);
                 ClashGroup group = _clashGroupCurrent;
@@ -759,6 +802,7 @@ namespace BimGo.Game
             if (SmallButton(f, input, x + (quarter + S(6)), by, quarter, S(28), "TESTS…"))
             {
                 if (_clashBatch != null) { FinishClashBatch(cancelled: true); } // runs and resets wait for the comments
+                CancelClashReport(); // C-C3: and for the report's pictures
                 OpenClashes();
                 return;
             }

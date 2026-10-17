@@ -64,6 +64,7 @@ namespace BimGo.Game
                 (J(" · ", InputAction.Save, InputAction.Undo, InputAction.Redo), "Save · Undo · Redo (files)"),
                 (J(" ", InputAction.FindRoom), "Find a room and go there"),
                 (J(" ", InputAction.ClashMode), "Clash mode: review clashes (Esc → CLASHES: tests and sets)"),
+                (J(" · ", InputAction.GridsCycle, InputAction.GridsPanel), "Grids: off / underfoot / all · Grids panel"),
                 (J(" ", InputAction.Refresh), "Refresh from Revit (live sessions)"),
                 (J(" ", InputAction.Minimap) + " · ESC", "Minimap · Pause menu"),
                 (J(" ", InputAction.HideUi), $"Hide the UI (Esc or {m.Label(InputAction.HideUi)} shows it)"),
@@ -301,8 +302,10 @@ namespace BimGo.Game
                 _overlay.Begin(Camera);
                 for (int i = 0; i < _guns.Length; i++) { _guns[i].DrawWorld(_overlay, i == _activeGun && !_unarmed); }
                 DrawClashMarkers(_overlay);
+                DrawGrids(); // grids round A: the lines under the markers
                 _overlay.Draw(Camera, depthTest: true, alpha: 1f, additive: false);
                 _overlay.Draw(Camera, depthTest: false, alpha: 0.16f, additive: false);
+                DrawClashToolOverlay(); // C-C2: a grouping tool's dots (brighter through walls), the cluster sphere
             }
 
             // Sun hours grid (study results are content, so they show with the UI hidden too)
@@ -422,6 +425,8 @@ namespace BimGo.Game
             float levelZ = _player.Feet.Z;
             int levelIndex = LevelIndexAt(levelZ);
 
+            DrawMinimapGrids(f, mapX, mapY, mapW, mapH, cx, cy, metresPerPixel); // grids round B: under the markers
+
             // Portals and comments on this level
             for (int i = 0; i < 2; i++)
             {
@@ -490,8 +495,10 @@ namespace BimGo.Game
                 _ui.Rect(0, 0, width, height, Rgba.WithAlpha(_flashColour, 0.35f * t));
             }
 
-            // World-anchored labels
+            // World-anchored labels (grids round A: grid bubbles and level tags first, under the rest)
+            DrawGridLabels(f);
             for (int i = 0; i < _guns.Length; i++) { _guns[i].DrawLabels(_ui, i == _activeGun && !_unarmed); }
+            DrawGridHoverLabel(f); // grids round B: the hovered node, over the other labels
 
             // Crosshair
             float cx = MathF.Round(width * 0.5f), cy = MathF.Round(height * 0.5f);
@@ -502,7 +509,7 @@ namespace BimGo.Game
             _ui.Rect(cx + gap, cy - t1 * 0.5f, arm, t1, UiTheme.TEXT);
             _ui.Circle(cx, cy, S(1.8f), active.Colour, 10);
 
-            if (!_window.IsCaptured && !IsEditingComment && !_sunPanelOpen && !_sunHoursOpen)
+            if (!_window.IsCaptured && !IsEditingComment && !_sunPanelOpen && !_sunHoursOpen && !_gridsPanelOpen)
             {
                 const string hint = "Click to look around";
                 float hintWidth = UiBatch.Measure(f.Body, hint) + S(24);
@@ -516,7 +523,7 @@ namespace BimGo.Game
             // Minimap and the gun's context panel beneath it
             if (_showMap) { DrawMinimapOverlay(mapX, mapY); }
             // (hidden while the sun panel is open: the two would overlap on smaller screens)
-            if (!_sunPanelOpen && !_sunHoursOpen && !_sectionOpen && !_unarmed)
+            if (!_sunPanelOpen && !_sunHoursOpen && !_sectionOpen && !_gridsPanelOpen && !_unarmed)
             {
                 float panelTop = _showMap ? mapY + S(208) + S(12) : S(20);
                 float panelWidth = S(260), panelX = width - S(20) - panelWidth;
@@ -528,6 +535,7 @@ namespace BimGo.Game
             BuildSunIcon(f, _window.Input);
             if (_sunPanelOpen) { BuildSunPanel(f, _window.Input); }
             if (_sunHoursOpen) { BuildSunHoursPanel(f, _window.Input); }
+            BuildGridsPanel(f, _window.Input); // grids round A
             BuildSectionPanel(f, _window.Input);
             BuildSunLegend(f, S(20), height - S(52) - S(78));
 

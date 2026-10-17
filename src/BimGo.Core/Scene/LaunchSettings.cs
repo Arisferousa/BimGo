@@ -321,6 +321,27 @@ namespace BimGo.Scene
         /// <summary>Grass round: how much water reflects the sky / room (0–1, 1 = as before).</summary>
         public float WaterReflection { get; set; } = 1f;
 
+        /// <summary>Water round W: ripple strength (0–2, 1 = as before; 0 = still water, the waves are skipped).</summary>
+        public float WaterRipple { get; set; } = 1f;
+
+        /// <summary>Water round W: ripple speed (0–2, 1 = as before; 0 = the ripples stand still).</summary>
+        public float WaterRippleSpeed { get; set; } = 1f;
+
+        /// <summary>
+        /// Water round W: wave size (0.25–4, 1 = as before): scales the ripples' wavelengths (bigger = longer, broader
+        /// waves; smaller = fine chop). Ripple strength stays the same at any size.
+        /// </summary>
+        public float WaterWaveScale { get; set; } = 1f;
+
+        /// <summary>Water round W: the wave size range (25–400 %).</summary>
+        public const float MIN_WAVE_SCALE = 0.25f, MAX_WAVE_SCALE = 4f;
+
+        /// <summary>Water round W: how far grass blades sway (0–2, 1 = as before; 0 = still blades).</summary>
+        public float GrassSway { get; set; } = 1f;
+
+        /// <summary>Water round W: the top of the ripple strength / speed and grass sway ranges (200 %).</summary>
+        public const float MAX_LOOK_SCALE = 2f;
+
         /// <summary>Mouse sensitivity multiplier.</summary>
         public float MouseSensitivity { get; set; } = 1.0f;
 
@@ -729,6 +750,10 @@ namespace BimGo.Scene
             GrassDistance = Math.Clamp(GrassDistance, MIN_GRASS_DISTANCE, MAX_GRASS_DISTANCE);
             WaterColour = TryParseColour(WaterColour, out _) ? "#" + WaterColour.Trim().TrimStart('#').ToUpperInvariant() : string.Empty;
             WaterReflection = float.IsFinite(WaterReflection) ? Math.Clamp(WaterReflection, 0f, 1f) : 1f;
+            WaterRipple = CleanLookScale(WaterRipple);
+            WaterRippleSpeed = CleanLookScale(WaterRippleSpeed);
+            GrassSway = CleanLookScale(GrassSway);
+            WaterWaveScale = CleanWaveScale(WaterWaveScale);
             TriangleThreshold = Math.Clamp(TriangleThreshold, 100, 5_000_000);
             Msaa = Msaa >= 4 ? 4 : Msaa >= 2 ? 2 : 0;
             MouseSensitivity = Math.Clamp(MouseSensitivity, 0.1f, 3f);
@@ -795,6 +820,23 @@ namespace BimGo.Scene
                 clean[id] = pair.Value.Take(KeyMap.MAX_SLOTS).Select(k => k?.Trim() ?? string.Empty).ToList();
             }
             return clean;
+        }
+
+        /// <summary>
+        /// Water round W: a look scale (ripple strength / speed, grass sway) kept in 0–<see cref="MAX_LOOK_SCALE"/>,
+        /// on 5 % steps; anything unreadable is 1 (as before).
+        /// </summary>
+        public static float CleanLookScale(float value)
+        {
+            if (!float.IsFinite(value)) { return 1f; }
+            return MathF.Round(Math.Clamp(value, 0f, MAX_LOOK_SCALE) * 20f) / 20f;
+        }
+
+        /// <summary>Water round W: a wave size kept in 0.25–4 on 5 % steps; anything unreadable is 1.</summary>
+        public static float CleanWaveScale(float value)
+        {
+            if (!float.IsFinite(value)) { return 1f; }
+            return MathF.Round(Math.Clamp(value, MIN_WAVE_SCALE, MAX_WAVE_SCALE) * 20f) / 20f;
         }
 
         /// <summary>Reads "#RRGGBB" (the # optional) as 0xRRGGBB.</summary>

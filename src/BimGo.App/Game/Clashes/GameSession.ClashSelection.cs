@@ -226,10 +226,10 @@ namespace BimGo.Game
             {
                 _clashAllLabelSelected = selected;
                 _clashAllLabelShown = _clashList.Count;
-                string key = Hotkeys.Label(InputAction.ClashSelectAll);
-                _clashAllLabel = AllShownClashesSelected ? $"CLEAR ALL {selected:N0} ({key})"
-                    : selected > 1 ? $"SELECT ALL {_clashList.Count:N0} ({selected:N0} SELECTED) ({key})"
-                    : $"SELECT ALL SHOWN ({key})";
+                // C-C2: narrower (it shares a row with search and REPORT…; the key hint names the key)
+                _clashAllLabel = AllShownClashesSelected ? $"CLEAR ALL {selected:N0}"
+                    : selected > 1 ? $"SELECT ALL {_clashList.Count:N0}"
+                    : "SELECT ALL";
             }
             return _clashAllLabel;
         }

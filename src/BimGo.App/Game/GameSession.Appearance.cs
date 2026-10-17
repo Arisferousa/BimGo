@@ -31,6 +31,9 @@ namespace BimGo.Game
         /// <summary>Slider ids (unique across the menu's sliders).</summary>
         private const int SLIDER_WATER_REFLECT = 24, SLIDER_GRASS_HEIGHT = 25, SLIDER_GRASS_DISTANCE = 26;
 
+        /// <summary>Water round W: slider ids (ripple strength, ripple speed, grass sway, wave size).</summary>
+        private const int SLIDER_WATER_RIPPLE = 27, SLIDER_WATER_SPEED = 28, SLIDER_GRASS_SWAY = 29, SLIDER_WAVE_SCALE = 30;
+
         /// <summary>How much a picked water colour replaces the material's (a little of a texture's pattern stays).</summary>
         private const float WATER_TINT_AMOUNT = 0.85f;
 
@@ -42,6 +45,12 @@ namespace BimGo.Game
         private List<string> _grassKeywords = LaunchSettings.DefaultGrassKeywords();
         private string _waterColour = string.Empty;
         private float _waterReflection = 1f;
+
+        // Water round W: ripple strength and speed (0–2, 1 = as before), and the clock the ripples run on
+        private float _waterRipple = 1f;
+        private float _waterRippleSpeed = 1f;
+        private float _waterWaveScale = 1f;
+        private float _waterClock;
 
         // The glass keywords this snapshot was made with (changes show "next Go")
         private string _glassKeywordsAtLoad = string.Empty;
@@ -69,6 +78,9 @@ namespace BimGo.Game
             _glassKeywordsAtLoad = MaterialOverrides.FormatKeywords(_glassKeywords);
             _waterColour = LaunchSettings.TryParseColour(settings.WaterColour, out _) ? settings.WaterColour : string.Empty;
             _waterReflection = float.IsFinite(settings.WaterReflection) ? Math.Clamp(settings.WaterReflection, 0f, 1f) : 1f;
+            _waterRipple = LaunchSettings.CleanLookScale(settings.WaterRipple);
+            _waterRippleSpeed = LaunchSettings.CleanLookScale(settings.WaterRippleSpeed);
+            _waterWaveScale = LaunchSettings.CleanWaveScale(settings.WaterWaveScale);
             ReadGrassSettings(settings);
         }
 
@@ -84,6 +96,9 @@ namespace BimGo.Game
             settings.GrassKeywords = new List<string>(_grassKeywords);
             settings.WaterColour = _waterColour;
             settings.WaterReflection = _waterReflection;
+            settings.WaterRipple = _waterRipple;
+            settings.WaterRippleSpeed = _waterRippleSpeed;
+            settings.WaterWaveScale = _waterWaveScale;
             WriteGrassSettings(settings);
         }
 
@@ -108,6 +123,20 @@ namespace BimGo.Game
             }
             else { _renderer.WaterTint = default; }
             _renderer.WaterReflect = _waterReflection;
+            _renderer.WaterWaves = _waterRipple;
+            _renderer.WaveScale = _waterWaveScale;
+        }
+
+        /// <summary>
+        /// Water round W: once a frame, moves the ripples' clock on at the ripple speed (0 = they stand still) and
+        /// hands it to the renderer. Wrapped every hour of water time so the float keeps its precision (the waves
+        /// jump once an hour, at most).
+        /// </summary>
+        private void AdvanceWater(float dt)
+        {
+            _waterClock += dt * _waterRippleSpeed;
+            if (_waterClock > 3600f) { _waterClock -= 3600f; }
+            if (_renderer != null) { _renderer.WaterClock = _waterClock; }
         }
 
         #endregion
@@ -163,6 +192,7 @@ namespace BimGo.Game
             if (_renderer != null && _renderer.HasMaterials) { Text.Append(_renderer.WaterMaterialCount).Append(" · "); }
             int preset = MaterialOverrides.WaterPresetIndex(_waterColour);
             Text.Append(preset >= 0 ? WATER_COLOUR_OPTIONS[preset] : _waterColour).Append(" · ").Append((long)MathF.Round(_waterReflection * 100f)).Append(" %");
+            if (_waterRipple <= 0f) { Text.Append(" · still"); }
             if (PageRow(f, input, ix, y, iw, "Water", Text.Span)) { OpenAppearancePage(1); }
             y += S(30);
 
@@ -285,13 +315,45 @@ namespace BimGo.Game
             if (picked != preset && picked >= 0) { SetWaterColour(MaterialOverrides.WATER_PRESETS[picked].Hex); }
             y += S(68);
 
+            // Two sliders a row (the four would run past the card): reflection | ripples, ripple speed | wave size
+            float half = (iw - S(16)) * 0.5f, ix2 = ix + half + S(16);
+
             // Reflection strength
             Text.Clear().Append((long)MathF.Round(_waterReflection * 100f)).Append(" %");
-            float reflect = Slider(f, input, SLIDER_WATER_REFLECT, ix, y, iw, "Reflection", Text.Span, _waterReflection, 0f, 1f);
+            float reflect = Slider(f, input, SLIDER_WATER_REFLECT, ix, y, half, "Reflection", Text.Span, _waterReflection, 0f, 1f);
             reflect = MathF.Round(reflect * 20f) / 20f;
             if (MathF.Abs(reflect - _waterReflection) > 1e-4f)
             {
                 _waterReflection = reflect;
+                ApplyWaterLook();
+            }
+
+            // Water round W: ripple strength (0 = still water, the waves are skipped) and speed (0 = frozen ripples)
+            Text.Clear();
+            if (_waterRipple <= 0f) { Text.Append("Still"); }
+            else { Text.Append((long)MathF.Round(_waterRipple * 100f)).Append(" %"); }
+            float ripple = Slider(f, input, SLIDER_WATER_RIPPLE, ix2, y, half, "Ripples", Text.Span, _waterRipple, 0f, LaunchSettings.MAX_LOOK_SCALE);
+            ripple = LaunchSettings.CleanLookScale(ripple);
+            if (MathF.Abs(ripple - _waterRipple) > 1e-4f)
+            {
+                _waterRipple = ripple;
+                ApplyWaterLook();
+            }
+            y += S(58);
+
+            Text.Clear();
+            if (_waterRippleSpeed <= 0f) { Text.Append("Paused"); }
+            else { Text.Append((long)MathF.Round(_waterRippleSpeed * 100f)).Append(" %"); }
+            float speed = Slider(f, input, SLIDER_WATER_SPEED, ix, y, half, "Ripple speed", Text.Span, _waterRippleSpeed, 0f, LaunchSettings.MAX_LOOK_SCALE);
+            _waterRippleSpeed = LaunchSettings.CleanLookScale(speed);
+
+            // Wave size: the wavelengths × it (25 % fine chop … 400 % long swell); strength unchanged
+            Text.Clear().Append((long)MathF.Round(_waterWaveScale * 100f)).Append(" %");
+            float scale = Slider(f, input, SLIDER_WAVE_SCALE, ix2, y, half, "Wave size", Text.Span, _waterWaveScale, LaunchSettings.MIN_WAVE_SCALE, LaunchSettings.MAX_WAVE_SCALE);
+            scale = LaunchSettings.CleanWaveScale(scale);
+            if (MathF.Abs(scale - _waterWaveScale) > 1e-4f)
+            {
+                _waterWaveScale = scale;
                 ApplyWaterLook();
             }
             y += S(58);
@@ -341,6 +403,14 @@ namespace BimGo.Game
             Text.Clear().Append(_grassDistance).Append(" m");
             float distance = Slider(f, input, SLIDER_GRASS_DISTANCE, ix, y, iw, "Distance", Text.Span, _grassDistance, LaunchSettings.MIN_GRASS_DISTANCE, LaunchSettings.MAX_GRASS_DISTANCE);
             if (_activeSlider == SLIDER_GRASS_DISTANCE) { _grassDistance = (int)(MathF.Round(distance / 5f) * 5f); }
+            y += S(58);
+
+            // Water round W: sway (a look only: the cost is the same at any value)
+            Text.Clear();
+            if (_grassSway <= 0f) { Text.Append("Off (still)"); }
+            else { Text.Append((long)MathF.Round(_grassSway * 100f)).Append(" %"); }
+            float sway = Slider(f, input, SLIDER_GRASS_SWAY, ix, y, iw, "Sway", Text.Span, _grassSway, 0f, LaunchSettings.MAX_LOOK_SCALE);
+            _grassSway = LaunchSettings.CleanLookScale(sway);
             y += S(58);
 
             if (KeywordRow(f, input, ix, y, iw, "Grass keywords", _grassKeywords))

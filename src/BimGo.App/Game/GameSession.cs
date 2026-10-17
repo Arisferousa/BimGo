@@ -274,6 +274,8 @@ namespace BimGo.Game
                 Toast("Realistic needs textures: this snapshot shows material colours. Tick “Extract materials and textures” at Go.", 6f);
             }
             _overlay.Initialise();
+            _gridOverlay.Initialise(); // grids round A
+            _gridNodeOverlay.Initialise(); // grids round B: the intersections
             _target.Ensure(_window.Width, _window.Height, _msaa);
 
             // Systems
@@ -534,6 +536,7 @@ namespace BimGo.Game
                 _clock += dt;
                 _frameTime = dt;
                 AdvanceSky(dt); // sky round: clouds drift, the sky look reaches the renderer
+                AdvanceWater(dt); // water round W: the ripples' clock runs at the ripple speed
 
                 if (_window.IsMinimised)
                 {
@@ -653,6 +656,13 @@ namespace BimGo.Game
             {
                 if (input.Pressed(InputAction.Fullscreen)) { _window.ToggleFullscreen(); }
                 UpdateSunPanelKeys(input);
+                return;
+            }
+
+            // Grids round A: the grids panel (walking) has the cursor; the player stands still (clash mode keeps its own)
+            if (GridsPanelHasKeys && !_paused)
+            {
+                UpdateGridsPanelKeys(input);
                 return;
             }
 
@@ -808,6 +818,12 @@ namespace BimGo.Game
                 OpenSunPanel();
                 return;
             }
+            if (input.Pressed(InputAction.GridsPanel))
+            {
+                OpenGridsPanel();
+                return;
+            }
+            if (input.Pressed(InputAction.GridsCycle)) { CycleGrids(); }
             if (ShadowsOn) { StepSunTimeKeys(input); }
             if (input.Pressed(InputAction.Jump) && !_player.Flying) { _player.QueueJump(); }
 
@@ -863,7 +879,7 @@ namespace BimGo.Game
         {
             if (_tourActive) { return; } // the tour places the player itself
             _player.Controller.GroundZ = _groundZ;
-            bool frozen = IsEditingComment || _sunPanelOpen || _sunHoursOpen || !_window.IsActive || _guns[_activeGun].CapturesInput || ClashFreezesPlayer;
+            bool frozen = IsEditingComment || _sunPanelOpen || _sunHoursOpen || GridsPanelHasKeys || !_window.IsActive || _guns[_activeGun].CapturesInput || ClashFreezesPlayer;
             if (_clashModeOn)
             {
                 // Clash mode flies with its own up / down keys (the gamepad's A and B click and go back there)
@@ -909,6 +925,7 @@ namespace BimGo.Game
             _aim.Origin = Camera.Position;
             _aim.Direction = Camera.Forward;
             _aim.HasHit = Pick(Camera.Position, Camera.Forward, PICK_DISTANCE, out _aim.Hit);
+            UpdateGridHover(); // grids round B: the hovered grid node (and the Measure gun's snap to it)
         }
 
         /// <summary>
@@ -992,7 +1009,7 @@ namespace BimGo.Game
         /// True while a mode that works with a free cursor is on (sun panel, sun hours study, photo mode, the section box
         /// editor, clash mode): resuming must not capture the mouse then.
         /// </summary>
-        private bool CursorModeOpen => _sunPanelOpen || _sunHoursOpen || _photoOpen || _sectionOpen || _clashModeOn;
+        private bool CursorModeOpen => _sunPanelOpen || _sunHoursOpen || _photoOpen || _sectionOpen || _clashModeOn || _gridsPanelOpen;
 
         /// <summary>
         /// Pauses (releases the mouse) or resumes (captures it again, unless a free-cursor mode is on: C-B1 fixes, the
@@ -1251,6 +1268,8 @@ namespace BimGo.Game
             Sound.Dispose();
             _renderer?.Dispose();
             _overlay.Dispose();
+            _gridOverlay.Dispose();
+            _gridNodeOverlay.Dispose();
             _sunOverlay?.Dispose();
             _sectionOverlay?.Dispose();
             _photoTarget?.Dispose();

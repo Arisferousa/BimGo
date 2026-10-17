@@ -16,6 +16,9 @@ namespace BimGo.Rendering
 
         /// <summary>How far blades reach (m).</summary>
         public float Distance;
+
+        /// <summary>Water round W: how far blades sway (0–2, 1 = as before; 0 = still).</summary>
+        public float Sway;
     }
 
     /// <summary>
@@ -50,7 +53,7 @@ namespace BimGo.Rendering
         private LightUniforms _grassLight;
         private AoUniforms _grassAo;
         private ArtificialUniforms _grassLights;
-        private int _gViewProj, _gEye, _gArea, _gSize, _gSpacing, _gSide, _gInner, _gFadeIn, _gFadeOut, _gRadius, _gHeight, _gWidth, _gTime, _gFogColor, _gFogDensity, _gClipCount, _gClipPlanes;
+        private int _gViewProj, _gEye, _gArea, _gSize, _gSpacing, _gSide, _gInner, _gFadeIn, _gFadeOut, _gRadius, _gHeight, _gWidth, _gSway, _gTime, _gFogColor, _gFogDensity, _gClipCount, _gClipPlanes;
         private readonly int[] _gPalette = new int[GrassField.MAX_PALETTE];
 
         private uint _grassMap;
@@ -60,7 +63,7 @@ namespace BimGo.Rendering
         private Vector3[] _grassColours = Array.Empty<Vector3>();
 
         /// <summary>The blades' look (set by the session).</summary>
-        public GrassLook Grass = new() { Density = 1, Height = 0.12f, Distance = 40f };
+        public GrassLook Grass = new() { Density = 1, Height = 0.12f, Distance = 40f, Sway = 1f };
 
         /// <summary>True when a grass field is uploaded (there is grass to draw).</summary>
         public bool HasGrass => _grassMap != 0;
@@ -150,6 +153,7 @@ namespace BimGo.Rendering
             _gHeight = p.Uniform("uBladeHeight");
             _gWidth = p.Uniform("uBladeWidth");
             _gTime = p.Uniform("uTime");
+            _gSway = p.Uniform("uSway");
             _gFogColor = p.Uniform("uFogColor");
             _gFogDensity = p.Uniform("uFogDensity");
             _gClipCount = p.Uniform("uClipCount");
@@ -197,6 +201,7 @@ namespace BimGo.Rendering
             Gl.Uniform2(_gSize, _grassWidth, _grassHeight);
             Gl.Uniform1(_gHeight, height);
             Gl.Uniform1(_gTime, p.Time);
+            Gl.Uniform1(_gSway, Math.Clamp(look.Sway, 0f, 2f));
             Vector3 fog = p.Sun ? FogColour : FOG_COLOUR;
             Gl.Uniform3(_gFogColor, fog.X, fog.Y, fog.Z);
             Gl.Uniform1(_gFogDensity, p.FogDensity);

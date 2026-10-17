@@ -23,7 +23,8 @@ namespace BimGo.Game
     /// <item><b>Right-click menu</b> on rows (over the list only; right-drag in the view still looks): GROUP SELECTED,
     /// ADD TO GROUP ›, REMOVE FROM GROUP, GROUP ALL ON &lt;A&gt; / &lt;B&gt; on clash rows; MERGE n GROUPS, ADD SELECTED,
     /// RENAME…, UNGROUP, EXPAND / COLLAPSE on group rows.</item>
-    /// <item>Dock buttons GROUP (Ctrl+G), UNGROUP (Ctrl+Shift+G) and AUTO GROUP ▾ (by element; remove automatic groups).</item>
+    /// <item>Dock buttons GROUP (Ctrl+G), UNGROUP (Ctrl+Shift+G) and TOOLS ▾ (C-C2: GROUP BY BOX…, PICK POINTS, CLUSTER
+    /// AROUND…, AUTO by element / level / category pair / level + category pair, remove automatic groups).</item>
     /// </list>
     /// A clash is in one group: grouping by hand moves clashes out of their old group (the toast says how many);
     /// automatic grouping never touches grouped clashes.
@@ -87,7 +88,16 @@ namespace BimGo.Game
         private bool _clashScrollDragging;
         private float _clashScrollGrab;
 
-        private static readonly string[] CLASH_AUTO_ACTIONS = { "BY ELEMENT (2+ CLASHES)", "REMOVE AUTOMATIC GROUPS" };
+        // C-C2: TOOLS ▾ (the grouping tools, then the automatic methods: the test's ungrouped open clashes, 2+ per group)
+        private static readonly string[] CLASH_TOOL_ACTIONS =
+        {
+            "GROUP BY BOX…", "PICK POINTS", "CLUSTER AROUND THE CURRENT CLASH…",
+            "AUTO: BY ELEMENT", "AUTO: BY LEVEL", "AUTO: BY CATEGORY PAIR", "AUTO: BY LEVEL + CATEGORY PAIR",
+            "AUTO: BY GRID", "AUTO: BY GRID + LEVEL",
+            "REMOVE AUTOMATIC GROUPS"
+        };
+        private const int TOOL_BOX = 0, TOOL_PICK = 1, TOOL_CLUSTER = 2, TOOL_AUTO_ELEMENT = 3, TOOL_AUTO_LEVEL = 4,
+            TOOL_AUTO_CATEGORY = 5, TOOL_AUTO_LEVEL_CATEGORY = 6, TOOL_AUTO_GRID = 7, TOOL_AUTO_GRID_LEVEL = 8, TOOL_REMOVE_AUTO = 9;
 
         // The group's comment: make or update at the start of the next frame (0 none, 1 link members' comments, 2 replace them)
         private ClashGroup _clashGroupCommentPending;
@@ -192,6 +202,8 @@ namespace BimGo.Game
                     if (group.TestId == _clashReviewTest) { _clashGroupsInTest++; }
                 }
             }
+            _clashToolDotsDirty = true; // C-C2: the tools' dots and the cluster follow the list
+            _clashSphereDirty = true;
             _clashGroupButtonLabel = "GROUP";     // feedback: no key in the label (too wide); the key hint names it
             _clashUngroupButtonLabel = "UNGROUP";
         }
@@ -415,6 +427,9 @@ namespace BimGo.Game
                 int outside = ClashMultiActive ? _clashSelected.Count(c => ClashGroupOf(c) != group) : 0;
                 if (outside > 0) { Item($"ADD THE {outside} SELECTED TO THIS GROUP", () => AddClashesToGroup(group, _clashSelected.ToList())); }
                 Item("RENAME…", () => RenameClashGroup(group));
+                // C-C2: the group's box (a group without one starts with a box round its members)
+                Item("EDIT BOX…", () => BeginClashBoxTool(group));
+                if (group.Box != null) { Item("RECOLLECT FROM ITS BOX", () => RecollectClashGroup(group, null)); }
                 Item(_clashGroupExpanded.Contains(group.Id) ? "COLLAPSE" : "EXPAND", () => ToggleClashGroupExpanded(group));
                 Item("UNGROUP (CLASHES STAY)", () => UngroupClashGroup(group));
             }
@@ -431,6 +446,7 @@ namespace BimGo.Game
                 {
                     Item($"COLLAPSE GROUP “{Shorten(ClashGroups.DisplayName(own), 30)}”", () => CollapseClashGroupFrom(own));
                 }
+                Item("CLUSTER AROUND THIS…", () => BeginClashSphereTool(clash)); // C-C2
                 Item($"GROUP ALL ON {Shorten(ClashGroups.ElementName(clash.A), 34)}", () => GroupAllOnClashElement(clash.A));
                 if (clash.B.Key != clash.A.Key) { Item($"GROUP ALL ON {Shorten(ClashGroups.ElementName(clash.B), 34)}", () => GroupAllOnClashElement(clash.B)); }
             }
@@ -462,26 +478,30 @@ namespace BimGo.Game
         /// GROUP / Ctrl+G / the menu: the clashes become a new group (each leaves its old group). Named after the
         /// element they all share (when several share one), else "Group N".
         /// </summary>
-        private void GroupClashes(IReadOnlyList<ClashRecord> clashes, ClashElementRef keyElement)
+        /// <param name="clashes">The clashes.</param>
+        /// <param name="keyElement">The element they share (null: found when there is one).</param>
+        /// <param name="autoLabel">C-C2: an automatic label ("Cluster 3 · Level 2") instead of "Group N", or null.</param>
+        /// <returns>The new group, or null.</returns>
+        private ClashGroup GroupClashes(IReadOnlyList<ClashRecord> clashes, ClashElementRef keyElement, string autoLabel = null)
         {
-            if (_clashDocument == null) { return; }
+            if (_clashDocument == null) { return null; }
             if (clashes == null || clashes.Count == 0)
             {
                 Sound.Play(SoundId.Error);
                 Toast("Pick clashes first (click, Ctrl / Shift click or a group row)", 2.5f);
-                return;
+                return null;
             }
             ClashGroup already = ClashGroupOf(clashes[0]);
             if (already != null && already.Count == clashes.Count && clashes.All(c => ClashGroupOf(c) == already))
             {
                 Sound.Play(SoundId.Error);
                 Toast($"Those clashes are already the group “{ClashGroups.DisplayName(already)}”", 2.5f);
-                return;
+                return null;
             }
 
-            keyElement ??= clashes.Count > 1 ? ClashGroups.CommonElement(clashes) : null;
-            ClashGroup group = ClashGroups.Create(_clashDocument, _clashReviewTest, clashes, null, keyElement, null, Environment.UserName, DateTime.UtcNow, out int moved);
-            if (group == null) { return; }
+            if (autoLabel == null) { keyElement ??= clashes.Count > 1 ? ClashGroups.CommonElement(clashes) : null; }
+            ClashGroup group = ClashGroups.Create(_clashDocument, _clashReviewTest, clashes, null, keyElement, autoLabel, null, Environment.UserName, DateTime.UtcNow, out int moved);
+            if (group == null) { return null; }
             _clashGroupExpanded.Add(group.Id);
             ClashGroupsChanged();
             RefreshClashList();
@@ -492,6 +512,7 @@ namespace BimGo.Game
             Sound.Play(SoundId.Commit);
             Toast($"Grouped {group.Count} clash{(group.Count == 1 ? string.Empty : "es")}: “{ClashGroups.DisplayName(group)}”" +
                 (moved > 0 ? $" ({moved} moved from other groups)" : string.Empty) + " · right-click the row to rename", 3f);
+            return group;
         }
 
         /// <summary>GROUP ALL ON &lt;element&gt;: every unresolved clash of the test with that element (filters aside).</summary>
@@ -599,28 +620,59 @@ namespace BimGo.Game
             });
         }
 
-        /// <summary>AUTO GROUP ▾: by element (the test's ungrouped, unresolved clashes), or remove the automatic groups.</summary>
-        private void RunClashAutoGroup(int action)
+        /// <summary>
+        /// TOOLS ▾ (C-C2): the grouping tools, or an automatic method over the test's ungrouped, unresolved clashes
+        /// (filters aside; one method per run, so runs chain), or removing the automatic groups.
+        /// </summary>
+        private void RunClashToolAction(int action)
         {
             if (_clashDocument == null || _clashReviewTest == null) { return; }
-            if (action == 1)
+            switch (action)
             {
-                int before = _clashDocument.Groups?.Count ?? 0;
-                _clashDocument.Groups?.RemoveAll(g => g.TestId == _clashReviewTest && g.Auto != null);
-                if (_clashDocument.Groups != null && _clashDocument.Groups.Count == 0) { _clashDocument.Groups = null; }
-                int removed = before - (_clashDocument.Groups?.Count ?? 0);
-                if (removed == 0)
-                {
-                    Toast("This test has no automatic groups", 2f);
-                    return;
-                }
-                ClashGroupsChanged();
-                Sound.Play(SoundId.Remove);
-                Toast($"{removed} automatic group{(removed == 1 ? string.Empty : "s")} removed (their clashes stay; hand-made groups kept)", 3f);
-                return;
+                case TOOL_BOX: BeginClashBoxTool(null); return;
+                case TOOL_PICK: BeginClashPickTool(); return;
+                case TOOL_CLUSTER: BeginClashSphereTool(_clashCurrent); return;
+                case TOOL_REMOVE_AUTO: RemoveAutomaticClashGroups(); return;
             }
 
-            List<ClashGroup> made = ClashGrouping.ByElement(_clashDocument, _clashReviewTest, ClashGrouping.MIN_SIZE, Environment.UserName, DateTime.UtcNow);
+            string method;
+            List<ClashGroup> made;
+            string user = Environment.UserName;
+            DateTime utc = DateTime.UtcNow;
+            switch (action)
+            {
+                case TOOL_AUTO_LEVEL:
+                    method = "by level";
+                    made = ClashGrouping.ByLevel(_clashDocument, _clashReviewTest, ClashGrouping.MIN_SIZE, user, utc);
+                    break;
+                case TOOL_AUTO_CATEGORY:
+                    method = "by category pair";
+                    made = ClashGrouping.ByCategoryPair(_clashDocument, _clashReviewTest, perLevel: false, ClashGrouping.MIN_SIZE, user, utc);
+                    break;
+                case TOOL_AUTO_LEVEL_CATEGORY:
+                    method = "by level + category pair";
+                    made = ClashGrouping.ByCategoryPair(_clashDocument, _clashReviewTest, perLevel: true, ClashGrouping.MIN_SIZE, user, utc);
+                    break;
+                case TOOL_AUTO_GRID:
+                case TOOL_AUTO_GRID_LEVEL:
+                    // Grids round B: the nearest grid intersection (and its level)
+                    EnsureGridNodes();
+                    if (_gridLocator.IsEmpty)
+                    {
+                        Sound.Play(SoundId.Error);
+                        Toast("AUTO by grid: this model has no grid intersections (or the snapshot is older than grids: export again / F5)", 4f);
+                        return;
+                    }
+                    bool perLevel = action == TOOL_AUTO_GRID_LEVEL;
+                    method = perLevel ? "by grid + level" : "by grid";
+                    made = ClashGrouping.ByGrid(_clashDocument, _clashReviewTest, ClashGridLookup, perLevel, ClashGrouping.MIN_SIZE, user, utc);
+                    break;
+                default:
+                    method = "by element";
+                    made = ClashGrouping.ByElement(_clashDocument, _clashReviewTest, ClashGrouping.MIN_SIZE, user, utc);
+                    break;
+            }
+
             Dictionary<string, ClashGroup> index = ClashGroups.Index(_clashDocument); // with the new groups
             int left = 0;
             foreach (ClashRecord clash in _clashDocument.Clashes)
@@ -630,14 +682,32 @@ namespace BimGo.Game
             if (made.Count == 0)
             {
                 Sound.Play(SoundId.Error);
-                Toast($"No element has {ClashGrouping.MIN_SIZE} or more ungrouped open clashes ({left:N0} left ungrouped)", 3f);
+                Toast($"AUTO {method}: no {ClashGrouping.MIN_SIZE}+ ungrouped open clashes share one ({left:N0} left ungrouped)", 3f);
                 return;
             }
             int grouped = made.Sum(g => g.Count);
             ClashGroupsChanged();
             Sound.Play(SoundId.Commit);
-            Toast($"AUTO GROUP by element: {made.Count:N0} group{(made.Count == 1 ? string.Empty : "s")} ({grouped:N0} clashes) · " +
+            Toast($"AUTO {method}: {made.Count:N0} group{(made.Count == 1 ? string.Empty : "s")} ({grouped:N0} clashes) · " +
                 $"{left:N0} open clashes left ungrouped (grouped ones were left alone)", 4f);
+        }
+
+        /// <summary>REMOVE AUTOMATIC GROUPS: the test's automatic groups go (their clashes stay; hand-made groups kept).</summary>
+        private void RemoveAutomaticClashGroups()
+        {
+            int before = _clashDocument.Groups?.Count ?? 0;
+            _clashDocument.Groups?.RemoveAll(g => g.TestId == _clashReviewTest && g.Auto != null);
+            if (_clashDocument.Groups != null && _clashDocument.Groups.Count == 0) { _clashDocument.Groups = null; }
+            int removed = before - (_clashDocument.Groups?.Count ?? 0);
+            if (removed == 0)
+            {
+                Toast("This test has no automatic groups", 2f);
+                return;
+            }
+            if (_clashGroupCurrent != null && !(_clashDocument.Groups?.Contains(_clashGroupCurrent) ?? false)) { _clashGroupCurrent = null; }
+            ClashGroupsChanged();
+            Sound.Play(SoundId.Remove);
+            Toast($"{removed} automatic group{(removed == 1 ? string.Empty : "s")} removed (their clashes stay; hand-made groups kept)", 3f);
         }
 
         /// <summary>1–5 / the group card's chips: the group's status and every member's (their comments follow).</summary>
@@ -983,6 +1053,14 @@ namespace BimGo.Game
             string elementText = string.Join(", ", elements.Take(MAX_ELEMENTS)) + (elements.Count > MAX_ELEMENTS ? $" (+{elements.Count - MAX_ELEMENTS} more)" : string.Empty);
             string text = $"Clash group: {test?.Name ?? "clash test"} · {ClashGroups.DisplayName(group)} · {members.Count} clash{(members.Count == 1 ? string.Empty : "es")} · " +
                 $"{string.Join(", ", levels)} · Elements ({elements.Count}): {elementText}";
+            if (_grids.ClashComments)
+            {
+                // Grids round B: the members' grid locations (most common first, up to five)
+                List<string> near = members.Select(c => ClashGridLocation(c)).Where(l => l.HasValue).Select(l => l.Value.Text)
+                    .GroupBy(t => t, StringComparer.Ordinal).OrderByDescending(g => g.Count()).ThenBy(g => g.Key, StringComparer.Ordinal)
+                    .Select(g => g.Key).ToList();
+                if (near.Count > 0) { text += " · Near " + string.Join(", ", near.Take(5)) + (near.Count > 5 ? $" (+{near.Count - 5} more)" : string.Empty); }
+            }
             if (!string.IsNullOrWhiteSpace(group.Notes)) { text += " · Notes: " + group.Notes.Replace('\n', ' ').Trim(); }
 
             // LINK: members' own comments listed (by their pair)

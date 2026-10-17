@@ -18,6 +18,7 @@ namespace BimGo.Game
         private int _grassDensity = 1;
         private int _grassHeightMm = 120;
         private int _grassDistance = 40;
+        private float _grassSway = 1f; // water round W: 0–2, 1 = as before
 
         // The field: the keywords it was built for (null = never), the build under way and its keywords
         private string _grassBuiltFor;
@@ -37,6 +38,7 @@ namespace BimGo.Game
             _grassDensity = Math.Clamp(settings.GrassDensity, 0, 2);
             _grassHeightMm = Math.Clamp(settings.GrassHeightMm, LaunchSettings.MIN_GRASS_HEIGHT, LaunchSettings.MAX_GRASS_HEIGHT);
             _grassDistance = Math.Clamp(settings.GrassDistance, LaunchSettings.MIN_GRASS_DISTANCE, LaunchSettings.MAX_GRASS_DISTANCE);
+            _grassSway = LaunchSettings.CleanLookScale(settings.GrassSway);
         }
 
         private void WriteGrassSettings(LaunchSettings settings)
@@ -45,6 +47,7 @@ namespace BimGo.Game
             settings.GrassDensity = _grassDensity;
             settings.GrassHeightMm = _grassHeightMm;
             settings.GrassDistance = _grassDistance;
+            settings.GrassSway = _grassSway;
         }
 
         #endregion
@@ -122,7 +125,8 @@ namespace BimGo.Game
             {
                 Density = _grassDensity,
                 Height = _grassHeightMm / 1000f,
-                Distance = _grassDistance
+                Distance = _grassDistance,
+                Sway = _grassSway
             };
             _renderer.DrawGrass(p);
         }
