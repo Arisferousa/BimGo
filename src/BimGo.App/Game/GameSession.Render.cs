@@ -1,4 +1,4 @@
-using System.Numerics;
+﻿using System.Numerics;
 using BimGo.Audio;
 using BimGo.Format;
 using BimGo.Game.Guns;
@@ -47,6 +47,8 @@ namespace BimGo.Game
                 (J(" / ", InputAction.LevelUp, InputAction.LevelDown), "Level up / down"),
                 (J(" · ", InputAction.GoHome, InputAction.SetHome), "Go home · Set home here"),
                 ((m.DescribeRange(InputAction.Gun1, 9) + " · " + m.DescribeJoined(" · ", false, InputAction.PreviousGun, InputAction.NextGun)).ToUpperInvariant(), "Select gun (9 Place: family library)"),
+                (J(" / ", InputAction.GunModePrevious, InputAction.GunModeNext), "Gun mode (Measure, Demolish)"),
+                (J(" ", InputAction.Unarmed), "None: no gun, no gun panel or hints (again takes it out)"),
                 (m.Label(InputAction.Gun2).ToUpperInvariant() + " AGAIN", "Measure: distance / area / angle / clearance"),
                 (J(" ", InputAction.GizmoDrop), "Gizmo / Clone / Place: drop onto the surface below"),
                 (J(" · ", InputAction.ScanHide, InputAction.ScanIsolate), "Scan gun: hide target · isolate its category"),
@@ -61,13 +63,15 @@ namespace BimGo.Game
                 (J(" ", InputAction.SunEarlier, InputAction.SunLater), $"Sun time −/+ 5 min ({m.DescribeModifierVariant(InputAction.SunEarlier, InputAction.SunEarlierFine)}: 1 min)"),
                 (J(" · ", InputAction.Save, InputAction.Undo, InputAction.Redo), "Save · Undo · Redo (files)"),
                 (J(" ", InputAction.FindRoom), "Find a room and go there"),
+                (J(" ", InputAction.ClashMode), "Clash mode: review clashes (Esc → CLASHES: tests and sets)"),
+                (J(" · ", InputAction.GridsCycle, InputAction.GridsPanel), "Grids: off / underfoot / all · Grids panel"),
                 (J(" ", InputAction.Refresh), "Refresh from Revit (live sessions)"),
                 (J(" ", InputAction.Minimap) + " · ESC", "Minimap · Pause menu"),
                 (J(" ", InputAction.HideUi), $"Hide the UI (Esc or {m.Label(InputAction.HideUi)} shows it)"),
                 (J(" ", InputAction.PhotoMode), "Photo mode: hi-res stills and 360° panoramas"),
                 (J(" · ", InputAction.Fullscreen, InputAction.Screenshot), "Fullscreen · Screenshot"),
                 ("ESC → CONTROLS", "Every key, and changing them"),
-                (J(" ", InputAction.Help), "Hide help · BimGo " + Program.Version)
+                (J(" ", InputAction.Help), "Hide help · BimGo " + Program.Version + " · Revit® is a trademark of Autodesk, Inc.")
             };
             if (pad)
             {
@@ -104,6 +108,9 @@ namespace BimGo.Game
             // ---- Photo mode: a pending shot renders off-screen first (camera and targets restored afterwards)
             if (_photoShotIn > 0 && --_photoShotIn == 0) { TakePhoto(); }
 
+            // ---- Clash pictures (C-B2): row pictures, TO COMMENT / TO COMMENTS, off-screen (state restored afterwards)
+            RenderClashPictures();
+
             RenderScene(width, height, _target, _msaa, photo: false);
 
             _target.BlitToWindow();
@@ -122,7 +129,7 @@ namespace BimGo.Game
             // ---- Window pass: minimap 3D, then all 2D UI in one batch
             Gl.Viewport(0, 0, width, height);
             float mapX = width - S(20) - S(220), mapY = S(20);
-            if (_showMap && !_paused && !_uiHidden && !_photoOpen) { DrawMinimapPlan(mapX + S(8), mapY + S(30), S(204), S(170)); }
+            if (_showMap && !_paused && !_uiHidden && !_photoOpen && !_clashModeOn) { DrawMinimapPlan(mapX + S(8), mapY + S(30), S(204), S(170)); }
 
             if (_paused)
             {
@@ -163,9 +170,11 @@ namespace BimGo.Game
         /// <param name="photo">A photo: no probe baking, no highlights, markers or gizmos.</param>
         private void RenderScene(int width, int height, RenderTarget target, int samples, bool photo)
         {
-            // ---- Sun lighting and shadow maps (only changed cascades re-render)
+            // ---- Sun lighting and shadow maps (only changed cascades re-render). Clash pictures (C-B2) other than the real
+            // model view draw without the sun, so they leave the cascades as the main view needs them
             _renderer.Lighting = CurrentLighting();
-            string shadowError = _renderer.UpdateShadows(Camera, Scene.Bounds, ShadowSceneKey(), _groupVisible, Dynamics, _whitecard,
+            bool clashShotUnlit = _clashShot && _clashView != CLASH_VIEW_REAL;
+            string shadowError = clashShotUnlit ? null : _renderer.UpdateShadows(Camera, Scene.Bounds, ShadowSceneKey(), _groupVisible, Dynamics, _whitecard,
                 ShadowMaps.PresetFor(_shadowQuality));
             if (shadowError != null)
             {
@@ -174,14 +183,29 @@ namespace BimGo.Game
             }
 
             // ---- Artificial lights for this frame (after the sun: daylight dims them), and their cached shadow maps
-            UpdateArtificialLights();
-            string lightShadowError = _renderer.UpdateLightShadows(_groupVisible, Dynamics, ShadowSceneKey());
-            if (lightShadowError != null) { Toast(lightShadowError, 6f, important: true); }
+            // (unlit clash pictures keep the main view's picks, so no light shadow is re-rendered for them)
+            if (!clashShotUnlit)
+            {
+                UpdateArtificialLights();
+                string lightShadowError = _renderer.UpdateLightShadows(_groupVisible, Dynamics, ShadowSceneKey());
+                if (lightShadowError != null) { Toast(lightShadowError, 6f, important: true); }
+            }
 
             // ---- Ambient occlusion and glow: half-resolution geometry pre-pass, AO + blur, bloom source + blur
             bool glow = _renderer.Artificial.Bloom > 0f;
-            string effectsError = _renderer.UpdateScreenEffects(Camera, width, height, _groupVisible, Dynamics, _groundZ, _ambientOcclusion, glow);
-            if (effectsError != null) { OnScreenEffectsFailure(effectsError); }
+            // Clash pictures (C-B2) draw the clash view in the photo pass, without AO or glow (their half-resolution
+            // targets stay sized for the window instead of being remade for every picture)
+            bool clashView = ClashViewActive && (!photo || _clashShot);
+            bool clashNoAo = clashView && _clashView != CLASH_VIEW_REAL; // the real model view keeps AO
+            if (_clashShot)
+            {
+                _renderer.SkipScreenEffects();
+            }
+            else
+            {
+                string effectsError = _renderer.UpdateScreenEffects(Camera, width, height, _groupVisible, Dynamics, _groundZ, _ambientOcclusion && !clashNoAo, glow);
+                if (effectsError != null) { OnScreenEffectsFailure(effectsError); }
+            }
 
             // ---- Reflection probes: a couple of faces per frame until baked, re-baked a moment after things change
             if (!photo) { UpdateReflectionProbes(); }
@@ -198,6 +222,7 @@ namespace BimGo.Game
             Gl.Disable(Gl.BLEND);
 
             _renderer.DrawSky(Camera);
+            UpdateGrass(); // grass round: builds / uploads the grass field when needed
 
             var p = new SceneDrawParams
             {
@@ -220,40 +245,49 @@ namespace BimGo.Game
                 Section = true
             };
 
-            _renderer.DrawStatic(p, _groupVisible, transparent: false);
-            _renderer.DrawDynamic(p, Dynamics, transparent: false);
-            if (_sectionCount > 0)
+            if (clashView)
             {
-                // Fill the cut solids (stencil caps) before the ground
-                float extent = Scene.Bounds.Size.Length() + 50f;
-                _renderer.DrawSectionCaps(Camera.ViewProjection, Camera.Planes, Camera.Position, _groupVisible, Dynamics, _capColour, extent);
+                // Clash view (Round C-B): the pair in red / green, the rest ghosted / wireframe / real / hidden (G)
+                DrawClashView(p);
             }
-            _renderer.DrawGround(Camera, _groundZ);
-
-            // Gun highlights (scan target, primed demolitions, gizmo target…)
-            Gun active = _guns[_activeGun];
-            _highlights.Clear();
-            // Hidden UI: no tints either, unless a gun is in the middle of something (Gizmo / Clone holding an element)
-            if (!photo && !_photoOpen && !_paused && !_tourActive && (!_uiHidden || active.CapturesInput)) { active.CollectHighlights(_highlights); }
-            if (_highlights.Count > 0)
+            else
             {
+                _renderer.DrawStatic(p, _groupVisible, transparent: false);
+                _renderer.DrawDynamic(p, Dynamics, transparent: false);
+                if (_sectionCount > 0)
+                {
+                    // Fill the cut solids (stencil caps) before the ground
+                    float extent = Scene.Bounds.Size.Length() + 50f;
+                    _renderer.DrawSectionCaps(Camera.ViewProjection, Camera.Planes, Camera.Position, _groupVisible, Dynamics, _capColour, extent);
+                }
+                _renderer.DrawGround(Camera, _groundZ);
+                DrawGrass(p); // grass round: blades over the grass materials (Realistic)
+
+                // Gun highlights (scan target, primed demolitions, gizmo target…)
+                Gun active = _guns[_activeGun];
+                _highlights.Clear();
+                // Hidden UI: no tints either, unless a gun is in the middle of something (Gizmo / Clone holding an element)
+                if (!_unarmed && !photo && !_photoOpen && !_paused && !_tourActive && (!_uiHidden || active.CapturesInput)) { active.CollectHighlights(_highlights); }
+                if (_highlights.Count > 0)
+                {
+                    Gl.Enable(Gl.BLEND);
+                    Gl.BlendFunc(Gl.SRC_ALPHA, Gl.ONE_MINUS_SRC_ALPHA);
+                    Gl.Enable(Gl.POLYGON_OFFSET_FILL);
+                    Gl.PolygonOffset(-1f, -2f);
+                    foreach (Highlight highlight in _highlights) { DrawHighlight(p, highlight); }
+                    Gl.Disable(Gl.POLYGON_OFFSET_FILL);
+                    Gl.Disable(Gl.BLEND);
+                }
+
+                // Transparent pass (glass etc.)
                 Gl.Enable(Gl.BLEND);
                 Gl.BlendFunc(Gl.SRC_ALPHA, Gl.ONE_MINUS_SRC_ALPHA);
-                Gl.Enable(Gl.POLYGON_OFFSET_FILL);
-                Gl.PolygonOffset(-1f, -2f);
-                foreach (Highlight highlight in _highlights) { DrawHighlight(p, highlight); }
-                Gl.Disable(Gl.POLYGON_OFFSET_FILL);
+                Gl.DepthMask(false);
+                _renderer.DrawStatic(p, _groupVisible, transparent: true);
+                _renderer.DrawDynamic(p, Dynamics, transparent: true);
+                Gl.DepthMask(true);
                 Gl.Disable(Gl.BLEND);
             }
-
-            // Transparent pass (glass etc.)
-            Gl.Enable(Gl.BLEND);
-            Gl.BlendFunc(Gl.SRC_ALPHA, Gl.ONE_MINUS_SRC_ALPHA);
-            Gl.DepthMask(false);
-            _renderer.DrawStatic(p, _groupVisible, transparent: true);
-            _renderer.DrawDynamic(p, Dynamics, transparent: true);
-            Gl.DepthMask(true);
-            Gl.Disable(Gl.BLEND);
 
             // Bloom from glowing surfaces over everything (glass included)
             _renderer.CompositeGlow();
@@ -266,9 +300,12 @@ namespace BimGo.Game
             if (!_uiHidden && !photo && !_photoOpen)
             {
                 _overlay.Begin(Camera);
-                for (int i = 0; i < _guns.Length; i++) { _guns[i].DrawWorld(_overlay, i == _activeGun); }
+                for (int i = 0; i < _guns.Length; i++) { _guns[i].DrawWorld(_overlay, i == _activeGun && !_unarmed); }
+                DrawClashMarkers(_overlay);
+                DrawGrids(); // grids round A: the lines under the markers
                 _overlay.Draw(Camera, depthTest: true, alpha: 1f, additive: false);
                 _overlay.Draw(Camera, depthTest: false, alpha: 0.16f, additive: false);
+                DrawClashToolOverlay(); // C-C2: a grouping tool's dots (brighter through walls), the cluster sphere
             }
 
             // Sun hours grid (study results are content, so they show with the UI hidden too)
@@ -388,6 +425,8 @@ namespace BimGo.Game
             float levelZ = _player.Feet.Z;
             int levelIndex = LevelIndexAt(levelZ);
 
+            DrawMinimapGrids(f, mapX, mapY, mapW, mapH, cx, cy, metresPerPixel); // grids round B: under the markers
+
             // Portals and comments on this level
             for (int i = 0; i < 2; i++)
             {
@@ -442,6 +481,13 @@ namespace BimGo.Game
             int width = _window.Width, height = _window.Height;
             Gun active = _guns[_activeGun];
 
+            // Clash mode (Round C-B): its own HUD (docked list, no crosshair or guns)
+            if (_clashModeOn)
+            {
+                BuildClashHud(f, width, height);
+                return;
+            }
+
             // Screen flash (portals)
             if (_clock < _flashUntil)
             {
@@ -449,8 +495,10 @@ namespace BimGo.Game
                 _ui.Rect(0, 0, width, height, Rgba.WithAlpha(_flashColour, 0.35f * t));
             }
 
-            // World-anchored labels
-            for (int i = 0; i < _guns.Length; i++) { _guns[i].DrawLabels(_ui, i == _activeGun); }
+            // World-anchored labels (grids round A: grid bubbles and level tags first, under the rest)
+            DrawGridLabels(f);
+            for (int i = 0; i < _guns.Length; i++) { _guns[i].DrawLabels(_ui, i == _activeGun && !_unarmed); }
+            DrawGridHoverLabel(f); // grids round B: the hovered node, over the other labels
 
             // Crosshair
             float cx = MathF.Round(width * 0.5f), cy = MathF.Round(height * 0.5f);
@@ -461,7 +509,7 @@ namespace BimGo.Game
             _ui.Rect(cx + gap, cy - t1 * 0.5f, arm, t1, UiTheme.TEXT);
             _ui.Circle(cx, cy, S(1.8f), active.Colour, 10);
 
-            if (!_window.IsCaptured && !IsEditingComment && !_sunPanelOpen && !_sunHoursOpen)
+            if (!_window.IsCaptured && !IsEditingComment && !_sunPanelOpen && !_sunHoursOpen && !_gridsPanelOpen)
             {
                 const string hint = "Click to look around";
                 float hintWidth = UiBatch.Measure(f.Body, hint) + S(24);
@@ -475,7 +523,7 @@ namespace BimGo.Game
             // Minimap and the gun's context panel beneath it
             if (_showMap) { DrawMinimapOverlay(mapX, mapY); }
             // (hidden while the sun panel is open: the two would overlap on smaller screens)
-            if (!_sunPanelOpen && !_sunHoursOpen && !_sectionOpen)
+            if (!_sunPanelOpen && !_sunHoursOpen && !_sectionOpen && !_gridsPanelOpen && !_unarmed)
             {
                 float panelTop = _showMap ? mapY + S(208) + S(12) : S(20);
                 float panelWidth = S(260), panelX = width - S(20) - panelWidth;
@@ -487,6 +535,7 @@ namespace BimGo.Game
             BuildSunIcon(f, _window.Input);
             if (_sunPanelOpen) { BuildSunPanel(f, _window.Input); }
             if (_sunHoursOpen) { BuildSunHoursPanel(f, _window.Input); }
+            BuildGridsPanel(f, _window.Input); // grids round A
             BuildSectionPanel(f, _window.Input);
             BuildSunLegend(f, S(20), height - S(52) - S(78));
 
@@ -633,6 +682,9 @@ namespace BimGo.Game
         /// Bottom-centre gun bar: square symbol slots with the key number in the corner. The selected gun's
         /// name sits above the bar beside the LMB / RMB hints, so the bar stays compact as guns are added.
         /// </summary>
+        private static readonly KeyHint HINT_NO_GUN_BAR = new(() =>
+            $"{Hotkeys.Label(InputAction.GunWheel)} (hold): gun wheel · {Hotkeys.Map.DescribeJoined(" / ", false, InputAction.GunModePrevious, InputAction.GunModeNext)}: gun mode · the wheel's bottom slot shows the gun bar");
+
         private void BuildGunBar(FontAtlas f, int width, int height, Gun active)
         {
             if (_gunKeysVersion != Hotkeys.Version) { RefreshGunKeys(); }
@@ -640,11 +692,17 @@ namespace BimGo.Game
             float total = _guns.Length * slot + (_guns.Length - 1) * gap;
             float x = MathF.Round(width * 0.5f - total * 0.5f);
             float y = height - S(20) - slot;
+            if (!_showGunBar)
+            {
+                // No bar (the default): a one-line hint where it would be; the name and hints row drops to just above it
+                y = height - S(20) - S(16);
+                _ui.TextCentred(f.Small, width * 0.5f, y, HINT_NO_GUN_BAR.Text, UiTheme.TEXT_FAINT);
+            }
 
-            for (int i = 0; i < _guns.Length; i++)
+            for (int i = 0; i < _guns.Length && _showGunBar; i++)
             {
                 Gun gun = _guns[i];
-                bool selected = i == _activeGun;
+                bool selected = i == _activeGun && !_unarmed;
                 float bx = x + i * (slot + gap);
                 _ui.Rect(bx, y, slot, slot, Rgba.Hex(0x0C0E12, selected ? 0.9f : 0.6f));
                 _ui.Outline(bx, y, slot, slot, S(2), selected ? gun.Colour : Rgba.Hex(0xFFFFFF, 0.14f));
@@ -664,11 +722,14 @@ namespace BimGo.Game
             float rowWidth = nameWidth + S(10) + lmbWidth + S(10) + rmbWidth;
             float rowX = MathF.Round(width * 0.5f - rowWidth * 0.5f);
 
-            _ui.Rect(rowX, rowY, nameWidth, S(24), Rgba.WithAlpha(active.Colour, 0.9f));
-            _ui.Text(f.Bold, rowX + S(10), rowY + S(4), active.Name, UiTheme.SCAN_TAG_TEXT, S(1f));
-            rowX += nameWidth + S(10);
-            Hint(f, rowX, rowY, primary, active.HintPrimary, active.Colour);
-            Hint(f, rowX + lmbWidth + S(10), rowY, secondary, active.HintSecondary, active.Colour);
+            if (!_unarmed) // unarmed: no gun name or LMB / RMB hints
+            {
+                _ui.Rect(rowX, rowY, nameWidth, S(24), Rgba.WithAlpha(active.Colour, 0.9f));
+                _ui.Text(f.Bold, rowX + S(10), rowY + S(4), active.Name, UiTheme.SCAN_TAG_TEXT, S(1f));
+                rowX += nameWidth + S(10);
+                Hint(f, rowX, rowY, primary, active.HintPrimary, active.Colour);
+                Hint(f, rowX + lmbWidth + S(10), rowY, secondary, active.HintSecondary, active.Colour);
+            }
 
             // Revit write-back activity
             if (EditsPending > 0)

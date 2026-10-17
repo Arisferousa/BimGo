@@ -1,4 +1,4 @@
-using System.Numerics;
+﻿using System.Numerics;
 using System.Runtime.InteropServices;
 using BimGo.Native;
 using BimGo.Physics;
@@ -89,7 +89,7 @@ namespace BimGo.Rendering
         private GeometryUniforms _geometryUniforms, _groundGeometryUniforms;
         private int _groundGeometryCenter, _groundGeometryHalf, _geometryGlow;
         private int _skyInvViewProj, _skyEye, _groundViewProj, _groundCenter, _groundHalf, _groundEye, _groundFog;
-        private int _skySun, _skySunDir, _skyZenith, _skyHorizon, _skyDisc;
+        private int _skySun, _skySunDir, _skyZenith, _skyHorizon, _skyDisc, _skySunShape, _skyCloudCover, _skyCloudOffset;
         private int _depthViewProj, _depthModel, _transmitViewProj, _transmitModel, _transmitGlass, _transmitWhitecard;
 
         // Sun and shadows
@@ -164,8 +164,35 @@ namespace BimGo.Rendering
         /// <summary>This frame's sun and sky (Enabled = false: the classic fixed light, no shadows).</summary>
         public SunLighting Lighting;
 
+        /// <summary>Sky round: clouds and the sun disc's look (set each frame; a look only, lighting unchanged).</summary>
+        public SkyLook Sky = SkyLook.Default;
+
+        /// <summary>Grass round: water's body colour (rgb) and how much it replaces the material's (w; 0 = Revit's).</summary>
+        public Vector4 WaterTint;
+
+        /// <summary>Grass round: water's reflection strength (0–1).</summary>
+        public float WaterReflect = 1f;
+
+        /// <summary>Water round W: ripple strength (0–2, 1 = as before; 0 skips the waves).</summary>
+        public float WaterWaves = 1f;
+
+        /// <summary>Water round W: wave size (0.25–4, 1 = as before; the wavelengths × it).</summary>
+        public float WaveScale = 1f;
+
+        /// <summary>
+        /// Water round W: the water clock (seconds; the session advances it at the ripple speed, so a speed change
+        /// doesn't jump the waves). Drives the ripples instead of the frame time.
+        /// </summary>
+        public float WaterClock;
+
         /// <summary>The fog / clear colour: the sky's horizon when the sun is on.</summary>
         public Vector3 FogColour => Lighting.Enabled ? Lighting.Horizon : FOG_COLOUR;
+
+        /// <summary>
+        /// Clash view (Round C-B): when above 0, scene passes draw as faint grey glass of this opacity (colour-override
+        /// draws, the clash pair, are never ghosted). 0 = normal.
+        /// </summary>
+        public float GhostAlpha { get; set; }
 
         /// <summary>The shadow maps (state, presets, last error).</summary>
         public ShadowMaps Shadows => _shadows;
@@ -288,9 +315,9 @@ namespace BimGo.Rendering
         /// </summary>
         private struct SceneUniforms
         {
-            public int ViewProj, Model, Eye, LightDir, FogColor, FogDensity, Whitecard, Plan, ClipZ, Override;
+            public int ViewProj, Model, Eye, LightDir, FogColor, FogDensity, Whitecard, Plan, ClipZ, Override, Ghost;
             public int Realistic, Reflections, SkyZenith, SkyHorizon, TintMode;
-            public int ReflectThreshold, ReflectGain, ReflectDebug, Time;
+            public int ReflectThreshold, ReflectGain, ReflectDebug, Time, CloudCover, CloudOffset, WaterTint, WaterReflect, WaterWaves, WaveScale;
             public int ProbesOn, ProbeGridOrigin, ProbeGridCell, ProbeGridSize, ProbeMaxLod;
             public int ClipCount, ClipPlanes;
 
@@ -322,6 +349,7 @@ namespace BimGo.Rendering
                 Plan = p.Uniform("uPlan"),
                 ClipZ = p.Uniform("uClipZ"),
                 Override = p.Uniform("uOverride"),
+                Ghost = p.Uniform("uGhost"),
                 Realistic = p.Uniform("uRealistic"),
                 Reflections = p.Uniform("uReflections"),
                 SkyZenith = p.Uniform("uSkyZenith"),
@@ -336,6 +364,12 @@ namespace BimGo.Rendering
                 ProbeGridCell = p.Uniform("uProbeGridCell"),
                 ProbeGridSize = p.Uniform("uProbeGridSize"),
                 ProbeMaxLod = p.Uniform("uProbeMaxLod"),
+                CloudCover = p.Uniform("uCloudCover"),
+                CloudOffset = p.Uniform("uCloudOffset"),
+                WaterTint = p.Uniform("uWaterTint"),
+                WaterReflect = p.Uniform("uWaterReflect"),
+                WaterWaves = p.Uniform("uWaterWaves"),
+                WaveScale = p.Uniform("uWaveScale"),
                 ClipCount = p.Uniform("uClipCount"),
                 ClipPlanes = p.Uniform("uClipPlanes")
             };
@@ -380,6 +414,9 @@ namespace BimGo.Rendering
             _skyZenith = _skyProgram.Uniform("uZenith");
             _skyHorizon = _skyProgram.Uniform("uHorizon");
             _skyDisc = _skyProgram.Uniform("uSunDisc");
+            _skySunShape = _skyProgram.Uniform("uSunShape");
+            _skyCloudCover = _skyProgram.Uniform("uCloudCover");
+            _skyCloudOffset = _skyProgram.Uniform("uCloudOffset");
             _depthViewProj = _shadowDepthProgram.Uniform("uViewProj");
             _depthModel = _shadowDepthProgram.Uniform("uModel");
             _transmitViewProj = _shadowTransmitProgram.Uniform("uViewProj");
@@ -523,6 +560,21 @@ namespace BimGo.Rendering
         /// missing images" setting). Set before <see cref="Initialise"/>.
         /// </summary>
         public bool AutoProxy { get; set; } = true;
+
+        /// <summary>
+        /// QOL round: the water override (Water asset toggle, keywords, opaque too). Before <see cref="Initialise"/> it
+        /// just sets the rule; afterwards it rebuilds the material table (cheap: images stay).
+        /// </summary>
+        public void SetWaterOverride(bool fromAsset, IReadOnlyList<string> keywords, bool keywordsOpaque)
+        {
+            _materials.WaterFromAsset = fromAsset;
+            _materials.WaterKeywords = keywords ?? Array.Empty<string>();
+            _materials.WaterKeywordsOpaque = keywordsOpaque;
+            _materials.RefreshTable();
+        }
+
+        /// <summary>Water materials in the current table (QOL round: shown under the override).</summary>
+        public int WaterMaterialCount => _materials.Ready ? _materials.WaterCount : 0;
 
         /// <summary>Proxies take the material's colour (see <see cref="MaterialTextures.ProxyMaterialColour"/>).</summary>
         public bool ProxyMaterialColour
@@ -916,6 +968,16 @@ namespace BimGo.Rendering
         }
 
         /// <summary>
+        /// Draws the next passes without AO or glow, keeping their targets as they are (clash pictures, Round C-B2: an
+        /// off-screen picture of another size would otherwise remake them twice a frame). The next
+        /// <see cref="UpdateScreenEffects"/> turns them back on.
+        /// </summary>
+        public void SkipScreenEffects()
+        {
+            _aoActive = _glowActive = false;
+        }
+
+        /// <summary>
         /// Gives this frame's picked lights their shadow maps (call after the session filled <see cref="Artificial"/>,
         /// before binding the scene target): renders the few that are new, moved or out of date, then keeps only the
         /// lights that have a map (a new light joins, fading in, once its map exists). With no lights the maps are freed.
@@ -1178,6 +1240,10 @@ namespace BimGo.Rendering
             Gl.Uniform3(_skyZenith, l.Zenith.X, l.Zenith.Y, l.Zenith.Z);
             Gl.Uniform3(_skyHorizon, l.Horizon.X, l.Horizon.Y, l.Horizon.Z);
             Gl.Uniform3(_skyDisc, l.SunDisc.X, l.SunDisc.Y, l.SunDisc.Z);
+            SkyLook sky = Sky;
+            Gl.Uniform3(_skySunShape, MathF.Cos(SkyLook.DISC_OUTER * sky.SunSize), MathF.Cos(SkyLook.DISC_INNER * sky.SunSize), sky.SunGlare);
+            Gl.Uniform1(_skyCloudCover, sky.CloudCover);
+            Gl.Uniform2(_skyCloudOffset, sky.CloudOffset.X, sky.CloudOffset.Y);
             Gl.BindVertexArray(_emptyVao);
             Gl.DrawArrays(Gl.TRIANGLES, 0, 3);
             Gl.DepthMask(true);
@@ -1293,6 +1359,7 @@ namespace BimGo.Rendering
             Gl.Uniform2(u.ClipZ, p.ClipZ.X, p.ClipZ.Y);
             ApplyClip(u.ClipCount, u.ClipPlanes, p.Section);
             Gl.Uniform4(u.Override, overrideColour.X, overrideColour.Y, overrideColour.Z, overrideColour.W);
+            Gl.Uniform1(u.Ghost, overrideColour.W > 0f ? 0f : GhostAlpha);
 
             bool realistic = p.Realistic && !p.Whitecard && HasMaterials;
             Gl.Uniform1(u.Realistic, realistic ? 1 : 0);
@@ -1302,7 +1369,13 @@ namespace BimGo.Rendering
             Gl.Uniform1(u.ReflectThreshold, p.ReflectThreshold > 0f ? p.ReflectThreshold : 0.5f);
             Gl.Uniform1(u.ReflectGain, p.ReflectGain > 0f ? p.ReflectGain : 1f);
             Gl.Uniform1(u.ReflectDebug, p.ReflectDebug);
-            Gl.Uniform1(u.Time, p.Time);
+            Gl.Uniform1(u.Time, WaterClock); // uTime only moves the water here (water round W)
+            Gl.Uniform1(u.CloudCover, Sky.CloudCover);
+            Gl.Uniform2(u.CloudOffset, Sky.CloudOffset.X, Sky.CloudOffset.Y);
+            Gl.Uniform4(u.WaterTint, WaterTint.X, WaterTint.Y, WaterTint.Z, WaterTint.W);
+            Gl.Uniform1(u.WaterReflect, WaterReflect);
+            Gl.Uniform1(u.WaterWaves, WaterWaves);
+            Gl.Uniform1(u.WaveScale, Math.Clamp(WaveScale, 0.25f, 4f));
             bool probes = (p.Probes || p.ReflectDebug == 2) && _probesActive;
             Gl.Uniform1(u.ProbesOn, probes ? 1 : 0);
             if (probes)
@@ -1339,6 +1412,7 @@ namespace BimGo.Rendering
             _groundGeometryProgram?.Dispose();
             DisposeSection();
             DisposePhoto();
+            DisposeGrass();
             _shadows.Dispose();
             _effects.Dispose();
             _lightShadows.Dispose();

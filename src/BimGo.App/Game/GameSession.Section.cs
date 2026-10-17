@@ -204,6 +204,7 @@ namespace BimGo.Game
             if (_sectionOpen) { return; }
             if (_paused) { SetPaused(false); }
             CloseSunPanel();
+            CloseGridsPanel(); // grids round A: one panel at a time
             CloseSunHours();
             ClosePhotoMode();
             ShowUi();
@@ -222,7 +223,7 @@ namespace BimGo.Game
             _sectionOpen = false;
             _sectionDrag = -1;
             _window.Input.ReleaseAll();
-            if (!_paused && _window.IsActive) { _window.SetCaptured(true); }
+            if (!_paused && _window.IsActive && !_clashModeOn) { _window.SetCaptured(true); } // clash mode keeps its cursor
         }
 
         /// <summary>
@@ -393,7 +394,7 @@ namespace BimGo.Game
         /// </summary>
         private void DrawSectionGizmo()
         {
-            if (!_sectionOpen || !_section.IsActive) { return; }
+            if (!(_sectionOpen || _clashTool == CLASH_TOOL_BOX) || !_section.IsActive) { return; } // C-C2: GROUP BY BOX… too
             if (_sectionOverlay == null)
             {
                 _sectionOverlay = new Overlay3D();
@@ -424,7 +425,7 @@ namespace BimGo.Game
             }
             for (int h = 0; h < 7; h++)
             {
-                if (!HandlePosition(h, out Vector3 position, out _)) { continue; }
+                if (ClashBoxHidesHandle(h) || !HandlePosition(h, out Vector3 position, out _)) { continue; }
                 bool active = h == _sectionDrag || (h == _sectionHover && _sectionDrag < 0);
                 uint colour = active ? Rgba.Hex(0xFFFFFF, 1f) : h == 6 ? Rgba.Hex(0xFBBF24, 1f) : Rgba.Hex(0x22D3EE, 1f);
                 _sectionOverlay.Dot(position, active ? 11f : 8f, colour);

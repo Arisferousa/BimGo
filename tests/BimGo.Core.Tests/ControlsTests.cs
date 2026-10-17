@@ -256,7 +256,9 @@ namespace BimGo.Tests
 
             // Held movement ignores modifiers; the wheel and mouse buttons are keys like any other
             Assert.IsTrue(map.Down(InputAction.MoveForward, new FakeKeys().Hold(KeyCodes.CTRL, KeyCodes.Letter('W'))));
-            Assert.IsTrue(map.Pressed(InputAction.NextGun, new FakeKeys().Press(KeyCodes.WHEEL_DOWN)));
+            Assert.IsTrue(map.Pressed(InputAction.GunModeNext, new FakeKeys().Press(KeyCodes.WHEEL_DOWN)));
+            Assert.IsTrue(map.Pressed(InputAction.NextGun, new FakeKeys().Hold(KeyCodes.SHIFT).Press(KeyCodes.WHEEL_DOWN)));
+            Assert.IsFalse(map.Pressed(InputAction.NextGun, new FakeKeys().Press(KeyCodes.WHEEL_DOWN)), "the plain wheel steps gun modes now (polish round)");
             Assert.IsTrue(map.Pressed(InputAction.TourNext, new FakeKeys().Press(KeyCodes.LEFT_MOUSE)));
             Assert.IsFalse(map.Pressed(InputAction.GunPrimary, new FakeKeys().Hold(KeyCodes.LEFT_MOUSE)));
         }
@@ -602,7 +604,8 @@ namespace BimGo.Tests
             var map = new KeyMap();
             Assert.AreEqual("WASD", map.DescribeJoined(" ", true, InputAction.MoveForward, InputAction.MoveLeft, InputAction.MoveBack, InputAction.MoveRight));
             Assert.AreEqual("Ctrl+S · Z · Y", map.DescribeJoined(" · ", false, InputAction.Save, InputAction.Undo, InputAction.Redo));
-            Assert.AreEqual("Wheel", map.DescribeJoined(" · ", false, InputAction.PreviousGun, InputAction.NextGun));
+            Assert.AreEqual("Wheel", map.DescribeJoined(" · ", false, InputAction.GunModePrevious, InputAction.GunModeNext));
+            Assert.AreEqual("Shift+Wheel up · Wheel down", map.DescribeJoined(" · ", false, InputAction.PreviousGun, InputAction.NextGun), "shared modifier shown once");
             Assert.AreEqual("1–9", map.DescribeRange(InputAction.Gun1, 9));
             Assert.AreEqual("Shift+1–9", map.DescribeRange(InputAction.Bookmark1, 9));
             Assert.AreEqual("Shift", map.DescribeModifierVariant(InputAction.SunEarlier, InputAction.SunEarlierFine));
@@ -610,8 +613,8 @@ namespace BimGo.Tests
 
             map.Assign(InputAction.Gun5, 0, KeyChord.Parse("F7"), swap: false);
             Assert.AreEqual("1 2 3 4 F7 6 7 8 9", map.DescribeRange(InputAction.Gun1, 9));
-            map.Assign(InputAction.MoveLeft, 0, KeyChord.Parse("Ctrl+A"), swap: false);
-            Assert.AreEqual("W Ctrl+A S D", map.DescribeJoined(" ", true, InputAction.MoveForward, InputAction.MoveLeft, InputAction.MoveBack, InputAction.MoveRight));
+            map.Assign(InputAction.MoveLeft, 0, KeyChord.Parse("Ctrl+K"), swap: false);
+            Assert.AreEqual("W Ctrl+K S D", map.DescribeJoined(" ", true, InputAction.MoveForward, InputAction.MoveLeft, InputAction.MoveBack, InputAction.MoveRight));
         }
 
         /// <summary>

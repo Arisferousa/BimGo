@@ -136,12 +136,17 @@ namespace BimGo.Game.Guns
         /// <summary>The mode in use (for the help line).</summary>
         public MeasureMode Mode => _mode;
 
-        public override void OnReselect()
+        public override void OnReselect() => CycleMode(+1);
+
+        /// <summary>The wheel or the gun's key again: the next / previous measuring mode.</summary>
+        public override bool CycleMode(int direction)
         {
-            _mode = (MeasureMode)(((int)_mode + 1) % MODE_NAMES.Length);
+            int count = MODE_NAMES.Length;
+            _mode = (MeasureMode)((((int)_mode + Math.Sign(direction)) % count + count) % count);
             CancelPending();
             Session.Sound.Play(SoundId.UiClick);
-            Session.Toast($"Measure: {Title(_mode)} (press {Hotkeys.Label(InputAction.Gun2)} again for {Title((MeasureMode)(((int)_mode + 1) % MODE_NAMES.Length))})", 2f);
+            Session.Toast($"Measure: {Title(_mode)} (the wheel or {Hotkeys.Label(InputAction.Gun2)} again changes mode)", 2f);
+            return true;
         }
 
         public override void Update(float dt, in AimInfo aim)

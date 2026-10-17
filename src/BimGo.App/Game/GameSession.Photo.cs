@@ -61,6 +61,7 @@ namespace BimGo.Game
             if (_photoOpen) { return; }
             if (_paused) { SetPaused(false); }
             CloseSunPanel();
+            CloseGridsPanel(); // grids round A: one panel at a time
             CloseSunHours();
             CloseSectionEditor();
             ShowUi();
@@ -80,7 +81,7 @@ namespace BimGo.Game
             _photoShotIn = 0;
             _fov = _photoSavedFov;
             _window.Input.ReleaseAll();
-            if (!_paused && _window.IsActive) { _window.SetCaptured(true); }
+            if (!_paused && _window.IsActive && !_clashModeOn) { _window.SetCaptured(true); } // clash mode keeps its cursor
         }
 
         /// <summary>

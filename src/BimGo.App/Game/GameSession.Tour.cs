@@ -128,6 +128,7 @@ namespace BimGo.Game
             CloseBookmarks();
             ClosePhotoMode();
             CloseSunPanel();
+            CloseGridsPanel(); // grids round A: one panel at a time
             CloseSunHours();
             CloseSectionEditor();
             if (_guns[_activeGun].CapturesInput) { _guns[_activeGun].OnCancel(); }

@@ -268,6 +268,11 @@ namespace BimGo.Platform
         }
 
         /// <summary>
+        /// Consumes the wheel so nothing else scrolls this frame (an open dropdown took it).
+        /// </summary>
+        public void ConsumeWheel() => Wheel = 0;
+
+        /// <summary>
         /// Consumes the mouse clicks so nothing else reacts to them this frame.
         /// </summary>
         public void ConsumeClicks()

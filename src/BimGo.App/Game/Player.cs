@@ -148,7 +148,12 @@ namespace BimGo.Game
         /// <summary>
         /// One physics tick from the current keyboard state.
         /// </summary>
-        public void FixedUpdate(float dt, InputState input, bool inputEnabled)
+        /// <param name="dt">Tick length.</param>
+        /// <param name="input">This frame's input.</param>
+        /// <param name="inputEnabled">False freezes the player's own keys.</param>
+        /// <param name="upAction">What flies up (clash mode uses its own keys so the gamepad's A still clicks).</param>
+        /// <param name="downAction">What flies down / crouches.</param>
+        public void FixedUpdate(float dt, InputState input, bool inputEnabled, InputAction upAction = InputAction.Jump, InputAction downAction = InputAction.Crouch)
         {
             _previousFeet = _currentFeet;
 
@@ -160,8 +165,8 @@ namespace BimGo.Game
                 forward = input.Axis(InputAction.MoveForward) - input.Axis(InputAction.MoveBack);
                 strafe = input.Axis(InputAction.MoveRight) - input.Axis(InputAction.MoveLeft);
                 run = input.Down(InputAction.Run) || PadSprint;
-                up = input.Down(InputAction.Jump);
-                down = input.Down(InputAction.Crouch);
+                up = input.Down(upAction);
+                down = input.Down(downAction);
             }
 
             float cy = MathF.Cos(Yaw), sy = MathF.Sin(Yaw);

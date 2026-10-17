@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Numerics;
 using BimGo.Audio;
 using BimGo.Edits;
@@ -226,7 +226,11 @@ namespace BimGo.Game
             _sectionNotice = null;
             InitialiseLights(settings);
             ReadEyeSettings(settings);
+            _clashInstant = settings.ClashInstantFly;
+            _clashThumbsOn = settings.ClashRowPictures;
+            _showGunBar = settings.ShowGunBar;
             ReadVideoSettings(settings);
+            ReadAppearanceSettings(settings);
             UnitFormat.Read(settings);
             Hotkeys.Read(settings);
             Gamepad.Read(settings);
@@ -260,6 +264,7 @@ namespace BimGo.Game
 
             DrawLoadingFrame("Uploading geometry…");
             _renderer = new SceneRenderer { AutoProxy = _proxyMissing, ProxyMaterialColour = _proxyMaterialColour };
+            ApplyWaterOverride(); // QOL round: the water rule for the material table
             _renderer.Initialise(Scene, _batches);
             _renderer.Probes.SetOccluders(_bvh, ProbeOccluderMask());
             InitialiseTextures();
@@ -269,6 +274,8 @@ namespace BimGo.Game
                 Toast("Realistic needs textures: this snapshot shows material colours. Tick “Extract materials and textures” at Go.", 6f);
             }
             _overlay.Initialise();
+            _gridOverlay.Initialise(); // grids round A
+            _gridNodeOverlay.Initialise(); // grids round B: the intersections
             _target.Ensure(_window.Width, _window.Height, _msaa);
 
             // Systems
@@ -528,6 +535,8 @@ namespace BimGo.Game
                 previous = now;
                 _clock += dt;
                 _frameTime = dt;
+                AdvanceSky(dt); // sky round: clouds drift, the sky look reaches the renderer
+                AdvanceWater(dt); // water round W: the ripples' clock runs at the ripple speed
 
                 if (_window.IsMinimised)
                 {
@@ -650,6 +659,20 @@ namespace BimGo.Game
                 return;
             }
 
+            // Grids round A: the grids panel (walking) has the cursor; the player stands still (clash mode keeps its own)
+            if (GridsPanelHasKeys && !_paused)
+            {
+                UpdateGridsPanelKeys(input);
+                return;
+            }
+
+            // Clash mode (Round C-B): the docked clash list has the cursor; the move keys fly, RMB-drag looks
+            if (_clashModeOn && !_paused)
+            {
+                UpdateClashMode(input, dt);
+                return;
+            }
+
             // A gun that has taken over the movement keys (Gizmo / Clone): Esc cancels it instead of pausing,
             // and the player's own keys are ignored until it lets go.
             Gun current = _guns[_activeGun];
@@ -668,7 +691,7 @@ namespace BimGo.Game
             {
                 if (_wheelOpen) { CloseGunWheel(pick: false); }
                 else if (captured) { current.OnCancel(); }
-                else if (_paused && (ClosePush() || CloseComments() || CloseBookmarks() || CloseTextures() || CloseLibrary() || CloseRooms() || CloseGeometry() || CloseControls())) { /* back to the pause menu */ }
+                else if (_paused && (CloseMenuPreview() || ClosePush() || CloseComments() || CloseBookmarks() || CloseTextures() || CloseLibrary() || CloseRooms() || CloseClashes() || CloseGeometry() || CloseControls())) { /* back to the pause menu */ }
                 else { SetPaused(!_paused); }
             }
             if (input.Pressed(InputAction.Help)) { _showHelp = !_showHelp; }
@@ -751,7 +774,7 @@ namespace BimGo.Game
             if (input.Pressed(InputAction.SetHome)) { SetHomeHere(); }
             if (input.Pressed(InputAction.LevelUp)) { TeleportLevel(+1); }
             if (input.Pressed(InputAction.LevelDown)) { TeleportLevel(-1); }
-            if (input.Pressed(InputAction.ClearMarkers)) { _guns[_activeGun].ClearMarkers(); }
+            if (input.Pressed(InputAction.ClearMarkers) && !_unarmed) { _guns[_activeGun].ClearMarkers(); }
             if (input.Pressed(InputAction.AddBookmark))
             {
                 AddBookmarkHere();
@@ -761,6 +784,12 @@ namespace BimGo.Game
             if (input.Pressed(InputAction.SunStudy))
             {
                 OpenSunHours();
+                return;
+            }
+            if (input.Pressed(InputAction.ClashMode))
+            {
+                // Clash detection stays dormant until this (or pause menu → CLASHES) switches it on
+                ToggleClashMode();
                 return;
             }
             if (input.Pressed(InputAction.PhotoMode))
@@ -789,20 +818,33 @@ namespace BimGo.Game
                 OpenSunPanel();
                 return;
             }
+            if (input.Pressed(InputAction.GridsPanel))
+            {
+                OpenGridsPanel();
+                return;
+            }
+            if (input.Pressed(InputAction.GridsCycle)) { CycleGrids(); }
             if (ShadowsOn) { StepSunTimeKeys(input); }
             if (input.Pressed(InputAction.Jump) && !_player.Flying) { _player.QueueJump(); }
 
             for (int i = 0; i < _guns.Length; i++)
             {
                 if (!input.Pressed(InputCatalog.GunAction(i))) { continue; }
-                // The selected gun's own key again: the gun may cycle a mode (Measure: distance → area → angle → clearance)
-                if (i == _activeGun) { _guns[i].OnReselect(); }
+                // The selected gun's own key again: the gun may cycle a mode (Measure: distance → area → angle → clearance);
+                // unarmed, any gun key arms that gun
+                if (i == _activeGun && !_unarmed) { _guns[i].OnReselect(); }
                 else { SelectGun(i); }
             }
-            if (input.Pressed(InputAction.PreviousGun)) { SelectGun((_activeGun - 1 + _guns.Length) % _guns.Length); }
+            if (input.Pressed(InputAction.Unarmed)) { SetUnarmed(!_unarmed); }
+            else if (_unarmed) { /* no gun: the wheel and gun keys below wait */ }
+            else if (input.Pressed(InputAction.PreviousGun)) { SelectGun((_activeGun - 1 + _guns.Length) % _guns.Length); }
             else if (input.Pressed(InputAction.NextGun)) { SelectGun((_activeGun + 1) % _guns.Length); }
+            // The mouse wheel (polish round): the selected gun's modes (Measure: distance / area / angle / clearance;
+            // Demolish: demolish / delete); guns without modes ignore it
+            else if (input.Pressed(InputAction.GunModeNext)) { _guns[_activeGun].CycleMode(+1); }
+            else if (input.Pressed(InputAction.GunModePrevious)) { _guns[_activeGun].CycleMode(-1); }
 
-            _guns[_activeGun].OnKeys(input);
+            if (!_unarmed) { _guns[_activeGun].OnKeys(input); }
             UpdateMouseLook(input);
         }
 
@@ -837,8 +879,16 @@ namespace BimGo.Game
         {
             if (_tourActive) { return; } // the tour places the player itself
             _player.Controller.GroundZ = _groundZ;
-            bool frozen = IsEditingComment || _sunPanelOpen || _sunHoursOpen || !_window.IsActive || _guns[_activeGun].CapturesInput;
-            _player.FixedUpdate(dt, _window.Input, inputEnabled: !frozen);
+            bool frozen = IsEditingComment || _sunPanelOpen || _sunHoursOpen || GridsPanelHasKeys || !_window.IsActive || _guns[_activeGun].CapturesInput || ClashFreezesPlayer;
+            if (_clashModeOn)
+            {
+                // Clash mode flies with its own up / down keys (the gamepad's A and B click and go back there)
+                _player.FixedUpdate(dt, _window.Input, inputEnabled: !frozen, InputAction.ClashFlyUp, InputAction.ClashFlyDown);
+            }
+            else
+            {
+                _player.FixedUpdate(dt, _window.Input, inputEnabled: !frozen);
+            }
             _portalGun.CheckTeleport(_player, dt);
         }
 
@@ -875,6 +925,7 @@ namespace BimGo.Game
             _aim.Origin = Camera.Position;
             _aim.Direction = Camera.Forward;
             _aim.HasHit = Pick(Camera.Position, Camera.Forward, PICK_DISTANCE, out _aim.Hit);
+            UpdateGridHover(); // grids round B: the hovered grid node (and the Measure gun's snap to it)
         }
 
         /// <summary>
@@ -886,6 +937,7 @@ namespace BimGo.Game
             foreach (Gun gun in _guns) { gun.Tick(dt); }
             if (_paused || IsEditingComment || _tourActive) { return; }
 
+            if (_unarmed) { return; } // no gun out: nothing aims or fires
             Gun active = _guns[_activeGun];
             active.Update(dt, _aim);
 
@@ -921,22 +973,55 @@ namespace BimGo.Game
 
         #region Actions
 
+        /// <summary>True when no gun is out (polish round: 0 or the gun wheel): no gun panel, hints, aiming or firing.</summary>
+        private bool _unarmed;
+
+        /// <summary>0 / the gun wheel's UNARMED slot: puts the gun away, or takes the last one out again.</summary>
+        private void SetUnarmed(bool unarmed)
+        {
+            if (unarmed == _unarmed || _guns[_activeGun].CapturesInput) { return; }
+            if (unarmed) { _guns[_activeGun].OnDeselect(); }
+            _unarmed = unarmed;
+            Sound.Play(SoundId.UiClick);
+            Toast(unarmed ? $"No gun ({Hotkeys.Label(InputAction.Unarmed)} or a gun key takes a gun out)" : _guns[_activeGun].Name, 1.6f);
+        }
+
         private void SelectGun(int index)
         {
-            if (index == _activeGun || _guns[_activeGun].CapturesInput) { return; }
+            if (_guns[_activeGun].CapturesInput) { return; }
+            if (_unarmed)
+            {
+                // Unarmed: picking a gun takes it out (the same gun included)
+                _unarmed = false;
+                if (index == _activeGun)
+                {
+                    Sound.Play(SoundId.UiClick);
+                    return;
+                }
+            }
+            if (index == _activeGun) { return; }
             _guns[_activeGun].OnDeselect();
             _activeGun = index;
             Sound.Play(SoundId.UiClick);
         }
 
         /// <summary>
-        /// Pauses (releases the mouse) or resumes.
+        /// True while a mode that works with a free cursor is on (sun panel, sun hours study, photo mode, the section box
+        /// editor, clash mode): resuming must not capture the mouse then.
+        /// </summary>
+        private bool CursorModeOpen => _sunPanelOpen || _sunHoursOpen || _photoOpen || _sectionOpen || _clashModeOn || _gridsPanelOpen;
+
+        /// <summary>
+        /// Pauses (releases the mouse) or resumes (captures it again, unless a free-cursor mode is on: C-B1 fixes, the
+        /// cursor vanished coming back to clash mode).
         /// </summary>
         private void SetPaused(bool paused)
         {
             _paused = paused;
+            _menuPreview = false; // QOL round: the options preview never outlives the pause menu
+            CloseOverlay(); // a dropdown / confirm belongs to the screen it was opened on
             if (paused) { ShowUi(); } // e.g. focus lost while hidden: come back to a normal HUD
-            _window.SetCaptured(!paused && _window.IsActive && !_sunPanelOpen && !_sunHoursOpen);
+            _window.SetCaptured(!paused && _window.IsActive && !CursorModeOpen);
             _window.Input.ReleaseAll();
         }
 
@@ -1134,6 +1219,7 @@ namespace BimGo.Game
             settings.ProbeResolution = _probeHigh ? 256 : 128;
             settings.RevitTint = _tintMode;
             settings.ProxyMissingTextures = _proxyMissing;
+            WriteAppearanceSettings(settings);
             settings.ProxyMaterialColour = _proxyMaterialColour;
             settings.Msaa = _msaa;
             settings.AmbientOcclusion = _ambientOcclusion;
@@ -1142,6 +1228,9 @@ namespace BimGo.Game
             settings.BloomIntensity = _bloomIntensity;
             settings.FieldOfView = _fov;
             settings.MouseSensitivity = _sensitivity;
+            settings.ClashInstantFly = _clashInstant;
+            settings.ClashRowPictures = _clashThumbsOn;
+            settings.ShowGunBar = _showGunBar;
             settings.InvertY = _invertY;
             settings.VSync = _vsync;
             settings.ShowFps = _showFps;
@@ -1179,6 +1268,8 @@ namespace BimGo.Game
             Sound.Dispose();
             _renderer?.Dispose();
             _overlay.Dispose();
+            _gridOverlay.Dispose();
+            _gridNodeOverlay.Dispose();
             _sunOverlay?.Dispose();
             _sectionOverlay?.Dispose();
             _photoTarget?.Dispose();
