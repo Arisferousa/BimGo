@@ -35,12 +35,20 @@ bool sectionCut(vec3 p)
         public const string CAP_STENCIL_FS = @"#version 330 core
 in vec3 vWorld;
 in vec4 vColor;
+flat in vec4 vProfile;
+uniform int uProfilePass;
 uniform vec4 uCapPlane;
 uniform float uCapShade;
 out vec4 oColor;
 void main()
 {
     if (dot(uCapPlane.xyz, vWorld) > uCapPlane.w) discard;
+    // Colour round A fix: a colour profile's ghosted (and hidden) elements aren't solid, so they get no cap
+    if (uProfilePass > 0)
+    {
+        int code = int(vProfile.a * 255.0 + 0.5);
+        if (code == 1 || code == 2 || (code >= 128 && code < 255)) discard;
+    }
     oColor = vec4(vColor.rgb * uCapShade, 1.0);
 }";
 
@@ -101,6 +109,10 @@ void main()
         /// without glowing surfaces leave the attribute disabled, so it reads (0, 0, 0, 1) = no glow.
         /// aMaterial (4, the Realistic-mode material index; 65535 = none) and aUv (5, surface coordinates in metres)
         /// are only enabled for snapshots with materials; the fragment shader only reads them when uRealistic = 1.
+        /// Colour round A: aElement (6, the element's index as a float: exact up to 16.7 million) is only enabled once a
+        /// colour profile was shown; with uProfilePass above 0 the element's profile code is fetched here, once per
+        /// vertex, from uProfileTex (one RGBA8 texel per element, PROFILE_WIDTH texels a row): rgb = colour, a = code
+        /// (0 normal, 1 ghost, 2 hidden, 255 coloured).
         /// </summary>
         public const string SCENE_VS = @"#version 330 core
 layout(location = 0) in vec3 aPos;
@@ -109,14 +121,18 @@ layout(location = 2) in vec4 aColor;
 layout(location = 3) in vec4 aEmissive;
 layout(location = 4) in float aMaterial;
 layout(location = 5) in vec2 aUv;
+layout(location = 6) in float aElement;
 uniform mat4 uViewProj;
 uniform mat4 uModel;
+uniform int uProfilePass;
+uniform sampler2D uProfileTex;
 out vec3 vWorld;
 out vec3 vNormal;
 out vec4 vColor;
 out vec3 vEmissive;
 flat out int vMaterial;
 out vec2 vUv;
+flat out vec4 vProfile;
 void main()
 {
     vec4 world = uModel * vec4(aPos, 1.0);
@@ -126,8 +142,19 @@ void main()
     vEmissive = aEmissive.rgb * (aEmissive.a * 4.0);
     vMaterial = int(aMaterial + 0.5);
     vUv = aUv;
+    vProfile = vec4(0.0);
+    if (uProfilePass > 0)
+    {
+        int e = int(aElement + 0.5);
+        vProfile = texelFetch(uProfileTex, ivec2(e % " + PROFILE_WIDTH_TEXT + @", e / " + PROFILE_WIDTH_TEXT + @"), 0);
+    }
     gl_Position = uViewProj * world;
 }";
+
+        /// <summary>Colour round A: texels per row of the profile texture (keep in step with the GLSL above).</summary>
+        public const int PROFILE_WIDTH = 1024;
+
+        private const string PROFILE_WIDTH_TEXT = "1024";
 
         /// <summary>
         /// Realistic colour mode (inserted after LIGHTS_GLSL in the scene fragment shader). The material table holds
@@ -655,6 +682,9 @@ uniform int uPlan;
 uniform vec2 uClipZ;
 uniform vec4 uOverride;
 uniform float uGhost;
+flat in vec4 vProfile;
+uniform int uProfilePass;
+uniform float uProfileDetail;
 out vec4 oColor;
 void main()
 {
@@ -663,6 +693,16 @@ void main()
     vec2 uvDy = dFdy(vUv);
     if (vWorld.z < uClipZ.x || vWorld.z > uClipZ.y) discard;
     if (sectionCut(vWorld)) discard;
+
+    // Colour round A: the profile code. Pass 1 (the normal passes) leaves ghosted and (round B) see-through coloured
+    // elements to pass 2 (the blended pass, which draws nothing else); the plan minimap draws them in place instead.
+    // Hidden ones never draw.
+    int profileCode = uProfilePass > 0 ? int(vProfile.a * 255.0 + 0.5) : 0;
+    bool profileGhost = profileCode == 1;
+    bool profileBlend = profileGhost || (profileCode >= 128 && profileCode < 255);
+    if (profileCode == 2) discard;
+    if (uProfilePass == 2 && !profileBlend) discard;
+    if (uProfilePass == 1 && profileBlend && uPlan == 0) discard;
 
     vec4 base = vColor;
     float reflectivity = 0.0;
@@ -683,6 +723,16 @@ void main()
         float l = dot(base.rgb, vec3(0.299, 0.587, 0.114));
         base.rgb = base.a < 0.98 ? vec3(0.76, 0.82, 0.87) : vec3(0.80 + 0.12 * l);
     }
+
+    // Colour round A: the profile's colour over any colour mode, keeping uProfileDetail of the surface's own shade
+    // (texture, material) and all of the lighting; glass stays see-through
+    if (profileCode >= 128)
+    {
+        float l = dot(base.rgb, vec3(0.299, 0.587, 0.114));
+        vec3 detailed = vProfile.rgb * clamp(l * 1.8, 0.25, 1.6);
+        base.rgb = mix(vProfile.rgb, detailed, uProfileDetail);
+    }
+    else if (profileGhost && uPlan == 1) base.rgb = vec3(0.86, 0.87, 0.89);
 
     vec3 n = normalize(vNormal);
 
@@ -777,12 +827,14 @@ void main()
         result.rgb = mix(result.rgb, uOverride.rgb, uOverride.a);
         result.a = max(result.a, 0.85);
     }
-    // Clash view (Round C-B): everything but the pair as faint grey glass, keeping its shading
-    if (uGhost > 0.0)
+    // Clash view (Round C-B): everything but the pair as faint grey glass, keeping its shading (the profile's blended
+    // pass: only its ghosts; its see-through colours keep their colour at the row's opacity)
+    if (uGhost > 0.0 && (uProfilePass != 2 || profileGhost))
     {
         float grey = dot(result.rgb, vec3(0.299, 0.587, 0.114));
         result = vec4(mix(vec3(grey), vec3(0.62), 0.6), uGhost);
     }
+    else if (uProfilePass == 2) result.a = min(result.a, float(profileCode - 128) / 126.0);
     oColor = result;
 }";
 
@@ -1080,14 +1132,24 @@ void writeGeometry(vec3 world, vec3 n)
 }
 ";
 
-        /// <summary>Geometry pre-pass for scene batches (vertex shader: <see cref="SCENE_VS"/>).</summary>
+        /// <summary>
+        /// Geometry pre-pass for scene batches (vertex shader: <see cref="SCENE_VS"/>). Colour round A: ghosted and hidden
+        /// profile elements are left out (they don't occlude what is behind them).
+        /// </summary>
         public const string GEOMETRY_FS = GEOMETRY_GLSL + @"
 in vec3 vWorld;
 in vec3 vNormal;
 in vec3 vEmissive;
+flat in vec4 vProfile;
+uniform int uProfilePass;
 void main()
 {
     if (sectionCut(vWorld)) discard;
+    if (uProfilePass > 0)
+    {
+        int code = int(vProfile.a * 255.0 + 0.5);
+        if (code == 1 || code == 2 || (code >= 128 && code < 255)) discard;
+    }
     writeGeometry(vWorld, vNormal);
     oGlow = vec4(vEmissive * uGlow, 1.0);
 }";

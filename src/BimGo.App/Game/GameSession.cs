@@ -464,7 +464,7 @@ namespace BimGo.Game
             ElementRecord[] elements = Scene.Elements;
             for (int e = 0; e < elements.Length; e++)
             {
-                bool visible = _groupVisible[SceneBatches.GroupOf(elements[e])] && !_hidden[e] && !_userHidden[e];
+                bool visible = _groupVisible[SceneBatches.GroupOf(elements[e])] && !_hidden[e] && !_userHidden[e] && !ProfileHides(e);
                 _pickMask[e] = visible;
                 // Doors render as modelled but are always no-clip, so openings stay walkable
                 _collisionMask[e] = visible && elements[e].CategoryIndex != _doorCategory;
@@ -691,7 +691,7 @@ namespace BimGo.Game
             {
                 if (_wheelOpen) { CloseGunWheel(pick: false); }
                 else if (captured) { current.OnCancel(); }
-                else if (_paused && (CloseMenuPreview() || ClosePush() || CloseComments() || CloseBookmarks() || CloseTextures() || CloseLibrary() || CloseRooms() || CloseClashes() || CloseGeometry() || CloseControls())) { /* back to the pause menu */ }
+                else if (PanelBack()) { /* one level back: overlay, sub-view, panel (polish round P-A1) */ }
                 else { SetPaused(!_paused); }
             }
             if (input.Pressed(InputAction.Help)) { _showHelp = !_showHelp; }
@@ -824,6 +824,7 @@ namespace BimGo.Game
                 return;
             }
             if (input.Pressed(InputAction.GridsCycle)) { CycleGrids(); }
+            if (input.Pressed(InputAction.ColourProfile)) { ToggleProfile(); } // colour round A
             if (ShadowsOn) { StepSunTimeKeys(input); }
             if (input.Pressed(InputAction.Jump) && !_player.Flying) { _player.QueueJump(); }
 

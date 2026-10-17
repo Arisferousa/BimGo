@@ -181,6 +181,7 @@ namespace BimGo.Game
             // Grids round A: the grids keys stay live in clash mode (Esc closes an open grids panel first)
             if (input.Pressed(InputAction.GridsPanel)) { ToggleGridsPanel(); }
             if (input.Pressed(InputAction.GridsCycle)) { CycleGrids(); }
+            if (input.Pressed(InputAction.ColourProfile)) { ToggleProfile(); } // colour round A: shows in the real model view
             if (_gridsPanelOpen && _clashTool == CLASH_TOOL_NONE && !OverlayOpen && input.Pressed(InputAction.Back))
             {
                 CloseGridsPanel();
@@ -708,6 +709,7 @@ namespace BimGo.Game
             Gl.Disable(Gl.POLYGON_OFFSET_FILL);
 
             Gl.DepthMask(false);
+            _renderer.DrawProfileGhosts(p, _groupVisible, Dynamics); // colour round A: the profile's ghosted elements
             _renderer.DrawStatic(p, _groupVisible, transparent: true);
             _renderer.DrawDynamic(p, Dynamics, transparent: true);
             Gl.DepthMask(true);

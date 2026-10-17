@@ -61,7 +61,8 @@ namespace BimGo.Game
         private bool _tourSettingsOpen;
         private TourSettings _tourDraft;
         private bool _tourDraftDirty;
-        private int _tourStopScroll;
+        private readonly ScrollRegion _tourStopScroll = new();
+        private readonly ScrollRegion _tourSettingsScroll = new(); // polish round P-A1: the tour-wide settings scroll in a short window
 
         private static readonly string[] TRANSITION_OPTIONS = { "Fade", "Glide" };
         private static readonly string[] SWIVEL_DIRECTION_OPTIONS = { "Left", "Right" };
@@ -125,7 +126,7 @@ namespace BimGo.Game
             _tour = new TourTimeline(stops, _tourRun.Transition, _tourRun.FadeSeconds, _tourRun.GlideSeconds);
 
             // Clear the stage: menu, panels, a gun mid-move
-            CloseBookmarks();
+            CloseBookmarksPanel(); // the list and its tour settings (Esc's CloseBookmarks steps back one level)
             ClosePhotoMode();
             CloseSunPanel();
             CloseGridsPanel(); // grids round A: one panel at a time
@@ -408,7 +409,8 @@ namespace BimGo.Game
             FlushTourDraft();
             _tourSettingsOpen = !_tourSettingsOpen;
             _tourDraft = _tourSettingsOpen ? Bookmarks.Tour.Copy() : null;
-            _tourStopScroll = 0;
+            _tourStopScroll.Reset();
+            _tourSettingsScroll.Reset();
             _activeSlider = -1;
         }
 
@@ -430,7 +432,7 @@ namespace BimGo.Game
             if (!input.LeftDown) { _activeSlider = -1; }
             TourSettings draft = _tourDraft;
             float lw = MathF.Min(S(320), w * 0.42f);
-            float ly = y;
+            float ly = BeginScroll(_tourSettingsScroll, input, x, y, lw + S(UiTheme.SCROLL_GUTTER), bottom - y, out _);
 
             _ui.Text(f.Body, x, ly, "Between stops", UiTheme.TEXT);
             int transition = Segmented(f, input, x, ly + S(22), lw, TRANSITION_OPTIONS, (int)draft.Transition);
@@ -496,6 +498,8 @@ namespace BimGo.Game
             if (pickedRate != rate) { _videoFps = pickedRate == 1 ? 60 : 30; }
             ly += S(40);
             if (_videoLastPath != null && SmallButton(f, input, x, ly, lw, S(28), "OPEN FOLDER (LAST VIDEO)")) { OpenVideoFolder(); }
+            ly += S(36);
+            EndScroll(_tourSettingsScroll, input, ly);
 
             // Save once a change is finished (a slider is released, a click is done)
             if (_tourDraftDirty && !input.LeftDown) { FlushTourDraft(); }
@@ -518,10 +522,11 @@ namespace BimGo.Game
             }
 
             float rowH = S(40);
-            int visible = Math.Max(1, (int)((bottom - y) / rowH));
-            int maxScroll = Math.Max(0, list.Count - visible);
-            if (input.Wheel != 0) { _tourStopScroll -= input.Wheel * 2; }
-            _tourStopScroll = Math.Clamp(_tourStopScroll, 0, maxScroll);
+            float listX = x;
+            float top = BeginScroll(_tourStopScroll, input, x, y, w, bottom - y, out float cw);
+            VisibleRows(_tourStopScroll, rowH, list.Count, out int first, out int last);
+            x += S(6);
+            w = cw - S(12);
 
             float small = S(28), bh = S(28), gap = S(4);
             float swivelW = S(96), holdW = S(52);
@@ -532,12 +537,11 @@ namespace BimGo.Game
             BookmarkRecord changed = null;
             float? newHold = null, newSwivel = null;
             bool newSkip = false;
-            int last = Math.Min(list.Count, _tourStopScroll + visible);
-            for (int i = _tourStopScroll; i < last; i++)
+            for (int i = first; i < last; i++)
             {
                 BookmarkRecord record = list[i];
-                float ry = y + (i - _tourStopScroll) * rowH;
-                if (((i - _tourStopScroll) & 1) == 0) { _ui.Rect(x - S(6), ry - S(4), w + S(12), rowH - S(4), Rgba.Hex(0xFFFFFF, 0.03f)); }
+                float ry = top + i * rowH + S(4);
+                if ((i & 1) == 0) { _ui.Rect(listX, ry - S(4), cw, rowH - S(4), UiTheme.ROW_STRIPE); }
                 float by = ry;
                 float alpha = record.TourSkip ? 0.45f : 1f;
 
@@ -584,11 +588,7 @@ namespace BimGo.Game
                 }
             }
 
-            if (maxScroll > 0)
-            {
-                Text.Clear().Append(_tourStopScroll + 1).Append('–').Append(last).Append(" of ").Append(list.Count).Append(" · wheel to scroll");
-                _ui.TextRight(f.Small, x + w, bottom + S(2), Text.Span, UiTheme.TEXT_FAINT);
-            }
+            EndScroll(_tourStopScroll, input, top + list.Count * rowH);
 
             // Act after drawing (the list must not change while it is being walked)
             if (changed != null)

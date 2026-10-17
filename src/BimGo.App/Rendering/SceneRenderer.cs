@@ -295,10 +295,11 @@ namespace BimGo.Rendering
         /// </summary>
         private struct GeometryUniforms
         {
-            public int ViewProj, Model, Eye, Right, Up, Forward, ClipCount, ClipPlanes;
+            public int ViewProj, Model, Eye, Right, Up, Forward, ClipCount, ClipPlanes, ProfilePass;
 
             public static GeometryUniforms From(ShaderProgram p) => new()
             {
+                ProfilePass = p.Uniform("uProfilePass"),
                 ClipCount = p.Uniform("uClipCount"),
                 ClipPlanes = p.Uniform("uClipPlanes"),
                 ViewProj = p.Uniform("uViewProj"),
@@ -320,6 +321,7 @@ namespace BimGo.Rendering
             public int ReflectThreshold, ReflectGain, ReflectDebug, Time, CloudCover, CloudOffset, WaterTint, WaterReflect, WaterWaves, WaveScale;
             public int ProbesOn, ProbeGridOrigin, ProbeGridCell, ProbeGridSize, ProbeMaxLod;
             public int ClipCount, ClipPlanes;
+            public int ProfilePass, ProfileDetail;
 
             public static SceneUniforms From(ShaderProgram p)
             {
@@ -334,6 +336,7 @@ namespace BimGo.Rendering
                 Gl.Uniform1(p.Uniform("uProbeArray"), ReflectionProbes.ARRAY_UNIT);
                 Gl.Uniform1(p.Uniform("uProbeGrid"), ReflectionProbes.GRID_UNIT);
                 Gl.Uniform1(p.Uniform("uProbeData"), ReflectionProbes.DATA_UNIT);
+                Gl.Uniform1(p.Uniform("uProfileTex"), PROFILE_UNIT); // colour round A
                 return Locations(p);
             }
 
@@ -371,7 +374,9 @@ namespace BimGo.Rendering
                 WaterWaves = p.Uniform("uWaterWaves"),
                 WaveScale = p.Uniform("uWaveScale"),
                 ClipCount = p.Uniform("uClipCount"),
-                ClipPlanes = p.Uniform("uClipPlanes")
+                ClipPlanes = p.Uniform("uClipPlanes"),
+                ProfilePass = p.Uniform("uProfilePass"),
+                ProfileDetail = p.Uniform("uProfileDetail")
             };
         }
 
@@ -404,6 +409,8 @@ namespace BimGo.Rendering
             _groundLights = ArtificialUniforms.From(_groundProgram);
             _geometryGlow = _geometryProgram.Uniform("uGlow");
             _geometryUniforms = GeometryUniforms.From(_geometryProgram);
+            _geometryProgram.Use();
+            Gl.Uniform1(_geometryProgram.Uniform("uProfileTex"), PROFILE_UNIT); // colour round A (its own unit, as every sampler)
             _groundGeometryUniforms = GeometryUniforms.From(_groundGeometryProgram);
             _groundGeometryCenter = _groundGeometryProgram.Uniform("uCenter");
             _groundGeometryHalf = _groundGeometryProgram.Uniform("uHalf");
@@ -930,6 +937,7 @@ namespace BimGo.Rendering
             ApplyGeometry(_geometryUniforms, camera.ViewProjection, eye, right, up, forward);
             Gl.Uniform1(_geometryGlow, glow ? 1f : 0f);
             ApplyClip(_geometryUniforms.ClipCount, _geometryUniforms.ClipPlanes, true);
+            Gl.Uniform1(_geometryUniforms.ProfilePass, BindProfile(true) ? 1 : 0); // colour round A: ghosts don't occlude
             DrawBatches(camera.Planes, groupVisible, transparent: false, countStats: false);
             if (dynamics != null && dynamics.Instances.Count > 0) { DrawDynamicInstances(dynamics, camera.Planes, transparent: false, _geometryUniforms.Model); }
 
@@ -1122,6 +1130,8 @@ namespace BimGo.Rendering
             FlushDynamic();
             bool aoWas = _aoActive;
             _aoActive = false;
+            bool profileWas = ProfileOn;
+            ProfileOn = false; // colour round A: probes capture the model's own colours
 
             SceneDrawParams p = template;
             p.Reflections = false;
@@ -1169,6 +1179,7 @@ namespace BimGo.Rendering
             }
 
             _aoActive = aoWas;
+            ProfileOn = profileWas;
             _probes.EndCapture();
         }
 
@@ -1359,7 +1370,13 @@ namespace BimGo.Rendering
             Gl.Uniform2(u.ClipZ, p.ClipZ.X, p.ClipZ.Y);
             ApplyClip(u.ClipCount, u.ClipPlanes, p.Section);
             Gl.Uniform4(u.Override, overrideColour.X, overrideColour.Y, overrideColour.Z, overrideColour.W);
-            Gl.Uniform1(u.Ghost, overrideColour.W > 0f ? 0f : GhostAlpha);
+
+            // Colour round A: the profile (not on highlights, nor under the clash view's ghost / wireframe); its ghost
+            // pass draws the ghosted elements as the clash view's grey glass
+            int profilePass = overrideColour.W <= 0f && BindProfile(GhostAlpha <= 0f) ? (_profileGhostPass ? 2 : 1) : 0;
+            Gl.Uniform1(u.ProfilePass, profilePass);
+            if (profilePass > 0) { Gl.Uniform1(u.ProfileDetail, _profileDetail); }
+            Gl.Uniform1(u.Ghost, overrideColour.W > 0f ? 0f : profilePass == 2 ? PROFILE_GHOST_ALPHA : GhostAlpha);
 
             bool realistic = p.Realistic && !p.Whitecard && HasMaterials;
             Gl.Uniform1(u.Realistic, realistic ? 1 : 0);
@@ -1413,6 +1430,7 @@ namespace BimGo.Rendering
             DisposeSection();
             DisposePhoto();
             DisposeGrass();
+            DisposeProfile();
             _shadows.Dispose();
             _effects.Dispose();
             _lightShadows.Dispose();

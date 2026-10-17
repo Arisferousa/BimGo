@@ -35,13 +35,19 @@ namespace BimGo.Format
         /// </summary>
         public GridViewSettings Grids { get; set; }
 
+        /// <summary>
+        /// Colour round A: the model's colour profiles, the active one and whether it shows, or null when there are none.
+        /// Older readers ignore it.
+        /// </summary>
+        public Scene.AppearanceSettings Appearance { get; set; }
+
         /// <summary>Most the ground plane can move from its default (m), as the pause menu slider.</summary>
         public const float MAX_GROUND_OFFSET = 10f;
 
         /// <summary>True when nothing is hidden and the ground is at its default (the file then leaves the entry out).</summary>
         [JsonIgnore]
         public bool IsEmpty => (HiddenCategories?.Count ?? 0) == 0 && (HiddenLinks?.Count ?? 0) == 0 && (HiddenElements?.Count ?? 0) == 0
-            && GroundOffset == null && Section == null && Grids == null;
+            && GroundOffset == null && Section == null && Grids == null && Appearance == null;
 
         /// <summary>
         /// Drops null and blank entries (guards against hand-edited files).
@@ -59,6 +65,8 @@ namespace BimGo.Format
             Section = Section?.IsActive == true ? Section.Clean() : null;
             Grids = Grids?.Clean();
             if (Grids?.IsDefault == true) { Grids = null; }
+            Appearance = Appearance?.Clean();
+            if (Appearance?.IsDefault == true) { Appearance = null; }
             return this;
         }
     }

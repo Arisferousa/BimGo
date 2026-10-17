@@ -65,6 +65,7 @@ namespace BimGo.Game
                 (J(" ", InputAction.FindRoom), "Find a room and go there"),
                 (J(" ", InputAction.ClashMode), "Clash mode: review clashes (Esc → CLASHES: tests and sets)"),
                 (J(" · ", InputAction.GridsCycle, InputAction.GridsPanel), "Grids: off / underfoot / all · Grids panel"),
+                (J(" ", InputAction.ColourProfile), "Colour profile on / off (Esc → Appearance → Colour profiles)"),
                 (J(" ", InputAction.Refresh), "Refresh from Revit (live sessions)"),
                 (J(" ", InputAction.Minimap) + " · ESC", "Minimap · Pause menu"),
                 (J(" ", InputAction.HideUi), $"Hide the UI (Esc or {m.Label(InputAction.HideUi)} shows it)"),
@@ -115,7 +116,17 @@ namespace BimGo.Game
 
             _target.BlitToWindow();
             if (ThumbnailDue) { CaptureThumbnail(width, height); }
-            if (_screenshotRequested) { CaptureScreenshot(width, height); }
+            if (_screenshotRequested)
+            {
+                // Colour round B: the profile's legend in the screenshot when ticked
+                if (ProfileLegendInShots)
+                {
+                    Gl.Viewport(0, 0, width, height);
+                    QueueProfileLegendForShot(width, height);
+                    _ui.Flush(width, height);
+                }
+                CaptureScreenshot(width, height);
+            }
             if (_sunShotRequested)
             {
                 // The study's screenshot: the 3D view plus the legend (drawn and flushed first), no other UI
@@ -156,6 +167,7 @@ namespace BimGo.Game
                 else { BuildHud(mapX, mapY); }
                 if (IsEditingComment) { BuildCommentEditor(); }
             }
+            _ui.ResetClip(); // polish round P-A1: a scroll region left open by an early return never outlives the frame
             _ui.Flush(width, height);
         }
 
@@ -170,6 +182,9 @@ namespace BimGo.Game
         /// <param name="photo">A photo: no probe baking, no highlights, markers or gizmos.</param>
         private void RenderScene(int width, int height, RenderTarget target, int samples, bool photo)
         {
+            // ---- Colour round A: the active colour profile (evaluated again only when something changed)
+            UpdateProfile();
+
             // ---- Sun lighting and shadow maps (only changed cascades re-render). Clash pictures (C-B2) other than the real
             // model view draw without the sun, so they leave the cascades as the main view needs them
             _renderer.Lighting = CurrentLighting();
@@ -279,10 +294,11 @@ namespace BimGo.Game
                     Gl.Disable(Gl.BLEND);
                 }
 
-                // Transparent pass (glass etc.)
+                // Transparent pass (glass etc.), after the colour profile's ghosted elements (colour round A)
                 Gl.Enable(Gl.BLEND);
                 Gl.BlendFunc(Gl.SRC_ALPHA, Gl.ONE_MINUS_SRC_ALPHA);
                 Gl.DepthMask(false);
+                _renderer.DrawProfileGhosts(p, _groupVisible, Dynamics);
                 _renderer.DrawStatic(p, _groupVisible, transparent: true);
                 _renderer.DrawDynamic(p, Dynamics, transparent: true);
                 Gl.DepthMask(true);
@@ -538,6 +554,7 @@ namespace BimGo.Game
             BuildGridsPanel(f, _window.Input); // grids round A
             BuildSectionPanel(f, _window.Input);
             BuildSunLegend(f, S(20), height - S(52) - S(78));
+            BuildProfileLegend(f, height); // colour round A
 
             BuildHelp(f, height);
             BuildGunBar(f, width, height, active);

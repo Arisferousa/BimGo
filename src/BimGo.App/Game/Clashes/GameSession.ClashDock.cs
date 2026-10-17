@@ -247,6 +247,7 @@ namespace BimGo.Game
             BuildClashDock(f, _window.Input, width, height);
             DrawGridHoverLabel(f); // grids round B
             BuildGridsPanel(f, _window.Input);
+            BuildProfileLegend(f, height); // colour round A (real model view)
             BuildHelp(f, height);
             BuildRoomBanner(f, width);
             BuildLiveBanner(f, width, height);

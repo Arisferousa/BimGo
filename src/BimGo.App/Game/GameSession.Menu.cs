@@ -59,8 +59,14 @@ namespace BimGo.Game
         /// <summary>The pause menu's settings tabs.</summary>
         private static readonly string[] RIGHT_TABS = { "DISPLAY", "REFLECTIONS", "APPEARANCE" };
 
-        /// <summary>Height of the right column's card (unscaled): fits the Display tab, the tallest.</summary>
+        /// <summary>
+        /// Height of the right column's card (unscaled): fits the Display tab, the tallest. Polish round P-A1: the card is
+        /// shorter in a short window and its content scrolls (<see cref="SettingsCardHeight"/>).
+        /// </summary>
         private const float RIGHT_CARD_HEIGHT = 440f;
+
+        // The settings card's scroll (polish round P-A1)
+        private readonly ScrollRegion _settingsScroll = new();
 
         // The PREVIEW button's text (with its key; made once per session: CONTROLS changes show next session)
         private string _previewButtonLabel;
@@ -442,6 +448,11 @@ namespace BimGo.Game
                 BuildClashesPanel();
                 return;
             }
+            if (IsColourProfilesPanelOpen)
+            {
+                BuildColourProfilesPanel(); // colour round A
+                return;
+            }
 
             if (IsGeometryPanelOpen)
             {
@@ -608,12 +619,12 @@ namespace BimGo.Game
             if (twoColumns)
             {
                 BuildSettingsColumn(f, input, tabsX - columnGap - columnW, pad, columnW);
-                BuildSettingsTabs(f, input, tabsX, pad, columnW);
+                BuildSettingsTabs(f, input, tabsX, pad, columnW, reserve: S(32)); // the file footer stays clear
             }
             else
             {
                 float used = BuildSettingsColumn(f, input, tabsX, pad, columnW);
-                BuildSettingsTabs(f, input, tabsX, pad + used + S(12), columnW);
+                BuildSettingsTabs(f, input, tabsX, pad + used + S(12), columnW, reserve: S(32));
             }
 
             // Version / file footer
@@ -623,9 +634,10 @@ namespace BimGo.Game
         }
 
         /// <summary>
-        /// The three group cards with per-category toggles.
+        /// The three group cards with per-category toggles, then the linked models.
         /// </summary>
-        private void BuildCategoryCards(FontAtlas f, InputState input, float x, float top, float width)
+        /// <returns>The bottom of what was drawn.</returns>
+        private float BuildCategoryCards(FontAtlas f, InputState input, float x, float top, float width)
         {
             _ui.Text(f.Small, x, top + S(2), "GEOMETRY", UiTheme.TEXT_MUTED, S(1.8f));
             float cardTop = top + S(26);
@@ -702,11 +714,16 @@ namespace BimGo.Game
                 }
             }
 
-            _ui.Text(f.Body, x, cardTop + tallest + S(12), IsFileMode
+            float bottom = cardTop + tallest + S(12);
+            bottom += _ui.TextWrapped(f.Body, x, bottom, width, IsFileMode
                 ? "Categories not in this file are greyed out. Export again from Revit with them ticked to include them."
-                : "Categories not loaded are greyed out. Tick them in Revit's Options and press Go again to include them.", UiTheme.TEXT_MUTED);
+                : "Categories not loaded are greyed out. Tick them in Revit's Options and press Go again to include them.", UiTheme.TEXT_MUTED, maxLines: 2);
 
-            if (Scene.Links.Length > 0 && BuildLinkCard(f, input, x, cardTop + tallest + S(48), width)) { changed = true; }
+            if (Scene.Links.Length > 0)
+            {
+                if (BuildLinkCard(f, input, x, bottom + S(UiTheme.GAP_LARGE), width, out float linksBottom)) { changed = true; }
+                bottom = linksBottom;
+            }
 
             if (changed)
             {
@@ -714,24 +731,26 @@ namespace BimGo.Game
                 VisibilityChanged();
                 Sound.Play(SoundId.UiClick);
             }
+            return bottom;
         }
 
         /// <summary>
         /// The linked models extracted with the host, each with a show / hide toggle (drawing, picking, collision and
-        /// shadows). Rows that don't fit above the bottom of the screen are summarised.
+        /// shadows). Every row is listed (the panel's body scrolls).
         /// </summary>
+        /// <param name="bottom">The card's bottom.</param>
         /// <returns>True if a toggle changed.</returns>
-        private bool BuildLinkCard(FontAtlas f, InputState input, float x, float top, float width)
+        private bool BuildLinkCard(FontAtlas f, InputState input, float x, float top, float width, out float bottom)
         {
             LinkInfo[] links = Scene.Links;
             float row = S(22);
-            int fit = Math.Max(1, (int)((_window.Height - S(48) - top - S(70)) / row));
-            int rows = Math.Min(links.Length, fit);
+            int rows = links.Length;
             bool changed = false;
 
             _ui.Text(f.Small, x, top + S(2), "LINKED MODELS (READ-ONLY)", UiTheme.TEXT_MUTED, S(1.8f));
             float cardTop = top + S(26);
-            float cardH = S(20) + rows * row + (rows < links.Length ? row : 0f);
+            float cardH = S(20) + rows * row;
+            bottom = cardTop + cardH;
             _ui.Panel(x, cardTop, width, cardH, UiTheme.CARD, UiTheme.CARD_BORDER);
 
             float ry = cardTop + S(10);
@@ -761,12 +780,6 @@ namespace BimGo.Game
                     changed = true;
                 }
                 ry += row;
-            }
-
-            if (rows < links.Length)
-            {
-                Text.Clear().Append('+').Append(links.Length - rows).Append(" more (make the window taller to list them)");
-                _ui.Text(f.Body, x + S(14), ry, Text.Span, UiTheme.TEXT_MUTED);
             }
             return changed;
         }
@@ -803,27 +816,43 @@ namespace BimGo.Game
 
         /// <summary>
         /// The Display · Reflections · Appearance tabs and the open tab's card. One fixed card height so the column doesn't
-        /// jump between tabs.
+        /// jump between tabs (shorter, and scrolled, in a short window).
         /// </summary>
-        private void BuildSettingsTabs(FontAtlas f, InputState input, float x, float top, float width)
+        /// <param name="reserve">Height kept free under the card (the preview's DONE).</param>
+        /// <returns>The card's height.</returns>
+        private float BuildSettingsTabs(FontAtlas f, InputState input, float x, float top, float width, float reserve = 0f)
         {
             int tab = Tabs(f, input, x, top, width, RIGHT_TABS, _rightTab);
             if (tab != _rightTab)
             {
                 _rightTab = tab;
                 _activeSlider = -1;
+                _settingsScroll.Reset();
             }
 
             float cardTop = top + S(32);
-            _ui.Panel(x, cardTop, width, S(RIGHT_CARD_HEIGHT), UiTheme.CARD, UiTheme.CARD_BORDER);
-            float ix = x + S(14), iw = width - S(28), y = cardTop + S(14);
+            float cardH = SettingsCardHeight(cardTop, reserve);
+            _ui.Panel(x, cardTop, width, cardH, UiTheme.CARD, UiTheme.CARD_BORDER);
+            float ix = x + S(14), iw = width - S(28);
+
+            // The tab's content scrolls when the card is shorter than it (the bar sits in the card's right padding)
+            float y = BeginScroll(_settingsScroll, input, x + S(1), cardTop + S(1), width - S(2), cardH - S(2), out _, wheel: _activeSlider < 0) + S(13);
             switch (_rightTab)
             {
                 case 1: BuildReflectionsTab(f, input, ix, y, iw); break;
                 case 2: BuildAppearanceTab(f, input, ix, y, iw); break;
                 default: BuildDisplayTab(f, input, ix, y, iw); break;
             }
+            EndScroll(_settingsScroll, input, y - S(13) + S(RIGHT_CARD_HEIGHT) - S(2));
+            return cardH;
         }
+
+        /// <summary>
+        /// The settings card's height below a top: the full <see cref="RIGHT_CARD_HEIGHT"/>, or what the window has left
+        /// (less <paramref name="reserve"/> for anything under the card), at least 160 px.
+        /// </summary>
+        private float SettingsCardHeight(float cardTop, float reserve = 0f) =>
+            MathF.Min(S(RIGHT_CARD_HEIGHT), MathF.Max(S(160), _window.Height - S(UiTheme.PANEL_MARGIN) - reserve - cardTop));
 
         /// <summary>
         /// The units row: Metric / Imperial, and (imperial) decimal feet instead of feet-inches. Per machine.
@@ -995,10 +1024,14 @@ namespace BimGo.Game
 
         #region Widgets
 
-        private static bool Hover(InputState input, float x, float y, float w, float h)
+        /// <summary>
+        /// True when the mouse is over a rectangle. Inside a scroll region (polish round P-A1) the part clipped away
+        /// never counts, so rows scrolled out of view can't be clicked.
+        /// </summary>
+        private bool Hover(InputState input, float x, float y, float w, float h)
         {
             Vector2 m = input.MousePosition;
-            return m.X >= x && m.X < x + w && m.Y >= y && m.Y < y + h;
+            return m.X >= x && m.X < x + w && m.Y >= y && m.Y < y + h && _ui.ClipContains(m.X, m.Y);
         }
 
         /// <summary>

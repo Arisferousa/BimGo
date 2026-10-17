@@ -30,6 +30,7 @@ namespace BimGo.Rendering
         private Vector4[] _clipPlanes = new Vector4[BimGo.Scene.SectionCut.MAX_PLANES];
         private int _clipCount;
         private bool _clipBox;
+        private int _capStencilProfile;
 
         #endregion
 
@@ -42,6 +43,9 @@ namespace BimGo.Rendering
             _capStencilModel = _capStencilProgram.Uniform("uModel");
             _capStencilPlane = _capStencilProgram.Uniform("uCapPlane");
             _capStencilShade = _capStencilProgram.Uniform("uCapShade");
+            _capStencilProfile = _capStencilProgram.Uniform("uProfilePass");
+            _capStencilProgram.Use();
+            Gl.Uniform1(_capStencilProgram.Uniform("uProfileTex"), PROFILE_UNIT); // colour round A: SCENE_VS's sampler (ghosted elements are left out of the caps)
 
             _capProgram = ShaderProgram.Create("section cap", Shaders.CAP_VS, Shaders.CAP_FS);
             _capViewProj = _capProgram.Uniform("uViewProj");
@@ -173,6 +177,7 @@ namespace BimGo.Rendering
             Gl.UniformMatrix4(_capStencilModel, Matrix4x4.Identity);
             Gl.Uniform4(_capStencilPlane, plane.X, plane.Y, plane.Z, plane.W);
             Gl.Uniform1(_capStencilShade, shade);
+            Gl.Uniform1(_capStencilProfile, BindProfile(GhostAlpha <= 0f) ? 1 : 0); // colour round A: no caps on ghosts
             DrawBatches(frustum, groupVisible, transparent: false, countStats: false);
             if (dynamics != null && dynamics.Instances.Count > 0) { DrawDynamicInstances(dynamics, frustum, transparent: false, _capStencilModel); }
         }

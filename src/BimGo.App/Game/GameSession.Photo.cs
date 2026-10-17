@@ -179,7 +179,7 @@ namespace BimGo.Game
             Camera.ViewportHeight = height;
             Camera.Aspect = (float)width / Math.Max(height, 1);
             Camera.Update();
-            byte[] pixels = RenderPhotoView(width, height);
+            byte[] pixels = RenderPhotoView(width, height, legend: true);
 
             bool jpeg = _photoJpeg;
             string path = PhotoPath(jpeg ? ".jpg" : ".png", $" {width}x{height}");
@@ -256,13 +256,20 @@ namespace BimGo.Game
         /// Renders the camera's current view into an off-screen target (MSAA when it fits the budget), resolves it and
         /// reads it back as bottom-up BGRA.
         /// </summary>
-        private byte[] RenderPhotoView(int width, int height)
+        /// <param name="legend">Colour round B: a still: the colour profile's legend goes in when ticked (not in 360s).</param>
+        private byte[] RenderPhotoView(int width, int height, bool legend = false)
         {
             long pixels = (long)width * height;
             int samples = pixels * 4 <= PHOTO_SAMPLE_BUDGET ? 4 : pixels * 2 <= PHOTO_SAMPLE_BUDGET ? 2 : 0;
             _photoTarget ??= new RenderTarget();
             _photoResolve ??= new RenderTarget();
             RenderScene(width, height, _photoTarget, samples, photo: true);
+            if (legend && ProfileLegendInShots)
+            {
+                _photoTarget.Bind();
+                QueueProfileLegendForShot(width, height);
+                _ui.Flush(width, height);
+            }
             _photoResolve.Ensure(width, height, 0);
             _photoTarget.ResolveTo(_photoResolve);
             byte[] bgra = new byte[pixels * 4];
