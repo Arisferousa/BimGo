@@ -905,7 +905,87 @@ uniform vec3 uZenith;
 uniform vec3 uHorizon;
 uniform vec3 uSunDisc;
 uniform vec3 uSunShape;
+// Round W-A: the night sky. uStars = (density, brightness, twinkle, Milky Way; density 0 = no stars); the celestial
+// rows turn a sky direction into equatorial axes (the stars turn with the sidereal time); uNight 0 day – 1 night.
+uniform vec3 uMoonDir;
+uniform vec3 uMoonSun;  // towards the light on the moon: the sun, or a chosen phase's
+uniform vec3 uMoonDisc;
+uniform vec3 uMoonGlow;
+uniform float uNight;
+uniform vec4 uStars;
+uniform float uTime;
+uniform vec3 uCelestialX;
+uniform vec3 uCelestialY;
+uniform vec3 uCelestialZ;
 out vec4 oColor;
+
+const float MOON_RADIUS = 0.0085;
+const vec3 GALACTIC_POLE = vec3(-0.86766, -0.19807, 0.45599);
+const vec3 GALACTIC_CENTRE = vec3(-0.05488, -0.87341, -0.48386);
+
+float hash13(vec3 p)
+{
+    p = fract(p * 0.1031);
+    p += dot(p, p.zyx + 31.32);
+    return fract((p.x + p.y) * p.z);
+}
+vec3 hash33(vec3 p)
+{
+    p = fract(p * vec3(0.1031, 0.1030, 0.0973));
+    p += dot(p, p.yxz + 33.33);
+    return fract((p.xxy + p.yxx) * p.zyx);
+}
+float noise3(vec3 p)
+{
+    vec3 i = floor(p), f = fract(p);
+    vec3 u = f * f * (3.0 - 2.0 * f);
+    return mix(mix(mix(hash13(i), hash13(i + vec3(1, 0, 0)), u.x), mix(hash13(i + vec3(0, 1, 0)), hash13(i + vec3(1, 1, 0)), u.x), u.y),
+               mix(mix(hash13(i + vec3(0, 0, 1)), hash13(i + vec3(1, 0, 1)), u.x), mix(hash13(i + vec3(0, 1, 1)), hash13(i + vec3(1, 1, 1)), u.x), u.y), u.z);
+}
+
+// One layer of stars on the celestial sphere: cells of 1 / scale, at most one star in each (the 27 cells round the
+// direction, so none is cut off); px = the angle a pixel covers (keeps them a pixel or two wide at any zoom)
+vec3 starLayer(vec3 c, float scale, float chance, float bright, float px)
+{
+    vec3 p = c * scale;
+    vec3 home = floor(p);
+    vec3 sum = vec3(0.0);
+    float radius = max(px * 0.75, 1e-5);
+    for (int z = -1; z <= 1; z++)
+    for (int y = -1; y <= 1; y++)
+    for (int x = -1; x <= 1; x++)
+    {
+        vec3 cell = home + vec3(x, y, z);
+        float h = hash13(cell + 11.7);
+        if (h > chance) continue;
+        vec3 r = hash33(cell);
+        vec3 star = normalize(cell + 0.15 + 0.7 * r);
+        float d = length(c - star);
+        if (d > radius * 3.0) continue;
+        float magnitude = bright * (0.08 + 0.92 * pow(r.x, 7.0));
+        float twinkle = 1.0 - uStars.z * 0.45 * (0.5 + 0.5 * sin(uTime * (2.0 + 6.0 * r.y) + h * 61.0));
+        vec3 tint = mix(vec3(0.72, 0.80, 1.00), vec3(1.00, 0.86, 0.68), r.z);
+        sum += tint * magnitude * twinkle * exp(-d * d / (radius * radius));
+    }
+    return sum;
+}
+
+// The stars and the Milky Way in a direction (above the horizon, by night)
+vec3 nightSky(vec3 dir, float px)
+{
+    vec3 c = vec3(dot(dir, uCelestialX), dot(dir, uCelestialY), dot(dir, uCelestialZ));
+    float extinction = smoothstep(0.0, 0.18, dir.z);
+    float wash = clamp(length(uMoonGlow) * 2.5, 0.0, 1.0); // a bright moon hides the faint stars
+    float density = uStars.x;
+    vec3 stars = starLayer(c, 40.0, 0.16 * density, 2.2, px) + starLayer(c, 95.0, 0.10 * density, 0.35 * (1.0 - 0.6 * wash), px);
+    float g = dot(c, GALACTIC_POLE);
+    float band = exp(-g * g / 0.014);
+    float core = 0.55 + 0.9 * pow(max(dot(c, GALACTIC_CENTRE), 0.0), 3.0);
+    float lane = 1.0 - 0.55 * smoothstep(0.45, 0.7, noise3(c * 18.0)) * exp(-g * g / 0.0025);
+    float milky = band * core * lane * (0.5 + 0.5 * noise3(c * 7.0)) * uStars.w * (1.0 - 0.8 * wash);
+    return (stars * uStars.y * (1.0 - 0.5 * wash) + vec3(0.50, 0.56, 0.72) * 0.11 * milky) * extinction * uNight;
+}
+
 void main()
 {
     vec4 far = uInvViewProj * vec4(vNdc, 1.0, 1.0);
@@ -925,8 +1005,34 @@ void main()
         float d = max(dot(dir, uSunDir), 0.0);
         float glare = uSunShape.z * (1.0 - 0.75 * uCloudCover);
         c += uSunDisc * (smoothstep(uSunShape.x, uSunShape.y, d) + glare * (0.35 * pow(d, 64.0) + 0.15 * pow(d, 8.0)));
+
+        // W-A: stars, the Milky Way, then the moon (its lit side faces the sun: the phase draws itself)
+        if (h > 0.0)
+        {
+            float px = max(length(fwidth(dir)), 1e-5);
+            if (uNight > 0.01 && uStars.x > 0.0) { c += nightSky(dir, px); }
+            float m = dot(dir, uMoonDir);
+            if (uMoonDisc.x > 0.0 && m > 0.99)
+            {
+                vec3 q = (dir - uMoonDir * m) / MOON_RADIUS;
+                float q2 = dot(q, q);
+                float edge = px / MOON_RADIUS;
+                float inside = (1.0 - smoothstep(1.0 - edge, 1.0 + edge, sqrt(q2))) * step(0.0, m);
+                vec3 n = q - uMoonDir * sqrt(max(1.0 - q2, 0.0));
+                float lit = smoothstep(-0.06, 0.10, dot(n, uMoonSun));
+                float maria = 0.86 + 0.14 * noise3(n * 5.0 + 3.0) - 0.16 * smoothstep(0.5, 0.75, noise3(n * 2.2 + 9.0));
+                vec3 moon = uMoonDisc * (lit * maria + 0.03);
+                c = c * (1.0 - inside * uNight * 0.75) + moon * inside;
+            }
+            // The moon's glow: fades smoothly to nothing (no edge), tight round the disc, a faint wider haze
+            if (uMoonDisc.x > 0.0 && m > 0.0)
+            {
+                float angle = sqrt(max(2.0 * (1.0 - m), 0.0));
+                c += uMoonGlow * (0.45 * exp(-angle / 0.012) + 0.05 * exp(-angle / 0.05));
+            }
+        }
     }
-    vec4 cloud = cloudLayer(dir, uSunDir, uSun == 1 ? uSunDisc * 0.9 : vec3(0.6), horizon);
+    vec4 cloud = cloudLayer(dir, uSunDir, uSun == 1 ? uSunDisc * 0.9 + uMoonGlow * 1.6 : vec3(0.6), horizon);
     c = mix(c, cloud.rgb, cloud.a);
     oColor = vec4(c, 1.0);
 }";

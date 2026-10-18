@@ -24,6 +24,15 @@ namespace BimGo.Rendering
         /// <summary>Glare (halo) multiplier (1 = default, 0 = none).</summary>
         public float SunGlare;
 
+        /// <summary>Round W-A: stars (density, brightness, twinkle, Milky Way; density 0 = none).</summary>
+        public Vector4 Stars;
+
+        /// <summary>Round W-A: the clock for the twinkle (seconds, wrapped).</summary>
+        public float Time;
+
+        /// <summary>Round W-A: the equatorial axes in scene axes (a sky direction's dot with each = its equatorial coordinates).</summary>
+        public Vector3 CelestialX, CelestialY, CelestialZ;
+
         /// <summary>No clouds, the default disc.</summary>
         public static readonly SkyLook Default = new() { SunSize = 1f, SunGlare = 1f };
     }

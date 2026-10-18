@@ -75,6 +75,10 @@ namespace BimGo.Format
                     {
                         WriteJson(zip, BimGoFormat.ENTRY_BOOKMARKS, document.Bookmarks, BimGoFormat.JSON_INDENTED);
                     }
+                    if (document.Paths != null && !document.Paths.IsEmpty) // Round K
+                    {
+                        WriteJson(zip, BimGoFormat.ENTRY_PATHS, document.Paths, BimGoFormat.JSON_INDENTED);
+                    }
                     if (document.Visibility != null && !document.Visibility.IsEmpty)
                     {
                         WriteJson(zip, BimGoFormat.ENTRY_VISIBILITY, document.Visibility, BimGoFormat.JSON_INDENTED);

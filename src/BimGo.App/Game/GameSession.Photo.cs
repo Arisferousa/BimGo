@@ -88,6 +88,7 @@ namespace BimGo.Game
             _fov = _photoSavedFov;
             _window.Input.ReleaseAll();
             if (!_paused && _window.IsActive && !_clashModeOn) { _window.SetCaptured(true); } // clash mode keeps its cursor
+            EndKeyPhoto(); // Round K-C: PHOTO AT THIS KEY puts the walkthrough back
         }
 
         /// <summary>
@@ -199,6 +200,7 @@ namespace BimGo.Game
             string path = PhotoPath(jpeg ? ".jpg" : ".png", $" {width}x{height}");
             string reduced = scale < _photoScale ? $" (reduced to {scale}× for this GPU)" : string.Empty;
             _photoNotice = "Saving…";
+            Interlocked.Increment(ref _photoSaving); // K-C: a batch waits for its saves
             Task.Run(() =>
             {
                 try
@@ -213,6 +215,10 @@ namespace BimGo.Game
                 {
                     Utilities.Log_Utils.Write($"Photo could not be saved: {ex}");
                     _photoMessage = "The photo could not be saved: " + ex.Message;
+                }
+                finally
+                {
+                    Interlocked.Decrement(ref _photoSaving);
                 }
             });
         }
@@ -254,6 +260,7 @@ namespace BimGo.Game
 
             string path = PhotoPath(".jpg", $" 360 {(_photo8K ? "8K" : "4K")}");
             _photoNotice = "Stitching the 360…";
+            Interlocked.Increment(ref _photoSaving); // K-C: a batch waits for its saves
             Task.Run(() =>
             {
                 try
@@ -269,6 +276,10 @@ namespace BimGo.Game
                 {
                     Utilities.Log_Utils.Write($"Panorama could not be saved: {ex}");
                     _photoMessage = "The 360 could not be saved: " + ex.Message;
+                }
+                finally
+                {
+                    Interlocked.Decrement(ref _photoSaving);
                 }
             });
         }
@@ -402,8 +413,9 @@ namespace BimGo.Game
             File.Move(temp, path, overwrite: true);
         }
 
-        /// <summary>Pictures\BimGo\&lt;model&gt; photo &lt;kind&gt; &lt;time&gt;.ext.</summary>
+        /// <summary>Pictures\BimGo\&lt;model&gt; photo &lt;kind&gt; &lt;time&gt;.ext (Round K-C: a batch shot's own name).</summary>
         private string PhotoPath(string extension, string kind) =>
+            _photoNamed != null ? _photoNamed + extension :
             Path.Combine(ScreenshotFolder, SafeFileName(Path.GetFileNameWithoutExtension(DocumentName)) + " photo" + kind + " " +
                 DateTime.Now.ToString("yyyy-MM-dd HHmmss", System.Globalization.CultureInfo.InvariantCulture) + extension);
 

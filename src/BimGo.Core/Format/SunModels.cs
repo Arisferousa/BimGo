@@ -56,6 +56,52 @@ namespace BimGo.Format
     }
 
     /// <summary>
+    /// Round K-C: a sun time part way between two others (the tour and camera paths animate the sun with it). The date
+    /// moves the short way round the year (December → January goes through New Year, not back through the whole year);
+    /// the clock time moves straight from one to the other; daylight saving switches halfway.
+    /// </summary>
+    public static class SunBlend
+    {
+        /// <summary>
+        /// Fills <paramref name="into"/> with the time <paramref name="t"/> of the way from <paramref name="a"/> to
+        /// <paramref name="b"/>. Allocation-free.
+        /// </summary>
+        /// <param name="a">From.</param>
+        /// <param name="b">To.</param>
+        /// <param name="t">0 (a) – 1 (b); clamped.</param>
+        /// <param name="year">The year (leap days).</param>
+        /// <param name="into">Receives the month, day, whole minutes and daylight saving.</param>
+        /// <returns>The clock time in fractional minutes (0 – 1439.99), so the sun can move smoothly.</returns>
+        public static double Between(SunTime a, SunTime b, float t, int year, SunTime into)
+        {
+            t = float.IsFinite(t) ? Math.Clamp(t, 0f, 1f) : 0f;
+            year = Math.Clamp(year, 1, 9998);
+            int days = DateTime.IsLeapYear(year) ? 366 : 365;
+            int dayA = DayOfYear(year, a), dayB = DayOfYear(year, b);
+            int span = dayB - dayA;
+            if (span > days / 2) { span -= days; }
+            else if (span < -(days / 2)) { span += days; }
+            int day = (int)MathF.Round(dayA + span * t);
+            day = ((day - 1) % days + days) % days + 1;
+            DateTime date = new DateTime(year, 1, 1).AddDays(day - 1);
+            into.Month = date.Month;
+            into.Day = date.Day;
+            int minutesA = Math.Clamp(a.Minutes, 0, 1439), minutesB = Math.Clamp(b.Minutes, 0, 1439);
+            double minutes = Math.Clamp(minutesA + (minutesB - minutesA) * (double)t, 0.0, 1439.99);
+            into.Minutes = Math.Clamp((int)minutes, 0, 1439);
+            into.DaylightSaving = t < 0.5f ? a.DaylightSaving : b.DaylightSaving;
+            return minutes;
+        }
+
+        /// <summary>A sun time's day of the year (1–366) in <paramref name="year"/> (the day clamped to its month).</summary>
+        public static int DayOfYear(int year, SunTime time)
+        {
+            int month = Math.Clamp(time.Month, 1, 12);
+            return new DateTime(year, month, Math.Clamp(time.Day, 1, DateTime.DaysInMonth(year, month))).DayOfYear;
+        }
+    }
+
+    /// <summary>
     /// The walkthrough's sun and shadow state as saved with a model (sun.json in a .bimgo, or
     /// &lt;model&gt;.bimgo-sun.json beside a Revit model in live sessions). Shadow quality is a per-machine setting
     /// (<see cref="LaunchSettings.ShadowQuality"/>), not stored here.
@@ -101,6 +147,37 @@ namespace BimGo.Format
         public const float MIN_SUN_SIZE = 0.25f;
 
         /// <summary>
+        /// Round W-A: the moon in the night sky (its real place and phase). When the sun is down it lights the scene and
+        /// casts the shadows (dim, cool, by its phase). Older files read as on.
+        /// </summary>
+        public bool Moon { get; set; } = true;
+
+        /// <summary>
+        /// Round W-A: a chosen phase (the lit fraction, 0.05–1: full 1, gibbous 0.8, half 0.5, crescent 0.2) instead of
+        /// the real one for the date, or null for the real phase. The moon stays where it really is in the sky.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+        public float? MoonPhase { get; set; }
+
+        /// <summary>Round W-A: moonlight multiplier (0 = no moonlight, 1 = default, 2 = double).</summary>
+        public float MoonLight { get; set; } = 1f;
+
+        /// <summary>Round W-A: stars at night (turning with the sky for the site's latitude).</summary>
+        public bool Stars { get; set; } = true;
+
+        /// <summary>Round W-A: how many stars (0–2, 1 = default).</summary>
+        public float StarDensity { get; set; } = 1f;
+
+        /// <summary>Round W-A: how bright the stars are (0–2, 1 = default).</summary>
+        public float StarBrightness { get; set; } = 1f;
+
+        /// <summary>Round W-A: how much the stars twinkle (0 = steady, 1 = default, 2 = double).</summary>
+        public float StarTwinkle { get; set; } = 1f;
+
+        /// <summary>Round W-A: the Milky Way band's strength (0 = none, 1 = default, 2 = double).</summary>
+        public float MilkyWay { get; set; } = 1f;
+
+        /// <summary>
         /// A location chosen in BimGo instead of the model's (location override), or null to use the Revit site's.
         /// Older readers ignore it; Revit is never changed.
         /// </summary>
@@ -120,6 +197,12 @@ namespace BimGo.Format
             CloudSpeed = Clamp(CloudSpeed, 0f, 2f, 1f);
             SunSize = Clamp(SunSize, MIN_SUN_SIZE, 2f, 1f);
             SunGlare = Clamp(SunGlare, 0f, 2f, 1f);
+            MoonLight = Clamp(MoonLight, 0f, 2f, 1f);
+            if (MoonPhase is float phase) { MoonPhase = float.IsFinite(phase) ? Math.Clamp(phase, 0.05f, 1f) : null; }
+            StarDensity = Clamp(StarDensity, 0f, 2f, 1f);
+            StarBrightness = Clamp(StarBrightness, 0f, 2f, 1f);
+            StarTwinkle = Clamp(StarTwinkle, 0f, 2f, 1f);
+            MilkyWay = Clamp(MilkyWay, 0f, 2f, 1f);
             if (Location != null && !Location.Clean().IsValid) { Location = null; }
             return this;
         }
@@ -137,6 +220,14 @@ namespace BimGo.Format
             CloudSpeed = CloudSpeed,
             SunSize = SunSize,
             SunGlare = SunGlare,
+            Moon = Moon,
+            MoonPhase = MoonPhase,
+            MoonLight = MoonLight,
+            Stars = Stars,
+            StarDensity = StarDensity,
+            StarBrightness = StarBrightness,
+            StarTwinkle = StarTwinkle,
+            MilkyWay = MilkyWay,
             Location = Location?.Copy()
         };
 

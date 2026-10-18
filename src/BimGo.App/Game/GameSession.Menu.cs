@@ -428,6 +428,11 @@ namespace BimGo.Game
                 BuildBookmarksPanel();
                 return;
             }
+            if (IsMediaPanelOpen)
+            {
+                BuildMediaPanel(); // Round K-A
+                return;
+            }
             if (IsTexturesPanelOpen)
             {
                 BuildTexturesPanel();
@@ -514,7 +519,7 @@ namespace BimGo.Game
             bool libraryButton = HasLibrary;
             bool roomsButton = Scene.Rooms.Length > 0;
             int sessionButtons = 4 + (IsFileMode ? 3 : 1); // + CONTROLS (input round B2)
-            int reviewButtons = 5 + (hiddenThings > 0 ? 1 : 0) + (texturesButton ? 1 : 0) + (libraryButton ? 1 : 0) + (roomsButton ? 1 : 0);
+            int reviewButtons = 6 + (hiddenThings > 0 ? 1 : 0) + (texturesButton ? 1 : 0) + (libraryButton ? 1 : 0) + (roomsButton ? 1 : 0);
             int rows = twoStacks ? Math.Max(sessionButtons, reviewButtons) : sessionButtons + reviewButtons;
             float step = Math.Clamp((endY - S(12) - buttonsTop) / rows, S(32), S(44));
             float buttonH = step - S(6);
@@ -560,6 +565,8 @@ namespace BimGo.Game
             y += step;
             if (MenuButton(f, x, y, stackW, BookmarksMenuLabel(), false, false, height: buttonH, compact: true)) { OpenBookmarks(); return; }
             y += step;
+            if (MenuButton(f, x, y, stackW, "MEDIA", false, false, height: buttonH, compact: true)) { OpenMedia(_mediaTab); return; } // Round K-A
+            y += step;
             if (texturesButton)
             {
                 if (MenuButton(f, x, y, stackW, TexturesMenuLabel(), false, false, height: buttonH, compact: true)) { OpenTextures(); return; }
@@ -594,15 +601,8 @@ namespace BimGo.Game
                 y += step;
             }
 
-            if (MenuButton(f, x, y, stackW, "CLEAR MARKERS", false, false, height: buttonH, compact: true))
-            {
-                // Every gun's markers except comments (persistent: use X with the Comment gun)
-                foreach (Gun gun in _guns)
-                {
-                    if (gun != _commentGun) { gun.ClearMarkers(); }
-                }
-                Toast("Markers cleared (comments are kept)");
-            }
+            // Round W-A: CLEAR MARKERS left the menu (each gun clears its own markers with the clear key; comments are
+            // issues, managed in COMMENTS)
 
             if (MenuButton(f, leftX, endY, stackW, _live != null ? "LEAVE SESSION" : _options.InApp ? "CLOSE MODEL" : "END SESSION", false, danger: true, height: S(40), compact: true)) { _endRequested = true; return; }
 

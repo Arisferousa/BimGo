@@ -102,7 +102,7 @@ namespace BimGo.Scene
     /// over the hold.</item>
     /// </list>
     /// </summary>
-    public sealed class TourTimeline
+    public sealed class TourTimeline : ITourTimeline
     {
         /// <summary>Fastest glide between stops (m/s): far-apart stops glide for longer than the set time.</summary>
         public const float GLIDE_SPEED = 4f;
@@ -283,6 +283,9 @@ namespace BimGo.Scene
             }
             return pose;
         }
+
+        /// <summary>Round K: the tour player's pose (the same as <see cref="Evaluate"/>).</summary>
+        public TourPose Pose(float time) => Evaluate(time);
 
         private static void SetBlend(ref TourPose pose, int from, int to, float t)
         {

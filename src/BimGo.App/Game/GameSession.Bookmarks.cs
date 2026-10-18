@@ -171,32 +171,22 @@ namespace BimGo.Game
         }
 
         /// <summary>
-        /// One level back: the tour settings back to the list, then the list closes.
+        /// One level back: the list closes (Round K-A: the tour settings moved to MEDIA → TOUR).
         /// </summary>
         /// <returns>True if it was open.</returns>
         private bool CloseBookmarks()
         {
             if (!_bookmarksOpen) { return false; }
-            if (_tourSettingsOpen)
-            {
-                ToggleTourSettings(); // polish round P-A1: Esc / BACK leave the tour settings first
-                return true;
-            }
             CloseBookmarksPanel();
             return true;
         }
 
-        /// <summary>
-        /// Closes the list and the tour settings in one go (a tour starting, CLOSE): the draft is saved first.
-        /// </summary>
+        /// <summary>Closes the list (a tour starting, CLOSE).</summary>
         private void CloseBookmarksPanel()
         {
             if (!_bookmarksOpen) { return; }
-            FlushTourDraft();
             _bookmarksOpen = false;
             _bookmarkDeleteArmed = null;
-            _tourSettingsOpen = false;
-            _tourDraft = null;
         }
 
         /// <summary>"BOOKMARKS (n)" (rebuilt only when the count changes).</summary>
@@ -222,13 +212,11 @@ namespace BimGo.Game
         {
             FontAtlas f = _ui.Atlas;
             InputState input = _window.Input;
-            bool tour = _tourSettingsOpen;
             Text.Clear().AppendGrouped(Bookmarks.Bookmarks.Count).Append(Bookmarks.Bookmarks.Count == 1 ? " viewpoint · saved to " : " viewpoints · saved to ").Append(Bookmarks.FileName);
             const string ADD = "ADD THIS VIEW";
-            PanelFrame frame = BeginPanel(PanelSize.Standard, tour ? "BOOKMARKS · TOUR" : "BOOKMARKS", UiTheme.BOOKMARK_LABEL, Text.Span,
-                headerControls: tour ? 0f : ShellButtonWidth(f, ADD));
+            PanelFrame frame = BeginPanel(PanelSize.Standard, "BOOKMARKS", UiTheme.BOOKMARK_LABEL, Text.Span, headerControls: ShellButtonWidth(f, ADD));
 
-            if (!tour && HeaderButton(ref frame, ADD))
+            if (HeaderButton(ref frame, ADD))
             {
                 BookmarkRecord added = Bookmarks.Add(null, _player.Feet, _player.Yaw, _player.Pitch, _player.Flying, CurrentLevelName, BookmarkSunTime(), _section,
                     CurrentStandingEye, BookmarkVisibility());
@@ -237,17 +225,16 @@ namespace BimGo.Game
                 _bookmarkScroll.ScrollToEnd();
             }
 
-            if (tour) { BuildTourSettings(f, input, frame.Ix, frame.BodyTop, frame.Iw, frame.BodyBottom); }
-            else { BuildBookmarkRows(f, input, frame.Ix, frame.BodyTop, frame.Iw, frame.BodyBottom); }
+            BuildBookmarkRows(f, input, frame.Ix, frame.BodyTop, frame.Iw, frame.BodyBottom);
             if (!_bookmarksOpen) { return; } // GO / RENAME left the panel
 
-            int settings = tour ? FooterAction("RECORD VIDEO") : FooterAction("TOUR SETTINGS");
+            int settings = FooterAction("TOUR SETTINGS"); // Round K-A: MEDIA → TOUR
             int play = FooterAction("PLAY TOUR", ShellStyle.Primary);
-            int pressed = EndPanel(frame, _bookmarksNotice, tour ? HINT_BOOKMARKS_TOUR.Text : HINT_BOOKMARKS_KEYS.Text);
+            int pressed = EndPanel(frame, _bookmarksNotice, HINT_BOOKMARKS_KEYS.Text);
             if (pressed == settings)
             {
-                if (tour) { StartVideo(); }
-                else { ToggleTourSettings(); }
+                CloseBookmarksPanel();
+                OpenMedia(MEDIA_TOUR);
             }
             else if (pressed == play) { StartTour(); }
         }

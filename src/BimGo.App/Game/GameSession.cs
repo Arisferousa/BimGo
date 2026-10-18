@@ -311,6 +311,7 @@ namespace BimGo.Game
             Comments.Changed += UpdateTitle;
             Comments.CurrentEye = () => CurrentStandingEye; // P-C: views keep the eye-height preset
             InitialiseBookmarks();
+            InitialisePaths(); // Round K-A: camera paths
             InitialiseSun();
             InitialiseVisibility();
 
@@ -687,6 +688,13 @@ namespace BimGo.Game
                 return;
             }
 
+            // Round K-B: the 3D path editor has the cursor; its own keys fly, RMB-drag looks
+            if (_pathEditOn && !_paused)
+            {
+                UpdatePathEditor(input, dt);
+                return;
+            }
+
             // Clash mode (Round C-B): the docked clash list has the cursor; the move keys fly, RMB-drag looks
             if (_clashModeOn && !_paused)
             {
@@ -818,6 +826,16 @@ namespace BimGo.Game
                 OpenPhotoMode();
                 return;
             }
+            if (input.Pressed(InputAction.MediaPanel))
+            {
+                OpenMediaPanel(); // Round K-A: photo, tour, paths, video
+                return;
+            }
+            if (input.Pressed(InputAction.PathEditMode))
+            {
+                EnterPathEditor(_mediaPath); // Round K-B: the 3D path editor
+                return;
+            }
             if (input.Pressed(InputAction.SectionBox))
             {
                 OpenSectionEditor();
@@ -901,8 +919,14 @@ namespace BimGo.Game
         {
             if (_tourActive) { return; } // the tour places the player itself
             _player.Controller.GroundZ = _groundZ;
-            bool frozen = IsEditingComment || _sunPanelOpen || _sunHoursOpen || GridsPanelHasKeys || !_window.IsActive || _guns[_activeGun].CapturesInput || ClashFreezesPlayer;
-            if (_clashModeOn)
+            bool frozen = IsEditingComment || _sunPanelOpen || _sunHoursOpen || GridsPanelHasKeys || !_window.IsActive || _guns[_activeGun].CapturesInput || ClashFreezesPlayer
+                || PathFreezesPlayer;
+            if (_pathEditOn)
+            {
+                // Round K-B: the path editor flies on its own keys (← / → pick keys there)
+                _player.FixedUpdate(dt, _window.Input, inputEnabled: !frozen, InputAction.PathFlyUp, InputAction.PathFlyDown, PATH_MOVES);
+            }
+            else if (_clashModeOn)
             {
                 // Clash mode flies with its own up / down keys (the gamepad's A and B click and go back there)
                 _player.FixedUpdate(dt, _window.Input, inputEnabled: !frozen, InputAction.ClashFlyUp, InputAction.ClashFlyDown);
@@ -1031,7 +1055,7 @@ namespace BimGo.Game
         /// True while a mode that works with a free cursor is on (sun panel, sun hours study, photo mode, the section box
         /// editor, clash mode): resuming must not capture the mouse then.
         /// </summary>
-        private bool CursorModeOpen => _sunPanelOpen || _sunHoursOpen || _photoOpen || _sectionOpen || _clashModeOn || _gridsPanelOpen;
+        private bool CursorModeOpen => _sunPanelOpen || _sunHoursOpen || _photoOpen || _sectionOpen || _clashModeOn || _gridsPanelOpen || _pathEditOn;
 
         /// <summary>
         /// Pauses (releases the mouse) or resumes (captures it again, unless a free-cursor mode is on: C-B1 fixes, the

@@ -90,6 +90,7 @@ namespace BimGo.Rendering
         private int _groundGeometryCenter, _groundGeometryHalf, _geometryGlow;
         private int _skyInvViewProj, _skyEye, _groundViewProj, _groundCenter, _groundHalf, _groundEye, _groundFog;
         private int _skySun, _skySunDir, _skyZenith, _skyHorizon, _skyDisc, _skySunShape, _skyCloudCover, _skyCloudOffset;
+        private int _skyMoonDir, _skyMoonSun, _skyMoonDisc, _skyMoonGlow, _skyNight, _skyStars, _skyTime, _skyCelestialX, _skyCelestialY, _skyCelestialZ; // W-A
         private int _depthViewProj, _depthModel, _transmitViewProj, _transmitModel, _transmitGlass, _transmitWhitecard;
 
         // Sun and shadows
@@ -424,6 +425,16 @@ namespace BimGo.Rendering
             _skySunShape = _skyProgram.Uniform("uSunShape");
             _skyCloudCover = _skyProgram.Uniform("uCloudCover");
             _skyCloudOffset = _skyProgram.Uniform("uCloudOffset");
+            _skyMoonDir = _skyProgram.Uniform("uMoonDir");
+            _skyMoonSun = _skyProgram.Uniform("uMoonSun");
+            _skyMoonDisc = _skyProgram.Uniform("uMoonDisc");
+            _skyMoonGlow = _skyProgram.Uniform("uMoonGlow");
+            _skyNight = _skyProgram.Uniform("uNight");
+            _skyStars = _skyProgram.Uniform("uStars");
+            _skyTime = _skyProgram.Uniform("uTime");
+            _skyCelestialX = _skyProgram.Uniform("uCelestialX");
+            _skyCelestialY = _skyProgram.Uniform("uCelestialY");
+            _skyCelestialZ = _skyProgram.Uniform("uCelestialZ");
             _depthViewProj = _shadowDepthProgram.Uniform("uViewProj");
             _depthModel = _shadowDepthProgram.Uniform("uModel");
             _transmitViewProj = _shadowTransmitProgram.Uniform("uViewProj");
@@ -786,7 +797,7 @@ namespace BimGo.Rendering
             }
 
             // Sun below the horizon: no direct light, so nothing to shadow (keep the maps for when it rises)
-            if (Lighting.AltitudeDegrees < -1f) { return null; }
+            if (Lighting.AltitudeDegrees < -1f && !Lighting.MoonLights) { return null; } // W-A: the moon casts them at night
 
             if (!_shadows.Ensure(preset, _hasTransparent)) { return _shadows.LastError; }
 
@@ -1148,7 +1159,7 @@ namespace BimGo.Rendering
                 Matrix4x4 matrix = _probes.FaceMatrix(probe, face, out Vector3 eye, out Vector4[] planes);
                 _probes.BeginFace(probe, face, clear);
                 Matrix4x4.Invert(matrix, out Matrix4x4 inverse);
-                DrawSky(inverse, eye);
+                DrawSky(inverse, eye, stars: false); // W-A: no stars in probes (their faces are too coarse for points)
 
                 p.ViewProjection = matrix;
                 p.Planes = planes;
@@ -1239,7 +1250,8 @@ namespace BimGo.Rendering
         /// <summary>
         /// Draws the gradient sky (no depth) for any view (the camera, or a probe face).
         /// </summary>
-        private void DrawSky(in Matrix4x4 inverseViewProjection, Vector3 eye)
+        /// <param name="stars">Round W-A: draw the stars and the Milky Way (not in probe faces).</param>
+        private void DrawSky(in Matrix4x4 inverseViewProjection, Vector3 eye, bool stars = true)
         {
             Gl.Disable(Gl.DEPTH_TEST);
             Gl.DepthMask(false);
@@ -1248,7 +1260,8 @@ namespace BimGo.Rendering
             Gl.Uniform3(_skyEye, eye.X, eye.Y, eye.Z);
             SunLighting l = Lighting;
             Gl.Uniform1(_skySun, l.Enabled ? 1 : 0);
-            Gl.Uniform3(_skySunDir, l.SunDirection.X, l.SunDirection.Y, l.SunDirection.Z);
+            Vector3 sunDir = l.SkySunDirection.LengthSquared() > 0.5f ? l.SkySunDirection : l.SunDirection; // W-A: the real sun (the moon may light the scene)
+            Gl.Uniform3(_skySunDir, sunDir.X, sunDir.Y, sunDir.Z);
             Gl.Uniform3(_skyZenith, l.Zenith.X, l.Zenith.Y, l.Zenith.Z);
             Gl.Uniform3(_skyHorizon, l.Horizon.X, l.Horizon.Y, l.Horizon.Z);
             Gl.Uniform3(_skyDisc, l.SunDisc.X, l.SunDisc.Y, l.SunDisc.Z);
@@ -1256,6 +1269,16 @@ namespace BimGo.Rendering
             Gl.Uniform3(_skySunShape, MathF.Cos(SkyLook.DISC_OUTER * sky.SunSize), MathF.Cos(SkyLook.DISC_INNER * sky.SunSize), sky.SunGlare);
             Gl.Uniform1(_skyCloudCover, sky.CloudCover);
             Gl.Uniform2(_skyCloudOffset, sky.CloudOffset.X, sky.CloudOffset.Y);
+            Gl.Uniform3(_skyMoonDir, l.MoonDirection.X, l.MoonDirection.Y, l.MoonDirection.Z);
+            Gl.Uniform3(_skyMoonSun, l.MoonSunDirection.X, l.MoonSunDirection.Y, l.MoonSunDirection.Z);
+            Gl.Uniform3(_skyMoonDisc, l.MoonDisc.X, l.MoonDisc.Y, l.MoonDisc.Z);
+            Gl.Uniform3(_skyMoonGlow, l.MoonGlow.X, l.MoonGlow.Y, l.MoonGlow.Z);
+            Gl.Uniform1(_skyNight, l.Night);
+            Gl.Uniform4(_skyStars, stars ? sky.Stars.X : 0f, sky.Stars.Y, sky.Stars.Z, sky.Stars.W);
+            Gl.Uniform1(_skyTime, sky.Time);
+            Gl.Uniform3(_skyCelestialX, sky.CelestialX.X, sky.CelestialX.Y, sky.CelestialX.Z);
+            Gl.Uniform3(_skyCelestialY, sky.CelestialY.X, sky.CelestialY.Y, sky.CelestialY.Z);
+            Gl.Uniform3(_skyCelestialZ, sky.CelestialZ.X, sky.CelestialZ.Y, sky.CelestialZ.Z);
             Gl.BindVertexArray(_emptyVao);
             Gl.DrawArrays(Gl.TRIANGLES, 0, 3);
             Gl.DepthMask(true);

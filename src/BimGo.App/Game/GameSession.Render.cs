@@ -303,6 +303,7 @@ namespace BimGo.Game
                 _overlay.Draw(Camera, depthTest: true, alpha: 1f, additive: false);
                 _overlay.Draw(Camera, depthTest: false, alpha: 0.16f, additive: false);
                 DrawClashToolOverlay(); // C-C2: a grouping tool's dots (brighter through walls), the cluster sphere
+                DrawPathEditor(); // Round K-B: the path, keys and handles while the path editor is on
             }
             else if (_photoGridLines && !_clashShot && ((_photoOpen && !photo) || (photo && _photoShooting)))
             {
@@ -486,6 +487,13 @@ namespace BimGo.Game
             if (_clashModeOn)
             {
                 BuildClashHud(f, width, height);
+                return;
+            }
+
+            // Round K-B: the path editor's HUD (dock, scrubber; no crosshair or guns)
+            if (_pathEditOn)
+            {
+                BuildPathEditorHud(f, width, height, mapX, mapY);
                 return;
             }
 

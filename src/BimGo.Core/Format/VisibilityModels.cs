@@ -69,6 +69,19 @@ namespace BimGo.Format
             if (Appearance?.IsDefault == true) { Appearance = null; }
             return this;
         }
+
+        /// <summary>
+        /// Round K-C: a copy with its own lists (a bookmark's hidden items copied into a camera path key). The section,
+        /// grids and appearance are shared: they are replaced, never edited in place.
+        /// </summary>
+        public VisibilitySettings Copy()
+        {
+            var copy = (VisibilitySettings)MemberwiseClone();
+            copy.HiddenCategories = HiddenCategories != null ? new List<string>(HiddenCategories) : new List<string>();
+            copy.HiddenLinks = HiddenLinks != null ? new List<string>(HiddenLinks) : new List<string>();
+            copy.HiddenElements = HiddenElements != null ? new List<HiddenElement>(HiddenElements) : new List<HiddenElement>();
+            return copy;
+        }
     }
 
     /// <summary>

@@ -36,7 +36,15 @@ namespace BimGo.Game
         private const int SLIDER_CLOUDS = 20, SLIDER_CLOUD_SPEED = 21, SLIDER_SUN_SIZE = 22, SLIDER_SUN_GLARE = 23;
 
         /// <summary>Sky round: the sun panel's lower tabs.</summary>
-        private static readonly string[] SUN_TABS = { "LIGHTING", "SKY" };
+        private static readonly string[] SUN_TABS = { "LIGHTING", "SKY", "NIGHT" }; // W-A: NIGHT (moon, stars)
+
+        /// <summary>Round W-A: the NIGHT tab's sliders.</summary>
+        private const int SLIDER_MOONLIGHT = 32, SLIDER_STAR_DENSITY = 33, SLIDER_STAR_BRIGHTNESS = 34, SLIDER_STAR_TWINKLE = 35, SLIDER_MILKY_WAY = 36;
+
+        /// <summary>Round W-A: the moon's phase: real, or a chosen lit fraction.</summary>
+        private static readonly string[] MOON_PHASE_OPTIONS = { "Actual", "", "", "", "" }; // the four chosen phases are drawn as moons
+        private static readonly string[] MOON_PHASE_NAMES = { "Actual phase for the date", "Full", "Gibbous", "Half", "Crescent" };
+        private static readonly float[] MOON_PHASE_VALUES = { 0f, 1f, 0.8f, 0.5f, 0.2f };
 
         /// <summary>Cloud drift at speed 1 (noise units per second) and its direction (from the west-south-west).</summary>
         private const float CLOUD_DRIFT = 0.012f;
@@ -60,6 +68,13 @@ namespace BimGo.Game
         private bool _locationKnown;
         private double _northAngle;
         private Vector3 _sunDirection = Vector3.UnitZ;
+
+        // Round W-A: the moon (scene axes, degrees, lit fraction) and the equatorial axes the stars turn in
+        private Vector3 _moonDirection = -Vector3.UnitZ;
+        private double _moonAltitude, _moonAzimuth;
+        private float _moonLit;
+        private bool _moonWaxing;
+        private Vector3 _celestialX = Vector3.UnitX, _celestialY = Vector3.UnitY, _celestialZ = Vector3.UnitZ;
         private double _sunAltitude, _sunAzimuth;   // degrees
         private ShadowQuality _shadowQuality = ShadowQuality.Medium;
 
@@ -145,6 +160,20 @@ namespace BimGo.Game
             _sunAltitude = altitude * 180.0 / Math.PI;
             _sunAzimuth = azimuth * 180.0 / Math.PI;
             _sunDirection = SolarPosition.ToModel(SolarPosition.Direction(altitude, azimuth), _northAngle);
+
+            // W-A: the moon and the turning sky (same date, time and place)
+            int year = DateTime.Today.Year;
+            LunarPosition.Compute(_location, year, time.Month, time.Day, minutes, time.DaylightSaving, out double moonAltitude, out double moonAzimuth,
+                out double lit, out _moonWaxing);
+            _moonAltitude = moonAltitude * 180.0 / Math.PI;
+            _moonAzimuth = moonAzimuth * 180.0 / Math.PI;
+            _moonLit = (float)lit;
+            _moonDirection = SolarPosition.ToModel(SolarPosition.Direction(moonAltitude, moonAzimuth), _northAngle);
+            Matrix4x4 sky = LunarPosition.EquatorialToTrueNorth(LunarPosition.LocalSiderealTime(_location, year, time.Month, time.Day, minutes, time.DaylightSaving),
+                _location.Latitude);
+            _celestialX = SolarPosition.ToModel(new Vector3(sky.M11, sky.M12, sky.M13), _northAngle);
+            _celestialY = SolarPosition.ToModel(new Vector3(sky.M21, sky.M22, sky.M23), _northAngle);
+            _celestialZ = SolarPosition.ToModel(new Vector3(sky.M31, sky.M32, sky.M33), _northAngle);
         }
 
         /// <summary>
@@ -264,7 +293,12 @@ namespace BimGo.Game
                 CloudCover = _sun.CloudCover,
                 CloudOffset = _cloudOffset,
                 SunSize = _sun.SunSize,
-                SunGlare = _sun.SunGlare
+                SunGlare = _sun.SunGlare,
+                Stars = _sun.Stars ? new Vector4(_sun.StarDensity, _sun.StarBrightness, _sun.StarTwinkle, _sun.MilkyWay) : Vector4.Zero, // W-A
+                Time = _clock % 3600f,
+                CelestialX = _celestialX,
+                CelestialY = _celestialY,
+                CelestialZ = _celestialZ
             };
         }
 
@@ -274,7 +308,21 @@ namespace BimGo.Game
         private SunLighting CurrentLighting()
         {
             if (!_sun.Enabled) { return default; }
-            return SunLighting.Create(_sunDirection, _sun.SunIntensity, _sun.SkyIntensity, _sun.ShadowIntensity, _sun.GlassTransmission);
+
+            // W-A: the moon's phase (real, or chosen: the light on its face turned to give that lit fraction)
+            float lit = _sun.MoonPhase ?? _moonLit;
+            SunLighting lighting = SunLighting.Create(_sunDirection, _sun.SunIntensity, _sun.SkyIntensity, _sun.ShadowIntensity, _sun.GlassTransmission,
+                _moonDirection, lit, _sun.Moon, _sun.MoonLight);
+            if (_sun.MoonPhase is float chosen)
+            {
+                Vector3 side = _sunDirection - _moonDirection * Vector3.Dot(_sunDirection, _moonDirection);
+                if (side.LengthSquared() < 1e-6f) { side = Vector3.Cross(_moonDirection, Vector3.UnitZ); }
+                if (side.LengthSquared() < 1e-6f) { side = Vector3.UnitX; }
+                side = Vector3.Normalize(side);
+                float cosElongation = Math.Clamp(1f - 2f * chosen, -1f, 1f);
+                lighting.MoonSunDirection = _moonDirection * cosElongation + side * MathF.Sqrt(1f - cosElongation * cosElongation);
+            }
+            return lighting;
         }
 
         /// <summary>
@@ -643,6 +691,11 @@ namespace BimGo.Game
                 cy = BuildSkyTab(f, input, ix, cy, iw);
                 return true;
             }
+            if (_sunTab == 2)
+            {
+                cy = BuildNightTab(f, input, ix, cy, iw); // W-A
+                return true;
+            }
 
             // Intensities
             IntensitySlider(f, input, SLIDER_SUN, ix, cy, iw, "Sunlight", _sun.SunIntensity, 2f);
@@ -695,6 +748,104 @@ namespace BimGo.Game
         }
 
         /// <summary>
+        /// Round W-A: the NIGHT tab: the moon (on / off, phase real or chosen, moonlight; where it is and how lit) and the
+        /// stars (on / off, density, brightness, twinkle, the Milky Way), RESET NIGHT.
+        /// </summary>
+        /// <returns>The tab's bottom.</returns>
+        private float BuildNightTab(FontAtlas f, InputState input, float ix, float cy, float iw)
+        {
+            bool moon = Checkbox(f, input, ix, cy, iw, "Moon (its real place in the sky)", _sun.Moon);
+            if (moon != _sun.Moon) { _sun.Moon = moon; SunChanged(); }
+            cy += S(30);
+
+            // Where it is and how lit (the real phase, or the chosen one)
+            float lit = _sun.MoonPhase ?? _moonLit;
+            Text.Clear().Append((long)MathF.Round(lit * 100f)).Append(" % lit");
+            if (_sun.MoonPhase == null) { Text.Append(_moonWaxing ? ", waxing" : ", waning"); }
+            if (_moonAltitude > 0.0)
+            {
+                Text.Append(" · ").Append((long)Math.Round(_moonAltitude)).Append("° up, ").Append(COMPASS[(int)Math.Round(_moonAzimuth / 45.0) & 7]);
+            }
+            else { Text.Append(" · below the horizon"); }
+            _ui.Text(f.Small, ix, cy, Text.Span, _moonAltitude > 0.0 ? UiTheme.TEXT_MUTED : UiTheme.TEXT_FAINT, S(0.4f));
+            cy += S(24);
+
+            int shown = 0;
+            if (_sun.MoonPhase is float chosen)
+            {
+                shown = 1;
+                for (int i = 2; i < MOON_PHASE_VALUES.Length; i++)
+                {
+                    if (MathF.Abs(MOON_PHASE_VALUES[i] - chosen) < MathF.Abs(MOON_PHASE_VALUES[shown] - chosen)) { shown = i; }
+                }
+            }
+            // Phase: Actual, then the four chosen phases as little moons (the full row width, so "Actual" fits)
+            _ui.Text(f.Body, ix, cy, "Phase", UiTheme.TEXT_SOFT);
+            Text.Clear().Append(MOON_PHASE_NAMES[shown]);
+            if (shown > 0) { Text.Append(" · ").Append((long)MathF.Round(MOON_PHASE_VALUES[shown] * 100f)).Append(" % lit"); }
+            _ui.TextRight(f.Small, ix + iw, cy + S(2), Text.Span, UiTheme.TEXT_MUTED);
+            cy += S(22);
+            int phase = Segmented(f, input, ix, cy, iw, MOON_PHASE_OPTIONS, shown);
+            float segment = iw / MOON_PHASE_OPTIONS.Length;
+            for (int i = 1; i < MOON_PHASE_OPTIONS.Length; i++)
+            {
+                DrawMoonIcon(ix + segment * (i + 0.5f), cy + S(16), S(8), MOON_PHASE_VALUES[i]);
+            }
+            if (phase != shown)
+            {
+                _sun.MoonPhase = phase == 0 ? null : MOON_PHASE_VALUES[phase];
+                SunChanged();
+            }
+            cy += S(42);
+            IntensitySlider(f, input, SLIDER_MOONLIGHT, ix, cy, iw, "Moonlight", _sun.MoonLight, 2f);
+            cy += S(54);
+
+            bool stars = Checkbox(f, input, ix, cy, iw, "Stars (turning with the sky)", _sun.Stars);
+            if (stars != _sun.Stars) { _sun.Stars = stars; SunChanged(); }
+            cy += S(32);
+            if (_sun.Stars)
+            {
+                IntensitySlider(f, input, SLIDER_STAR_DENSITY, ix, cy, iw, "Star density", _sun.StarDensity, 2f);
+                cy += S(54);
+                IntensitySlider(f, input, SLIDER_STAR_BRIGHTNESS, ix, cy, iw, "Star brightness", _sun.StarBrightness, 2f);
+                cy += S(54);
+                IntensitySlider(f, input, SLIDER_STAR_TWINKLE, ix, cy, iw, "Twinkle", _sun.StarTwinkle, 2f);
+                cy += S(54);
+                IntensitySlider(f, input, SLIDER_MILKY_WAY, ix, cy, iw, "Milky Way", _sun.MilkyWay, 2f);
+                cy += S(54);
+            }
+            _ui.TextWrapped(f.Small, ix, cy, iw, "Shows with shadows on once the sun is down. With the sun below the horizon the moon lights the scene and casts the shadows. Saved with the model.",
+                UiTheme.TEXT_FAINT, maxLines: 3);
+            cy += S(52);
+            if (SmallButton(f, input, ix, cy, S(150), S(28), "RESET NIGHT"))
+            {
+                _sun.Moon = _sun.Stars = true;
+                _sun.MoonPhase = null;
+                _sun.MoonLight = _sun.StarDensity = _sun.StarBrightness = _sun.StarTwinkle = _sun.MilkyWay = 1f;
+                SunChanged();
+            }
+            return cy + S(28);
+        }
+
+        /// <summary>
+        /// Round W-A: a small moon at a lit fraction (lit on the right, as a waxing moon in the north): the dark disc,
+        /// then the lit part row by row (each row lit from the terminator, an ellipse, to the edge). No font glyphs.
+        /// </summary>
+        private void DrawMoonIcon(float cx, float cy, float r, float lit)
+        {
+            _ui.Circle(cx, cy, r, Rgba.Hex(0x000000, 0.45f), 24);
+            uint light = Rgba.Hex(0xF3F0E4);
+            float step = MathF.Max(1f, UiScale);
+            float k = Math.Clamp(lit, 0f, 1f);
+            for (float y = -r + step * 0.5f; y < r; y += step)
+            {
+                float half = MathF.Sqrt(MathF.Max(r * r - y * y, 0f));
+                float from = half * (1f - 2f * k);
+                if (half - from > 0.25f) { _ui.Rect(cx + from, cy + y - step * 0.5f, half - from, step, light); }
+            }
+        }
+
+        /// <summary>
         /// A 0–max percentage slider (5 % steps) for one of the sun settings; records a change when the value moves.
         /// </summary>
         private void IntensitySlider(FontAtlas f, InputState input, int id, float x, float y, float w, string label, float value, float max)
@@ -715,6 +866,11 @@ namespace BimGo.Game
                     case SLIDER_CLOUD_SPEED: _sun.CloudSpeed = result; break;
                     case SLIDER_SUN_SIZE: _sun.SunSize = result; break;
                     case SLIDER_SUN_GLARE: _sun.SunGlare = result; break;
+                    case SLIDER_MOONLIGHT: _sun.MoonLight = result; break; // W-A
+                    case SLIDER_STAR_DENSITY: _sun.StarDensity = result; break;
+                    case SLIDER_STAR_BRIGHTNESS: _sun.StarBrightness = result; break;
+                    case SLIDER_STAR_TWINKLE: _sun.StarTwinkle = result; break;
+                    case SLIDER_MILKY_WAY: _sun.MilkyWay = result; break;
                 }
                 SunChanged();
             }

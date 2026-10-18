@@ -295,5 +295,43 @@ namespace BimGo.Tests
             Assert.AreEqual(string.Empty, back.ColourProfile, "\"\" = profiles off, not \"leave alone\"");
             Assert.IsNull(JsonSerializer.Deserialize<BookmarkRecord>("{\"Name\":\"Old\"}").ColourProfile);
         }
+
+        [TestMethod]
+        public void TourSettings_SmoothIsAFieldOlderBuildsCanIgnore()
+        {
+            // Round K-C: SMOOTH is a field (not a third transition), off by default and not written then
+            string plain = JsonSerializer.Serialize(new TourSettings());
+            Assert.IsFalse(plain.Contains("\"Smooth\":", StringComparison.Ordinal));
+            var smooth = new TourSettings { Transition = TourTransition.Glide, Smooth = true, SmoothSpeed = 99f }.Clean();
+            Assert.AreEqual(TourSettings.MAX_SMOOTH_SPEED, smooth.SmoothSpeed);
+            TourSettings back = JsonSerializer.Deserialize<TourSettings>(JsonSerializer.Serialize(smooth));
+            Assert.IsTrue(back.Smooth);
+            Assert.AreEqual(TourTransition.Glide, back.Transition, "an older build plays it as its transition");
+            Assert.AreEqual(1.5f, JsonSerializer.Deserialize<TourSettings>("{\"HoldSeconds\":3}").SmoothSpeed);
+        }
+
+        [TestMethod]
+        public void SunBlend_TheDateGoesTheShortWayRound()
+        {
+            // Round K-C: December → January goes through New Year; the clock moves straight; daylight saving switches halfway
+            var into = new SunTime();
+            var december = new SunTime { Month = 12, Day = 20, Minutes = 600 };
+            var january = new SunTime { Month = 1, Day = 10, Minutes = 720, DaylightSaving = true };
+            double minutes = SunBlend.Between(december, january, 0.5f, 2026, into);
+            Assert.AreEqual(660.0, minutes, 1e-6);
+            Assert.IsTrue(into.Month == 12 && into.Day >= 29 || into.Month == 1 && into.Day <= 2, $"{into.Day}/{into.Month}");
+            Assert.IsTrue(into.DaylightSaving);
+            SunBlend.Between(december, january, 0.25f, 2026, into);
+            Assert.IsFalse(into.DaylightSaving);
+            Assert.AreEqual(12, into.Month);
+
+            // Within the year: straight between the dates
+            SunBlend.Between(new SunTime { Month = 3, Day = 1 }, new SunTime { Month = 5, Day = 1 }, 0.5f, 2026, into);
+            Assert.IsTrue(into.Month == 3 && into.Day >= 30 || into.Month == 4 && into.Day <= 1, $"{into.Day}/{into.Month}");
+            SunBlend.Between(new SunTime { Month = 7, Day = 4, Minutes = 480 }, new SunTime { Month = 7, Day = 4, Minutes = 480 }, 0.3f, 2026, into);
+            Assert.AreEqual(7, into.Month);
+            Assert.AreEqual(4, into.Day);
+            Assert.AreEqual(480, into.Minutes);
+        }
     }
 }

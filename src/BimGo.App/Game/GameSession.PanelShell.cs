@@ -8,7 +8,7 @@ namespace BimGo.Game
 {
     /// <summary>
     /// Polish round P-A1: one shell for the big panels that replace the pause menu (CLASHES, COLOUR PROFILES, COMMENTS,
-    /// BOOKMARKS, TEXTURES, LIBRARY, ROOMS, GEOMETRY, CONTROLS).
+    /// BOOKMARKS, TEXTURES, LIBRARY, ROOMS, GEOMETRY, CONTROLS; Round K-A: MEDIA).
     /// <list type="bullet">
     /// <item>A card sized to the window (standard, wide or side width; shorter windows get a shorter card).</item>
     /// <item>A header: the title, a sub-line and optional controls on the right (e.g. ADD, RUN ALL, tabs).</item>
@@ -491,7 +491,7 @@ namespace BimGo.Game
 
         /// <summary>True while one of the panels that replace the pause menu is open.</summary>
         private bool AnyBigPanelOpen => IsCommentsPanelOpen || IsBookmarksPanelOpen || IsTexturesPanelOpen || IsLibraryPanelOpen || IsRoomsPanelOpen
-            || IsClashesPanelOpen || IsColourProfilesPanelOpen || IsGeometryPanelOpen || IsControlsPanelOpen || IsPushPanelOpen;
+            || IsClashesPanelOpen || IsColourProfilesPanelOpen || IsGeometryPanelOpen || IsControlsPanelOpen || IsPushPanelOpen || IsMediaPanelOpen;
 
         /// <summary>
         /// One level back (Esc, the gamepad's B, ← BACK): an open dropdown or confirm, then the panel's sub-view, then
@@ -503,7 +503,7 @@ namespace BimGo.Game
             if (!_paused) { return false; }
             if (AnyBigPanelOpen && CloseOverlay()) { return true; }
             return CloseMenuPreview() || ClosePush() || CloseComments() || CloseBookmarks() || CloseTextures() || CloseLibrary() || CloseRooms()
-                || CloseClashes() || CloseColourProfiles() || CloseGeometry() || CloseControls();
+                || CloseClashes() || CloseColourProfiles() || CloseGeometry() || CloseControls() || CloseMedia();
         }
 
         /// <summary>

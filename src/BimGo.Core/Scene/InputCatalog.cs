@@ -79,6 +79,8 @@ namespace BimGo.Scene
         AddBookmark, Bookmark1, Bookmark2, Bookmark3, Bookmark4, Bookmark5, Bookmark6, Bookmark7, Bookmark8, Bookmark9,
         Coordinates, Lights, Shadows, SunPanel, SunEarlier, SunEarlierFine, SunLater, SunLaterFine, SunStudy, PhotoMode,
         SectionBox, SectionPlane, SectionClear, ClashMode, GridsPanel, GridsCycle, ColourProfile,
+        MediaPanel, // Round K-A
+        PathEditMode, // Round K-B
 
         // Gun keys
         ScanSelectInRevit, ScanHide, ScanIsolate, MeasureNormal, CommentEdit, DemolishMode, GizmoSnap, GizmoDrop,
@@ -104,6 +106,7 @@ namespace BimGo.Scene
 
         // Path editor (polish round P-B: reserved for Round K's flythrough)
         PathAddKey, PathDeleteKey, PathPreview, PathPreviousKey, PathNextKey,
+        PathSetKey, PathMoveForward, PathMoveBack, PathMoveLeft, PathMoveRight, PathFlyUp, PathFlyDown, PathFlyFast, PathUndo, // Round K-B
 
         // Fixed (not rebindable)
         Back, CloseWindow, Click, DragLook, FineAdjust, PhotoZoom, OpenFile, PadClick, PadMenuBack
@@ -353,6 +356,8 @@ namespace BimGo.Scene
             Add(InputAction.GridsPanel, c, "Grids panel (also in clash mode)", P, "Shift+G");
             Add(InputAction.GridsCycle, c, "Grids: off / level underfoot / all levels (also in clash mode)", P, "C");
             Add(InputAction.ColourProfile, c, "Colour profile on / off (also in clash mode)", P, "Shift+C");
+            Add(InputAction.MediaPanel, c, "Media panel: photo, tour, camera paths, video", P, "Shift+M"); // Round K-A
+            Add(InputAction.PathEditMode, c, "Camera path editor in 3D on / off", P, "Shift+K"); // Round K-B
 
             // Gun keys (while that gun is selected)
             Add(InputAction.ScanSelectInRevit, InputContext.ScanGun, "Select in Revit (live)", P, "R");
@@ -416,13 +421,22 @@ namespace BimGo.Scene
             Add(InputAction.ClashPickPoints, c, "Pick points: click dots or rows to pick, then group them (again or Esc leaves)", P, "K"); // P-B
             Add(InputAction.ClashStatusCycle, c, "Status: next (new → active → reviewed → approved → resolved)", P); // P-B: gamepad LB+A
 
-            // Path editor (polish round P-B: reserved for Round K's keyframed flythrough; nothing reads these yet)
+            // Path editor (polish round P-B: reserved for Round K; Round K-B: the 3D editor reads them)
             c = InputContext.PathEditor;
-            Add(InputAction.PathAddKey, c, "Add a key at this view", P, "K");
+            Add(InputAction.PathAddKey, c, "Add a key at this view (on the path: inserted there)", P, "K");
             Add(InputAction.PathDeleteKey, c, "Delete the selected key", P, "Delete");
             Add(InputAction.PathPreview, c, "Preview the flythrough (play / pause)", P, "Space");
-            Add(InputAction.PathPreviousKey, c, "Previous key", R, "Left");
-            Add(InputAction.PathNextKey, c, "Next key", R, "Right");
+            Add(InputAction.PathPreviousKey, c, "Previous key (the camera snaps into it)", R, "Left");
+            Add(InputAction.PathNextKey, c, "Next key (the camera snaps into it)", R, "Right");
+            Add(InputAction.PathSetKey, c, "Set the selected key to this view", P, "Enter");
+            Add(InputAction.PathMoveForward, c, "Fly forward", H, "W");
+            Add(InputAction.PathMoveBack, c, "Fly back", H, "S");
+            Add(InputAction.PathMoveLeft, c, "Fly left", H, "A");
+            Add(InputAction.PathMoveRight, c, "Fly right", H, "D");
+            Add(InputAction.PathFlyUp, c, "Fly up (hold)", H, "E");
+            Add(InputAction.PathFlyDown, c, "Fly down (hold)", H, "Q");
+            Add(InputAction.PathFlyFast, c, "Fly faster · drag a handle without snapping (hold)", H, "Shift");
+            Add(InputAction.PathUndo, c, "Undo the last path change", P, "Ctrl+Z");
 
             // Pause menu (sky round)
             Add(InputAction.MenuPreview, InputContext.PauseMenu, "Options preview: the scene with the graphics settings only (again or Esc returns)", P, "Tab");
@@ -526,6 +540,14 @@ namespace BimGo.Scene
             Pad(InputAction.PathPreview, "PadY");
             Pad(InputAction.PathPreviousKey, "PadLeft");
             Pad(InputAction.PathNextKey, "PadRight");
+            Pad(InputAction.PathSetKey, "PadRB+PadY"); // Round K-B (the editor itself: MEDIA → PATHS → EDIT IN 3D, DONE)
+            Pad(InputAction.PathMoveForward, "PadLSUp");
+            Pad(InputAction.PathMoveBack, "PadLSDown");
+            Pad(InputAction.PathMoveLeft, "PadLSLeft");
+            Pad(InputAction.PathMoveRight, "PadLSRight");
+            Pad(InputAction.PathFlyUp, "PadRT");
+            Pad(InputAction.PathFlyDown, "PadLT");
+            Pad(InputAction.PathFlyFast, "PadLS");
 
             return list.ToArray();
         }
@@ -576,7 +598,7 @@ namespace BimGo.Scene
             InputContext.SectionEditor => "Section box editor",
             InputContext.PhotoMode => "Photo mode",
             InputContext.SunPanel => "Sun panel",
-            InputContext.Tour => "Bookmark tour",
+            InputContext.Tour => "Bookmark tour and camera paths",
             InputContext.Clashes => "Clash mode",
             InputContext.PauseMenu => "Pause menu",
             InputContext.PathEditor => "Path editor (Round K)",
@@ -593,10 +615,10 @@ namespace BimGo.Scene
             InputContext.SectionEditor => "The section box key or Esc closes it; clear all cuts still works.",
             InputContext.PhotoMode => "The photo mode key or Esc closes it; the sun time keys work.",
             InputContext.SunPanel => "Shadows / sun panel or Esc closes it; the sun time keys work.",
-            InputContext.Tour => "While a bookmark tour plays (Esc stops it).",
+            InputContext.Tour => "While a bookmark tour or a camera path plays (Esc stops it).",
             InputContext.Clashes => "Clash detection's docked list (the clash mode key or Esc leaves): the move keys fly, run speeds up, RMB-drag looks, the wheel scrolls the list.",
             InputContext.PauseMenu => "While the pause menu shows (not in its panels).",
-            InputContext.PathEditor => "Reserved for Round K's flythrough path editor: nothing uses these keys yet (they are kept free of clashes now).",
+            InputContext.PathEditor => "The 3D camera path editor (the path editor key, or MEDIA → PATHS → EDIT IN 3D; Esc leaves): free cursor, RMB-drag looks, click a key or a handle, drag the handles; the scrubber at the bottom drives the camera.",
             InputContext.Fixed => "Text boxes also keep Enter, Tab, Backspace, ↑ / ↓, Ctrl+V and Esc. Gamepad in menus and editors: the look stick moves the cursor, the move stick scrolls (menus) or looks (editors); over menus and docks the D-pad moves the focus ring and LB / RB tapped alone switch tabs; A with LB / RB held is a chord, not a click.",
             _ => null
         };
@@ -680,7 +702,7 @@ namespace BimGo.Scene
                     H("Bookmark this view", InputAction.AddBookmark),
                     H("Shadows · sun panel", InputAction.Shadows, InputAction.SunPanel),
                     sunTimeRow,
-                    H("Section box · photo mode", InputAction.SectionBox, InputAction.PhotoMode),
+                    H("Section box · photo · media · paths", InputAction.SectionBox, InputAction.PhotoMode, InputAction.MediaPanel, InputAction.PathEditMode),
                     H("Clash mode", InputAction.ClashMode),
                     H("Grids · colour profile", InputAction.GridsCycle, InputAction.ColourProfile),
                     H("Minimap · hide the UI", InputAction.Minimap, InputAction.HideUi),
@@ -835,16 +857,22 @@ namespace BimGo.Scene
                     H("Refresh from Revit (live)", InputAction.Refresh)
                 }),
 
-                // Polish round P-B: Round K's path editor, reserved (no app code yet). The camera's movement is K-B's to
-                // add: ← / → are the keys here, so the arrow-key moves can't simply join this situation.
+                // Round K-B: the 3D path editor. ← / → snap into keys, so it flies on its own WASD / E / Q actions (the walking
+                // moves keep the arrow keys)
                 new InputSituation(SIT_PATH, new[] { InputContext.PathEditor }, Join(padMenu,
-                    InputAction.Help, InputAction.HideUi, InputAction.Fullscreen, InputAction.Screenshot, InputAction.Click, InputAction.DragLook,
-                    InputAction.FineAdjust), new[]
+                    InputAction.PathEditMode, InputAction.Help, InputAction.HideUi, InputAction.Fullscreen, InputAction.Screenshot, InputAction.Click,
+                    InputAction.DragLook), new[]
                 {
-                    H("Add a key · delete it", InputAction.PathAddKey, InputAction.PathDeleteKey),
-                    H("Previous · next key", InputAction.PathPreviousKey, InputAction.PathNextKey),
-                    H("Preview", InputAction.PathPreview),
+                    H("Fly", InputAction.PathMoveForward, InputAction.PathMoveLeft, InputAction.PathMoveBack, InputAction.PathMoveRight),
+                    H("Fly up · down", InputAction.PathFlyUp, InputAction.PathFlyDown),
+                    H("Faster · free drag (hold)", InputAction.PathFlyFast),
                     dragLook,
+                    H("Add a key · delete it", InputAction.PathAddKey, InputAction.PathDeleteKey),
+                    H("Previous · next key (snap in)", InputAction.PathPreviousKey, InputAction.PathNextKey),
+                    H("Set the key to this view", InputAction.PathSetKey),
+                    H("Preview", InputAction.PathPreview),
+                    H("Undo", InputAction.PathUndo),
+                    H("Leave the editor", InputAction.PathEditMode),
                     click
                 })
             };
@@ -853,11 +881,11 @@ namespace BimGo.Scene
         #region Defaults versions
 
         /// <summary>
-        /// The controls defaults version (polish round P-B). 0: the defaults up to P-A2; 1: P-B's hotkey review. Raise it
-        /// when a default changes and add the changes to <see cref="DefaultsChanges"/> (ControlsTests checks the table
-        /// against the defaults).
+        /// The controls defaults version (polish round P-B). 0: the defaults up to P-A2; 1: P-B's hotkey review; 2: Round
+        /// K-A's media panel; 3: Round K-B's path editor. Raise it when a default changes and add the changes to
+        /// <see cref="DefaultsChanges"/> (ControlsTests checks the table against the defaults).
         /// </summary>
-        public const int DEFAULTS_VERSION = 1;
+        public const int DEFAULTS_VERSION = 3;
 
         /// <summary>Every default that changed, by version (oldest first). <c>Was</c>: the old binding ("none" for none).</summary>
         public static readonly DefaultsChange[] DefaultsChanges =
@@ -879,7 +907,22 @@ namespace BimGo.Scene
             new(1, InputAction.HoldSnapInvert, false, "gamepad: none"),
             new(1, InputAction.SunPlay, false, "gamepad: none"),
             new(1, InputAction.ClashGroup, false, "gamepad: none"),
-            new(1, InputAction.ClashUngroup, false, "gamepad: none")
+            new(1, InputAction.ClashUngroup, false, "gamepad: none"),
+
+            // Version 2 (Round K-A): the media panel (photo, tour, camera paths, video)
+            new(2, InputAction.MediaPanel, true, null),
+
+            // Version 3 (Round K-B): the 3D path editor and its own fly keys
+            new(3, InputAction.PathEditMode, true, null),
+            new(3, InputAction.PathSetKey, true, null),
+            new(3, InputAction.PathMoveForward, true, null),
+            new(3, InputAction.PathMoveBack, true, null),
+            new(3, InputAction.PathMoveLeft, true, null),
+            new(3, InputAction.PathMoveRight, true, null),
+            new(3, InputAction.PathFlyUp, true, null),
+            new(3, InputAction.PathFlyDown, true, null),
+            new(3, InputAction.PathFlyFast, true, null),
+            new(3, InputAction.PathUndo, true, null)
         };
 
         /// <summary>The changes made after a version the user saw (empty when it is current or newer).</summary>

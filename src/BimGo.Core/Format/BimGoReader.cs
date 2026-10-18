@@ -103,6 +103,7 @@ namespace BimGo.Format
                 MaterialsDto materials = ReadOptionalJson<MaterialsDto>(zip, BimGoFormat.ENTRY_MATERIALS);
                 LibraryDto library = ReadOptionalJson<LibraryDto>(zip, BimGoFormat.ENTRY_LIBRARY);
                 GridsDto grids = ReadOptionalJson<GridsDto>(zip, BimGoFormat.ENTRY_GRIDS); // grids round A
+                CameraPathDocument paths = ReadOptionalJson<CameraPathDocument>(zip, BimGoFormat.ENTRY_PATHS)?.Clean(); // Round K
                 progress?.Step(0.1);
                 progress?.ThrowIfCancelled();
                 ReadGeometry(zip, out SceneVertex[] vertices, out uint[] indices, progress);
@@ -135,6 +136,7 @@ namespace BimGo.Format
                     Comments = comments,
                     Journal = new EditJournal(journal.Entries),
                     Bookmarks = bookmarks,
+                    Paths = paths,
                     Sun = sun,
                     Visibility = visibility,
                     CreatedUtc = manifest.CreatedUtc,
