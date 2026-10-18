@@ -66,7 +66,7 @@ namespace BimGo.Native
 
         // Section box caps (stencil in the scene target)
         public const uint STENCIL_BUFFER_BIT = 0x00000400, STENCIL_TEST = 0x0B90;
-        public const uint KEEP = 0x1E00, INVERT = 0x150A, EQUAL = 0x0202;
+        public const uint KEEP = 0x1E00, INVERT = 0x150A, EQUAL = 0x0202, REPLACE = 0x1E01; // REPLACE: polish round P-C (profile caps)
         public const uint DEPTH24_STENCIL8 = 0x88F0, DEPTH_STENCIL_ATTACHMENT = 0x821A;
 
         // Photo mode (large off-screen targets, exposure blend)

@@ -1,3 +1,4 @@
+using System.Numerics;
 using BimGo.Audio;
 using BimGo.Platform;
 using BimGo.Rendering;
@@ -311,6 +312,181 @@ namespace BimGo.Game
 
         #endregion
 
+        #region Docks (P-A2)
+
+        /// <summary>The open dock's layout this frame (from <see cref="BeginDock"/>).</summary>
+        private struct DockFrame
+        {
+            /// <summary>The dock.</summary>
+            public float X, Y, W, H;
+
+            /// <summary>The inner left and width (inside the padding).</summary>
+            public float Ix, Iw;
+
+            /// <summary>The body (scrolled): under the header, above the notice strip or the footer.</summary>
+            public float BodyTop, BodyBottom;
+
+            /// <summary>The notice strip's top (when asked for), and the footer buttons' top.</summary>
+            public float NoticeY, FooterY;
+
+            /// <summary>The header controls' top and height; <see cref="HeaderRight"/> moves left as they are added.</summary>
+            public float HeaderControlY, HeaderControlH, HeaderRight;
+
+            /// <summary>The dock keeps a notice strip above the footer.</summary>
+            public bool Notice;
+
+            /// <summary>The dock's rectangle (x, y, w, h), for the clicks-over-the-dock checks.</summary>
+            public readonly Vector4 Rect => new(X, Y, W, H);
+        }
+
+        /// <summary><see cref="EndDock"/>'s results: nothing, CLOSE, ← BACK.</summary>
+        private const int DOCK_NONE = 0, DOCK_CLOSE = 1, DOCK_BACK = 2;
+
+        // A dock sat over the minimap (a short window): last frame's (the minimap hides) and this frame's
+        private bool _dockOverMap, _dockOverMapNext;
+
+        // The docks' bodies
+        private readonly ScrollRegion _sunDockScroll = new(), _studyDockScroll = new(), _sectionDockScroll = new(), _gridsDockScroll = new();
+
+        /// <summary>
+        /// The right-hand column for a dock of this width (walkthrough: under the minimap when it shows, down to just
+        /// above the sun icon; a window too short for <see cref="UiTheme.DOCK_MIN_HEIGHT"/> there puts the dock at the
+        /// top, over the minimap, which hides). Clash mode: left of the clash dock, the full height.
+        /// </summary>
+        private void DockColumn(float width, out float x, out float top, out float bottom)
+        {
+            int screenW = _window.Width, screenH = _window.Height;
+            if (_clashModeOn)
+            {
+                x = _clashDockW > 0f ? _clashDockX - S(UiTheme.COLUMN_GAP) - width : screenW - S(16) - width;
+                x = MathF.Max(S(10), x);
+                top = S(16);
+                bottom = screenH - S(16);
+                return;
+            }
+
+            float margin = S(UiTheme.COLUMN_MARGIN);
+            x = screenW - margin - width;
+            top = margin;
+            bottom = screenH - margin - S(UiTheme.SUN_ICON_SIZE) - S(10);
+            if (_showMap)
+            {
+                float under = margin + S(UiTheme.MINIMAP_HEIGHT) + S(UiTheme.COLUMN_GAP);
+                if (bottom - under >= S(UiTheme.DOCK_MIN_HEIGHT)) { top = under; }
+                else { _dockOverMapNext = true; }
+            }
+            bottom = MathF.Max(bottom, top + S(120));
+        }
+
+        /// <summary>
+        /// Draws a dock (a compact panel in the right-hand column: sun, study, section box, grids) and its header, and
+        /// lays out the body and footer. The dock is as tall as its content (last frame's) and the column allows; the
+        /// body scrolls when it doesn't fit. Draw the body between <see cref="BeginDockBody"/> and
+        /// <see cref="EndDockBody"/>, then call <see cref="EndDock"/>.
+        /// </summary>
+        /// <param name="title">The title (upper case).</param>
+        /// <param name="titleColour">The title's colour.</param>
+        /// <param name="border">The dock's border (its theme colour).</param>
+        /// <param name="width">The dock's width (scaled: <see cref="UiTheme.DOCK_WIDTH"/> or the wide one).</param>
+        /// <param name="body">The body's scroll region (its content height sizes the dock).</param>
+        /// <param name="notice">Keep a notice strip above the footer (the dock has a message to show).</param>
+        /// <param name="fullHeight">Take the column's whole height (a body laid out against the bottom).</param>
+        private DockFrame BeginDock(string title, uint titleColour, uint border, float width, ScrollRegion body, bool notice, bool fullHeight = false)
+        {
+            FontAtlas f = _ui.Atlas;
+            DockColumn(width, out float x, out float top, out float bottom);
+            float padY = S(UiTheme.DOCK_PAD_Y), gap = S(UiTheme.GAP_SMALL);
+            float header = S(UiTheme.DOCK_HEADER_HEIGHT), footer = S(UiTheme.DOCK_FOOTER_HEIGHT);
+            float noticeH = notice ? S(UiTheme.DOCK_NOTICE_HEIGHT) + gap : 0f;
+            float chrome = header + gap * 2f + noticeH + footer + padY;
+            float room = bottom - top;
+            float content = !fullHeight && body != null && body.Content > 0f ? body.Content : room;
+            float h = MathF.Round(MathF.Min(room, chrome + content));
+
+            _ui.Panel(x, top, width, h, UiTheme.PANEL_STRONG, border);
+            RegisterFocusArea(x, top, width, h);
+
+            var d = new DockFrame
+            {
+                X = x, Y = top, W = width, H = h,
+                Ix = x + S(UiTheme.DOCK_PAD), Iw = width - S(UiTheme.DOCK_PAD) * 2f,
+                Notice = notice
+            };
+            d.HeaderControlH = S(22);
+            d.HeaderControlY = top + MathF.Round((header - d.HeaderControlH) * 0.5f);
+            d.HeaderRight = d.Ix + d.Iw;
+            d.FooterY = top + h - padY - footer;
+            d.NoticeY = d.FooterY - gap - S(UiTheme.DOCK_NOTICE_HEIGHT);
+            d.BodyTop = top + header + gap;
+            d.BodyBottom = MathF.Max(d.BodyTop + S(20), (notice ? d.NoticeY : d.FooterY) - gap);
+
+            _ui.Text(f.Small, d.Ix, top + MathF.Round((header - f.Small.LineHeight) * 0.5f), title, titleColour, S(1.6f));
+            _ui.Rect(x + S(1), top + header, width - S(2), MathF.Max(1f, UiScale), UiTheme.DIVIDER);
+            return d;
+        }
+
+        /// <summary>A small button in the dock's header (right to left).</summary>
+        /// <returns>True when pressed.</returns>
+        private bool DockHeaderButton(ref DockFrame d, string label, float width)
+        {
+            d.HeaderRight -= width;
+            float x = d.HeaderRight;
+            d.HeaderRight -= S(UiTheme.GAP_SMALL);
+            return SmallButton(_ui.Atlas, _window.Input, x, d.HeaderControlY, width, d.HeaderControlH, label);
+        }
+
+        /// <summary>
+        /// Starts the dock's body: a clipped scroll region (the bar sits in the right-hand padding, so the body keeps
+        /// <see cref="DockFrame.Iw"/>; the wheel is left to a dragged slider).
+        /// </summary>
+        /// <returns>The body's first line (scrolled).</returns>
+        private float BeginDockBody(in DockFrame d, ScrollRegion body, InputState input)
+        {
+            float top = BeginScroll(body, input, d.X + S(6), d.BodyTop, d.W - S(8), d.BodyBottom - d.BodyTop, out _, wheel: _activeSlider < 0);
+            return top + S(2);
+        }
+
+        /// <summary>Ends the dock's body at the content's bottom (measured for the next frame's height).</summary>
+        private void EndDockBody(ScrollRegion body, InputState input, float contentBottom) => EndScroll(body, input, contentBottom + S(4));
+
+        /// <summary>
+        /// Draws the notice strip (when the dock kept one), a divider and the footer: ← BACK (when given) on the left,
+        /// the hint beside it, CLOSE on the right.
+        /// </summary>
+        /// <returns><see cref="DOCK_CLOSE"/>, <see cref="DOCK_BACK"/> or <see cref="DOCK_NONE"/> (the caller closes / goes back).</returns>
+        private int EndDock(in DockFrame d, string notice, string hint, string backLabel = null, string closeLabel = "CLOSE")
+        {
+            FontAtlas f = _ui.Atlas;
+            InputState input = _window.Input;
+            float gap = S(UiTheme.GAP_SMALL);
+
+            _ui.Rect(d.X + S(1), d.BodyBottom + gap * 0.5f, d.W - S(2), MathF.Max(1f, UiScale), UiTheme.DIVIDER);
+            if (d.Notice && !string.IsNullOrEmpty(notice))
+            {
+                _ui.TextWrapped(f.Small, d.Ix, d.NoticeY + S(2), d.Iw, notice, UiTheme.MEASURE_TEXT, maxLines: 2);
+            }
+
+            float y = d.FooterY, h = S(UiTheme.DOCK_FOOTER_HEIGHT);
+            float closeW = MathF.Max(S(84), UiBatch.Measure(f.Bold, closeLabel, S(1f)) + S(28));
+            float left = d.Ix;
+            bool back = false;
+            if (backLabel != null)
+            {
+                float backW = MathF.Max(S(84), UiBatch.Measure(f.Bold, backLabel, S(1f)) + S(28));
+                back = ShellButton(f, input, d.Ix, y, backW, h, backLabel, ShellStyle.Normal, true);
+                left += backW + gap;
+            }
+            bool close = ShellButton(f, input, d.Ix + d.Iw - closeW, y, closeW, h, closeLabel, ShellStyle.Normal, true);
+            float hintW = d.Ix + d.Iw - closeW - gap - left;
+            if (!string.IsNullOrEmpty(hint) && hintW > S(30))
+            {
+                _ui.TextWrapped(f.Small, left, y + MathF.Round((h - f.Small.LineHeight) * 0.5f), hintW, hint, UiTheme.TEXT_FAINT, maxLines: 1);
+            }
+            return back ? DOCK_BACK : close ? DOCK_CLOSE : DOCK_NONE;
+        }
+
+        #endregion
+
         #region Back / close
 
         /// <summary>True while one of the panels that replace the pause menu is open.</summary>
@@ -424,7 +600,7 @@ namespace BimGo.Game
             contentW = w - S(UiTheme.SCROLL_GUTTER);
 
             float max = region.MaxScroll;
-            if (wheel && input.Wheel != 0 && Hover(input, x, y, w, h))
+            if (wheel && input.Wheel != 0 && Hover(input, x, y, w, h, focus: false))
             {
                 region.Target -= input.Wheel * S(UiTheme.WHEEL_STEP);
                 region.PinEnd = false;
@@ -443,6 +619,7 @@ namespace BimGo.Game
 
             _ui.PushClip(x, y, w, h);
             region.Top = MathF.Round(y - region.Offset);
+            _focusRegion = region; // P-A2: gamepad focus targets drawn now belong to this list
             return region.Top;
         }
 
@@ -456,6 +633,7 @@ namespace BimGo.Game
         private void EndScroll(ScrollRegion region, InputState input, float contentBottom)
         {
             _ui.PopClip();
+            _focusRegion = null;
             region.Content = MathF.Max(0f, contentBottom - region.Top);
             if (region.PinEnd)
             {
@@ -477,7 +655,7 @@ namespace BimGo.Game
             float thumbY = trackY + (trackH - thumbH) * (region.Offset / max);
 
             // A wider hit area than the bar itself
-            bool overTrack = Hover(input, trackX - S(5), trackY, barW + S(9), trackH);
+            bool overTrack = Hover(input, trackX - S(5), trackY, barW + S(9), trackH, focus: false);
             bool overThumb = overTrack && input.MousePosition.Y >= thumbY && input.MousePosition.Y < thumbY + thumbH;
             if (overTrack && input.LeftPressed)
             {

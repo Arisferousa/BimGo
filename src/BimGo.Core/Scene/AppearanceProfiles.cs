@@ -145,6 +145,16 @@ namespace BimGo.Scene
         /// <summary>Colour round B: how many ranges (2–12).</summary>
         public int Bins { get; set; } = AppearanceProfiler.DEFAULT_BINS;
 
+        /// <summary>
+        /// Polish round P-C: how the ranges are cut (<see cref="BinMethod"/>): equal widths (as before), equal counts
+        /// (quantiles) or the user's own break values (<see cref="Breaks"/>).
+        /// </summary>
+        public string Binning { get; set; } = BinMethod.EQUAL;
+
+        /// <summary>Polish round P-C: custom break values (ascending; null when none). A value on a break goes in the lower range.</summary>
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public List<double> Breaks { get; set; }
+
         /// <summary>Colour round B: the ranges' colour ramp (<see cref="AppearanceProfiler.RAMPS"/>).</summary>
         public string Ramp { get; set; } = AppearanceProfiler.RAMP_BLUE_RED;
 
@@ -169,6 +179,8 @@ namespace BimGo.Scene
             Detail = float.IsFinite(Detail) ? Math.Clamp(Detail, 0f, 1f) : AppearanceProfiler.DEFAULT_DETAIL;
             if (IsBySet) { Ranges = false; }
             Bins = Math.Clamp(Bins, AppearanceProfiler.MIN_BINS, AppearanceProfiler.MAX_BINS);
+            Binning = BinMethod.Normalise(Binning);
+            Breaks = AppearanceProfiler.CleanBreaks(Breaks);
             Ramp = AppearanceProfiler.NormaliseRamp(Ramp);
             Rules = (Rules ?? new List<ProfileRule>()).Where(r => r != null && (IsBySet ? !string.IsNullOrEmpty(r.SetId)
                 : Ranges ? r.IsRange && double.IsFinite(r.From.Value) && double.IsFinite(r.To.Value) : r.Value != null)).ToList();
@@ -198,9 +210,42 @@ namespace BimGo.Scene
             Detail = Detail,
             Ranges = Ranges,
             Bins = Bins,
+            Binning = Binning,
+            Breaks = Breaks?.ToList(),
             Ramp = Ramp,
             Rules = Rules?.Where(r => r != null).Select(r => r.Copy()).ToList() ?? new List<ProfileRule>()
         };
+    }
+
+    /// <summary>
+    /// Polish round P-C: how a ranges profile cuts its numbers.
+    /// </summary>
+    public static class BinMethod
+    {
+        /// <summary>Equal widths from the lowest to the highest number (colour round B).</summary>
+        public const string EQUAL = "equal";
+
+        /// <summary>Equal counts (quantiles): about as many elements in each range.</summary>
+        public const string QUANTILE = "quantile";
+
+        /// <summary>The user's own break values.</summary>
+        public const string CUSTOM = "custom";
+
+        /// <summary>In display order.</summary>
+        public static readonly string[] All = { EQUAL, QUANTILE, CUSTOM };
+
+        /// <summary>Labels in <see cref="All"/>'s order.</summary>
+        public static readonly string[] Labels = { "EQUAL WIDTH", "EQUAL COUNT", "CUSTOM" };
+
+        /// <summary>A known method (unknown or empty: equal).</summary>
+        public static string Normalise(string method)
+        {
+            foreach (string known in All)
+            {
+                if (string.Equals(known, method?.Trim(), StringComparison.OrdinalIgnoreCase)) { return known; }
+            }
+            return EQUAL;
+        }
     }
 
     /// <summary>
@@ -535,51 +580,133 @@ namespace BimGo.Scene
         }
 
         /// <summary>
-        /// Colour round B: replaces a by-value profile's rows with <see cref="AppearanceProfile.Bins"/> equal number ranges
-        /// from the lowest to the highest number the field has (one range when they are all the same), coloured from its
-        /// ramp; labels keep the values' unit ("300 – 450 mm"). Returns how many elements have a number (0: no rows).
+        /// Colour round B: replaces a by-value profile's rows with number ranges coloured from its ramp; labels keep the
+        /// values' unit ("300 – 450 mm"). Polish round P-C: cut by <see cref="AppearanceProfile.Binning"/>: equal widths
+        /// (<see cref="AppearanceProfile.Bins"/> from the lowest to the highest number), equal counts (quantiles; ranges
+        /// that would repeat a value merge, so there can be fewer) or the custom <see cref="AppearanceProfile.Breaks"/>
+        /// (those between the lowest and highest number; none: one range). One range when every number is the same.
+        /// Returns how many elements have a number (0: no rows).
         /// </summary>
         public static int BuildRanges(AppearanceProfile profile, SceneData scene)
         {
             if (profile == null || profile.IsBySet || scene?.Elements == null) { return 0; }
             profile.Ranges = true;
             profile.Bins = Math.Clamp(profile.Bins, MIN_BINS, MAX_BINS);
+            profile.Binning = BinMethod.Normalise(profile.Binning);
             profile.Rules.Clear();
 
             string field = RuleField.Normalise(profile.Field);
             int nameIndex = field == RuleField.PARAMETER ? scene.Parameters?.IndexOfName(profile.Parameter) ?? -1 : -1;
-            double min = double.MaxValue, max = double.MinValue;
-            int found = 0;
+            var numbers = new List<double>();
             var units = new Dictionary<string, int>(StringComparer.Ordinal);
             for (int e = 0; e < scene.Elements.Length; e++)
             {
                 ElementRecord record = scene.Elements[e];
                 if (record == null || record.IsLibraryTemplate) { continue; }
                 if (!SearchSets.ElementValue(scene, record, e, field, nameIndex, out string text, out _) || !RuleNumbers.TryParse(text, out double number)) { continue; }
-                found++;
-                min = Math.Min(min, number);
-                max = Math.Max(max, number);
+                numbers.Add(number);
                 string unit = UnitOf(text);
                 units[unit] = units.TryGetValue(unit, out int n) ? n + 1 : 1;
             }
-            if (found == 0) { return 0; }
+            if (numbers.Count == 0) { return 0; }
 
             string suffix = units.OrderByDescending(kv => kv.Value).First().Key;
-            int bins = max > min ? profile.Bins : 1;
-            double step = bins > 0 ? (max - min) / bins : 0;
+            List<double> edges = RangeEdges(numbers, profile.Binning, profile.Bins, profile.Breaks);
+            int bins = edges.Count - 1;
             for (int i = 0; i < bins; i++)
             {
-                double from = min + step * i, to = i == bins - 1 ? max : min + step * (i + 1);
+                double from = edges[i], to = edges[i + 1];
                 profile.Rules.Add(new ProfileRule
                 {
                     From = from,
                     To = to,
-                    Label = bins == 1 ? FormatNumber(from) + suffix : $"{FormatNumber(from)} – {FormatNumber(to)}{suffix}",
+                    Label = from == to ? FormatNumber(from) + suffix : $"{FormatNumber(from)} – {FormatNumber(to)}{suffix}",
                     Colour = RampColour(profile.Ramp, bins == 1 ? 0.5f : (float)i / (bins - 1))
                 });
             }
-            return found;
+            return numbers.Count;
         }
+
+        /// <summary>
+        /// Polish round P-C: the range edges (ascending, first = lowest number, last = highest; n edges = n − 1 ranges) for
+        /// a method. Every number falls in some range; one range (two equal edges) when they are all the same.
+        /// </summary>
+        public static List<double> RangeEdges(IReadOnlyList<double> numbers, string method, int bins, IReadOnlyList<double> breaks)
+        {
+            var edges = new List<double>();
+            if (numbers == null || numbers.Count == 0) { return edges; }
+            double min = double.MaxValue, max = double.MinValue;
+            foreach (double v in numbers)
+            {
+                min = Math.Min(min, v);
+                max = Math.Max(max, v);
+            }
+            if (!(max > min))
+            {
+                edges.Add(min);
+                edges.Add(max);
+                return edges;
+            }
+            bins = Math.Clamp(bins, MIN_BINS, MAX_BINS);
+            edges.Add(min);
+            switch (BinMethod.Normalise(method))
+            {
+                case BinMethod.QUANTILE:
+                {
+                    var sorted = numbers.OrderBy(v => v).ToArray();
+                    for (int i = 1; i < bins; i++)
+                    {
+                        double edge = sorted[(int)Math.Round(i * (sorted.Length - 1) / (double)bins)];
+                        if (edge > edges[^1] && edge < max) { edges.Add(edge); }
+                    }
+                    break;
+                }
+                case BinMethod.CUSTOM:
+                    foreach (double edge in CleanBreaks(breaks?.ToList()) ?? new List<double>())
+                    {
+                        if (edge > edges[^1] && edge < max) { edges.Add(edge); }
+                    }
+                    break;
+                default:
+                {
+                    double step = (max - min) / bins;
+                    for (int i = 1; i < bins; i++) { edges.Add(min + step * i); }
+                    break;
+                }
+            }
+            edges.Add(max);
+            return edges;
+        }
+
+        /// <summary>Most custom break values kept.</summary>
+        public const int MAX_BREAKS = 24;
+
+        /// <summary>Polish round P-C: finite, distinct, ascending break values (at most <see cref="MAX_BREAKS"/>); null when none.</summary>
+        public static List<double> CleanBreaks(List<double> breaks)
+        {
+            if (breaks == null) { return null; }
+            List<double> clean = breaks.Where(double.IsFinite).Distinct().OrderBy(v => v).Take(MAX_BREAKS).ToList();
+            return clean.Count == 0 ? null : clean;
+        }
+
+        /// <summary>
+        /// Polish round P-C: break values typed by people ("300; 450; 600" or "300 450 600"; a comma followed by a space
+        /// separates too: "300, 450"); units and anything that isn't a number are ignored. Null when there are none.
+        /// </summary>
+        public static List<double> ParseBreaks(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text)) { return null; }
+            var values = new List<double>();
+            foreach (string part in text.Replace(", ", ";").Split(new[] { ';', ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries))
+            {
+                if (RuleNumbers.TryParse(part, out double value)) { values.Add(value); }
+            }
+            return CleanBreaks(values);
+        }
+
+        /// <summary>Polish round P-C: break values as people type them ("300; 450; 600"), empty when none.</summary>
+        public static string FormatBreaks(IEnumerable<double> breaks) =>
+            breaks == null ? string.Empty : string.Join("; ", breaks.Select(b => b.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)));
 
         /// <summary>Recolours a ranges profile's rows from a ramp (and makes it the profile's ramp).</summary>
         public static void ApplyRamp(AppearanceProfile profile, string ramp)
@@ -800,6 +927,22 @@ namespace BimGo.Scene
 
         /// <summary>The search sets the by-set profiles use.</summary>
         public List<SearchSet> Sets { get; set; } = new();
+
+        /// <summary>
+        /// Polish round P-C: the links the sets' rules (and link-field rows) name, with their names, so another model can
+        /// match them by name (older files: none).
+        /// </summary>
+        public List<ClashSetupLink> Links { get; set; } = new();
+    }
+
+    /// <summary>Polish round P-C: what reconciling an imported profile file did.</summary>
+    public sealed class ProfileReconcile
+    {
+        /// <summary>Link and level values matched to this model by name (rules rewritten).</summary>
+        public int Matched { get; set; }
+
+        /// <summary>Link and level values this model doesn't have (left as they are: they match nothing): "Link: name".</summary>
+        public List<string> Missing { get; set; } = new();
     }
 
     /// <summary>
@@ -820,7 +963,9 @@ namespace BimGo.Scene
         public const string FILTER = "BimGo colour profiles (*.json)|*.json|All files (*.*)|*.*";
 
         /// <summary>A file holding copies of the profiles and the sets their by-set rows use.</summary>
-        public static ProfileFile Build(IEnumerable<AppearanceProfile> profiles, Func<string, SearchSet> findSet, string modelTitle, string generator)
+        /// <param name="links">P-C: the model's links (their names go in the file for matching elsewhere); optional.</param>
+        public static ProfileFile Build(IEnumerable<AppearanceProfile> profiles, Func<string, SearchSet> findSet, string modelTitle, string generator,
+            IReadOnlyList<LinkInfo> links = null)
         {
             var file = new ProfileFile { ModelTitle = modelTitle ?? string.Empty, Generator = generator ?? string.Empty, ExportedUtc = DateTime.UtcNow };
             var setIds = new HashSet<string>(StringComparer.Ordinal);
@@ -835,7 +980,99 @@ namespace BimGo.Scene
                     if (set != null && setIds.Add(set.Id)) { file.Sets.Add(set.Copy()); }
                 }
             }
+
+            // P-C: the links named, with their names
+            var named = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            void Name(string value)
+            {
+                if (string.IsNullOrEmpty(value) || !named.Add(value)) { return; }
+                LinkInfo link = ClashSetupFiles.FindLink(links, value);
+                file.Links.Add(new ClashSetupLink { UniqueId = value, Name = link?.Label ?? value });
+            }
+            foreach (SetRule rule in file.Sets.SelectMany(s => s.AllRules()))
+            {
+                if (RuleField.Normalise(rule.Field) != RuleField.LINK) { continue; }
+                for (int i = 0; i < rule.ValueCount; i++) { Name(rule.ValueAt(i)); }
+            }
+            foreach (AppearanceProfile profile in file.Profiles)
+            {
+                if (profile.IsBySet || profile.Ranges || RuleField.Normalise(profile.Field) != RuleField.LINK) { continue; }
+                foreach (ProfileRule rule in profile.Rules) { Name(rule.Value); }
+            }
             return file;
+        }
+
+        /// <summary>
+        /// Polish round P-C: before <see cref="Merge"/>, rewrites the file's link and level values for this model: a link
+        /// this model doesn't have is matched by the name the file gives it, a level by its name (case ignored; this
+        /// model's spelling kept). In set rules and in link / level rows of by-value profiles. What can't be matched is
+        /// left as it is (it matches nothing here) and reported.
+        /// </summary>
+        public static ProfileReconcile Reconcile(ProfileFile file, IReadOnlyList<LinkInfo> links, IEnumerable<string> levels)
+        {
+            var result = new ProfileReconcile();
+            if (file == null) { return result; }
+            List<string> levelNames = (levels ?? Enumerable.Empty<string>()).Where(l => !string.IsNullOrEmpty(l)).ToList();
+            var missing = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            // One value: its replacement here (the same when it is fine), or null when it can't be matched
+            string Map(string field, string value)
+            {
+                if (string.IsNullOrEmpty(value)) { return value; }
+                if (field == RuleField.LINK)
+                {
+                    if (links == null) { return value; }
+                    LinkInfo here = links.FirstOrDefault(l => string.Equals(l.InstanceUniqueId, value, StringComparison.OrdinalIgnoreCase));
+                    if (here != null) { return value; }
+                    string name = file.Links?.FirstOrDefault(l => string.Equals(l.UniqueId, value, StringComparison.OrdinalIgnoreCase))?.Name ?? value;
+                    LinkInfo byName = ClashSetupFiles.FindLink(links, name);
+                    if (byName != null && !string.IsNullOrEmpty(byName.InstanceUniqueId)) { return byName.InstanceUniqueId; }
+                    missing.Add("Link: " + name);
+                    return null;
+                }
+                if (field == RuleField.LEVEL)
+                {
+                    string level = levelNames.FirstOrDefault(l => string.Equals(l, value.Trim(), StringComparison.CurrentCultureIgnoreCase));
+                    if (level != null) { return level; }
+                    missing.Add("Level: " + value);
+                    return null;
+                }
+                return value;
+            }
+
+            foreach (SetRule rule in file.Sets.SelectMany(s => s.AllRules()))
+            {
+                string field = RuleField.Normalise(rule.Field);
+                if (field != RuleField.LINK && field != RuleField.LEVEL) { continue; }
+                rule.Normalise();
+                bool changed = false;
+                var values = new List<string>(rule.Values.Count);
+                foreach (string value in rule.Values)
+                {
+                    string mapped = Map(field, value) ?? value;
+                    if (!string.Equals(mapped, value, StringComparison.Ordinal))
+                    {
+                        changed = true;
+                        result.Matched++;
+                    }
+                    if (!values.Contains(mapped, StringComparer.OrdinalIgnoreCase)) { values.Add(mapped); }
+                }
+                if (changed) { rule.SetValues(values); }
+            }
+            foreach (AppearanceProfile profile in file.Profiles)
+            {
+                string field = RuleField.Normalise(profile.Field);
+                if (profile.IsBySet || profile.Ranges || (field != RuleField.LINK && field != RuleField.LEVEL)) { continue; }
+                foreach (ProfileRule rule in profile.Rules)
+                {
+                    string mapped = Map(field, rule.Value) ?? rule.Value;
+                    if (string.Equals(mapped, rule.Value, StringComparison.Ordinal)) { continue; }
+                    rule.Value = mapped;
+                    result.Matched++;
+                }
+            }
+            result.Missing.AddRange(missing.OrderBy(m => m, StringComparer.CurrentCultureIgnoreCase));
+            return result;
         }
 
         /// <summary>The file's JSON (indented).</summary>

@@ -450,13 +450,14 @@ namespace BimGo.Clashes
         /// <summary>C-B4: rule groups (null or empty: none, the file stays as before).</summary>
         public List<RuleGroup> Groups { get; set; }
 
-        /// <summary>Every rule: the set's own, then each group's.</summary>
+        /// <summary>Every rule: the set's own, then each group's (polish round P-C: nested groups' too, depth first).</summary>
         public IEnumerable<SetRule> AllRules()
         {
             foreach (SetRule rule in Rules ?? Enumerable.Empty<SetRule>()) { yield return rule; }
             foreach (RuleGroup group in Groups ?? Enumerable.Empty<RuleGroup>())
             {
-                foreach (SetRule rule in group?.Rules ?? Enumerable.Empty<SetRule>()) { yield return rule; }
+                if (group == null) { continue; }
+                foreach (SetRule rule in group.AllRules()) { yield return rule; }
             }
         }
 
@@ -589,28 +590,62 @@ namespace BimGo.Clashes
         /// <summary>The rules.</summary>
         public List<SetRule> Rules { get; set; } = new();
 
-        /// <summary>Reserved for nesting deeper (not read or written by this build).</summary>
-        [System.Text.Json.Serialization.JsonIgnore]
+        /// <summary>
+        /// Polish round P-C: groups inside this group, to any depth (each is one more condition of this group, like a
+        /// rule). Null or empty: none, and nothing is written (files from before read as they were).
+        /// </summary>
+        [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
         public List<RuleGroup> Groups { get; set; }
 
-        /// <summary>True when at least one rule has a value.</summary>
-        public bool HasConditions => Rules != null && Rules.Any(r => r != null && r.IsComplete);
+        /// <summary>Deepest nesting kept when reading (a guard against damaged files; the editor never gets near it).</summary>
+        public const int MAX_DEPTH = 16;
 
-        /// <summary>Drops null rules and normalises the rest.</summary>
-        public RuleGroup Normalise()
+        /// <summary>True when at least one rule here, or in a group inside, has a value.</summary>
+        public bool HasConditions => (Rules != null && Rules.Any(r => r != null && r.IsComplete))
+            || (Groups != null && Groups.Any(g => g != null && g.HasConditions));
+
+        /// <summary>Every rule: this group's, then its groups' (depth first).</summary>
+        public IEnumerable<SetRule> AllRules()
+        {
+            foreach (SetRule rule in Rules ?? Enumerable.Empty<SetRule>()) { yield return rule; }
+            foreach (RuleGroup group in Groups ?? Enumerable.Empty<RuleGroup>())
+            {
+                if (group == null) { continue; }
+                foreach (SetRule rule in group.AllRules()) { yield return rule; }
+            }
+        }
+
+        /// <summary>
+        /// Drops null rules and groups, normalises the rest (P-C: and the groups inside, to <see cref="MAX_DEPTH"/>;
+        /// deeper ones are dropped), and leaves <see cref="Groups"/> null when empty.
+        /// </summary>
+        public RuleGroup Normalise() => Normalise(1);
+
+        private RuleGroup Normalise(int depth)
         {
             Rules ??= new List<SetRule>();
             Rules.RemoveAll(r => r == null);
             foreach (SetRule rule in Rules) { rule.Normalise(); }
+            if (Groups != null)
+            {
+                Groups.RemoveAll(g => g == null);
+                if (depth >= MAX_DEPTH) { Groups.Clear(); }
+                foreach (RuleGroup group in Groups) { group.Normalise(depth + 1); }
+                if (Groups.Count == 0) { Groups = null; }
+            }
             return this;
         }
 
-        /// <summary>A copy.</summary>
+        /// <summary>A copy (P-C: with the groups inside).</summary>
         public RuleGroup Copy() => new()
         {
             MatchAll = MatchAll,
-            Rules = Rules?.Where(r => r != null).Select(r => r.Copy()).ToList() ?? new List<SetRule>()
+            Rules = Rules?.Where(r => r != null).Select(r => r.Copy()).ToList() ?? new List<SetRule>(),
+            Groups = Groups?.Where(g => g != null).Select(g => g.Copy()).ToList() is { Count: > 0 } groups ? groups : null
         };
+
+        /// <summary>Number of rules here and inside.</summary>
+        public int RuleCount => AllRules().Count();
     }
 
     /// <summary>

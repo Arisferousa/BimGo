@@ -42,6 +42,12 @@ namespace BimGo.Game
         private bool _photoJpeg;
         private bool _photo8K;
         private bool _photoGrid = true;
+
+        // Polish round P-C: grid lines in the photo (opt-in; when grids are on), and while a photo renders: its line
+        // scale (stills at 2–4× keep the lines' look) and that a real photo (not a thumbnail) is rendering
+        private bool _photoGridLines;
+        private float _photoLineScale = 1f;
+        private bool _photoShooting;
         private float _photoExposure;
         private float _photoSavedFov;
         private int _photoShotIn;        // frames until the shot (one frame shows "RENDERING…" first)
@@ -179,7 +185,15 @@ namespace BimGo.Game
             Camera.ViewportHeight = height;
             Camera.Aspect = (float)width / Math.Max(height, 1);
             Camera.Update();
-            byte[] pixels = RenderPhotoView(width, height, legend: true);
+            byte[] pixels;
+            _photoShooting = true;
+            _photoLineScale = scale;
+            try { pixels = RenderPhotoView(width, height, legend: true, legendScale: scale); }
+            finally
+            {
+                _photoShooting = false;
+                _photoLineScale = 1f;
+            }
 
             bool jpeg = _photoJpeg;
             string path = PhotoPath(jpeg ? ".jpg" : ".png", $" {width}x{height}");
@@ -228,7 +242,14 @@ namespace BimGo.Game
                 Camera.SetCustomView(forwards[i], ups[i]);
                 Camera.Update();
                 matrices[i] = Camera.ViewProjection;
-                faces[i] = RenderPhotoView(face, face);
+                _photoShooting = true; // P-C: grids in the 360 too when ticked
+                _photoLineScale = Math.Max(1f, face / (float)Math.Max(1, _window.Height));
+                try { faces[i] = RenderPhotoView(face, face); }
+                finally
+                {
+                    _photoShooting = false;
+                    _photoLineScale = 1f;
+                }
             }
 
             string path = PhotoPath(".jpg", $" 360 {(_photo8K ? "8K" : "4K")}");
@@ -257,7 +278,11 @@ namespace BimGo.Game
         /// reads it back as bottom-up BGRA.
         /// </summary>
         /// <param name="legend">Colour round B: a still: the colour profile's legend goes in when ticked (not in 360s).</param>
-        private byte[] RenderPhotoView(int width, int height, bool legend = false)
+        /// <param name="legendScale">
+        /// Polish round P-C: the still's size against the window (2–4×): the legend is drawn that much bigger, so it reads
+        /// as it does on screen.
+        /// </param>
+        private byte[] RenderPhotoView(int width, int height, bool legend = false, int legendScale = 1)
         {
             long pixels = (long)width * height;
             int samples = pixels * 4 <= PHOTO_SAMPLE_BUDGET ? 4 : pixels * 2 <= PHOTO_SAMPLE_BUDGET ? 2 : 0;
@@ -266,9 +291,11 @@ namespace BimGo.Game
             RenderScene(width, height, _photoTarget, samples, photo: true);
             if (legend && ProfileLegendInShots)
             {
+                // P-C: laid out on a screen 1/k the size, then flushed over the whole target (k× bigger)
+                int k = Math.Clamp(legendScale, 1, 4);
                 _photoTarget.Bind();
-                QueueProfileLegendForShot(width, height);
-                _ui.Flush(width, height);
+                QueueProfileLegendForShot(width / k, height / k);
+                _ui.Flush(width / k, height / k);
             }
             _photoResolve.Ensure(width, height, 0);
             _photoTarget.ResolveTo(_photoResolve);
@@ -428,9 +455,10 @@ namespace BimGo.Game
             }
             BuildToast(f, width);
 
-            float w = S(320), x = width - S(20) - w, y = S(20), h = S(474);
+            float w = S(320), x = width - S(20) - w, y = S(20), h = S(508);
             _photoPanelRect = new Vector4(x, y, w, h);
             _ui.Panel(x, y, w, h, UiTheme.PANEL_STRONG, UiTheme.ACCENT);
+            RegisterFocusArea(x, y, w, h); // P-A2: the D-pad navigates the panel while the cursor is over it
             float ix = x + S(16), iw = w - S(32), cy = y + S(14);
             _ui.Text(f.Small, ix, cy, "PHOTO MODE", UiTheme.ACCENT, S(1.4f));
             cy += S(26);
@@ -492,6 +520,10 @@ namespace BimGo.Game
 
             bool grid = Checkbox(f, input, ix, cy + S(4), iw, "Thirds grid (not in the photo)", _photoGrid);
             _photoGrid = grid;
+            cy += S(34);
+
+            // Polish round P-C: the grid lines in the photo (the grids key / panel turn them on)
+            _photoGridLines = Checkbox(f, input, ix, cy + S(4), iw, GridsShowing ? "Grid lines in the photo" : "Grid lines in the photo (grids are off)", _photoGridLines);
             cy += S(34);
 
             if (MenuButton(f, ix, cy, iw, _photoShotIn > 0 ? "RENDERING…" : HINT_PHOTO_TAKE.Text, true, false, _photoShotIn == 0, S(44))) { RequestPhoto(); }

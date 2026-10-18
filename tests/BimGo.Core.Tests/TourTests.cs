@@ -249,5 +249,51 @@ namespace BimGo.Tests
             Assert.AreEqual(TourSettings.MIN_HOLD, document.Bookmarks[0].TourHold);
             Assert.IsNull(document.Bookmarks[0].TourSwivel);
         }
+
+        [TestMethod]
+        public void Blend_GlideAndFadesHandOverTheState()
+        {
+            // Polish round P-C: the sun blends between stops: over a glide, and half / half across the fades
+            var glide = new TourTimeline(ThreeStops(), TourTransition.Glide, 0.5f, 2f);
+            TourPose start = glide.Evaluate(glide.StartOf(1) + 0.01f);
+            Assert.IsTrue(start.Moving);
+            Assert.AreEqual(0, start.BlendFrom);
+            Assert.AreEqual(1, start.BlendTo);
+            Assert.IsTrue(start.BlendT < 0.05f, $"{start.BlendT}");
+            TourPose holding = glide.Evaluate(glide.StartOf(2) - 0.01f); // the end of stop 1's hold
+            Assert.AreEqual(holding.BlendFrom, holding.BlendTo, "held at a stop: no blend");
+            Assert.AreEqual(1f, holding.BlendT, 1e-6f);
+
+            var fade = new TourTimeline(ThreeStops(), TourTransition.Fade, 0.5f, 3f);
+            float cut = fade.StartOf(1); // black: stop 0's fade-out ends, stop 1's fade-in starts
+            TourPose before = fade.Evaluate(cut - 0.001f), after = fade.Evaluate(cut + 0.001f);
+            Assert.AreEqual(0, before.BlendFrom);
+            Assert.AreEqual(1, before.BlendTo);
+            Assert.AreEqual(0.5f, before.BlendT, 0.01f, "half way at black");
+            Assert.AreEqual(0, after.BlendFrom);
+            Assert.AreEqual(1, after.BlendTo);
+            Assert.AreEqual(0.5f, after.BlendT, 0.01f, "seamless across the cut");
+            TourPose mid = fade.Evaluate(fade.StartOf(1) + 0.5f + 1f);
+            Assert.AreEqual(1, mid.BlendFrom);
+            Assert.AreEqual(1, mid.BlendTo);
+            TourPose first = fade.Evaluate(0.1f);
+            Assert.AreEqual(first.BlendFrom, first.BlendTo, "the first stop's fade-in has nothing to blend from");
+        }
+
+        [TestMethod]
+        public void Bookmark_CrouchAndProfileAreOptional()
+        {
+            // Polish round P-C: crouched and the colour profile; older files read as before, defaults aren't written
+            var record = new BookmarkRecord { Name = "A" };
+            string plain = JsonSerializer.Serialize(record);
+            Assert.IsFalse(plain.Contains("Crouched", StringComparison.Ordinal));
+            Assert.IsFalse(plain.Contains("ColourProfile", StringComparison.Ordinal));
+            record.Crouched = true;
+            record.ColourProfile = string.Empty;
+            BookmarkRecord back = JsonSerializer.Deserialize<BookmarkRecord>(JsonSerializer.Serialize(record));
+            Assert.IsTrue(back.Crouched);
+            Assert.AreEqual(string.Empty, back.ColourProfile, "\"\" = profiles off, not \"leave alone\"");
+            Assert.IsNull(JsonSerializer.Deserialize<BookmarkRecord>("{\"Name\":\"Old\"}").ColourProfile);
+        }
     }
 }

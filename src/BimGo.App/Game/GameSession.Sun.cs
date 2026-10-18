@@ -79,6 +79,9 @@ namespace BimGo.Game
         // Shadow invalidation: bumped when static elements hide / show or categories toggle
         private long _sceneRevision;
 
+        // Polish round P-C: the tour's sun blend sets fractional minutes here (NaN: none)
+        private double _sunBlendMinutes = double.NaN;
+
         // Cached label
         private string _sunPlaceLabel;
 
@@ -136,7 +139,7 @@ namespace BimGo.Game
         private void RecomputeSun()
         {
             SunTime time = _sun.Time;
-            double minutes = _sunPlaying ? _playMinutes : time.Minutes;
+            double minutes = !double.IsNaN(_sunBlendMinutes) ? _sunBlendMinutes : _sunPlaying ? _playMinutes : time.Minutes;
             SolarPosition.Compute(_location, DateTime.Today.Year, time.Month, time.Day, minutes, time.DaylightSaving,
                 out double altitude, out double azimuth);
             _sunAltitude = altitude * 180.0 / Math.PI;
@@ -503,48 +506,61 @@ namespace BimGo.Game
         }
 
         /// <summary>
-        /// The expanded panel above the icon: shadows, quality, time, date, daylight saving, intensities.
+        /// The sun dock (polish round P-A2: the right-hand dock column, the shared header, scrolling body and footer):
+        /// place, shadows, quality, time, date, daylight saving, then the LIGHTING / SKY tabs. The location picker
+        /// (CHANGE…) takes the dock's place while open.
         /// </summary>
         private void BuildSunPanel(FontAtlas f, InputState input)
         {
             if (!input.LeftDown) { _activeSlider = -1; }
+            float w = S(UiTheme.DOCK_WIDTH);
 
-            float w = S(340), h = S(624); // sky round: + the LIGHTING / SKY tabs
-            SunIconRect(out _, out float iconY, out _);
-            float x = _window.Width - S(20) - w;
-            float y = MathF.Max(S(20), iconY - S(10) - h);
-            _ui.Panel(x, y, w, h, UiTheme.PANEL_STRONG, Rgba.WithAlpha(UiTheme.SUN, 0.5f));
-
-            // The location picker (CHANGE…) takes the panel's place while open
             if (_locationOpen)
             {
-                BuildLocationPanel(f, input, x, y, w, h);
+                // Its own layout (laid out against its bottom): the column's height up to the old panel's
+                DockColumn(w, out float lx, out float top, out float bottom);
+                float lh = MathF.Min(S(624), bottom - top);
+                if (lh < S(560) && _showMap)
+                {
+                    top = S(UiTheme.COLUMN_MARGIN); // too short under the minimap: over it (it hides)
+                    _dockOverMapNext = true;
+                    lh = MathF.Min(S(624), bottom - top);
+                }
+                _ui.Panel(lx, top, w, lh, UiTheme.PANEL_STRONG, Rgba.WithAlpha(UiTheme.SUN, 0.5f));
+                RegisterFocusArea(lx, top, w, lh);
+                BuildLocationPanel(f, input, lx, top, w, lh);
                 return;
             }
 
             // A click anywhere outside a month / day box leaves it
             if (input.LeftPressed && _sunField != 0) { CommitSunField(); }
 
-            float ix = x + S(16), iw = w - S(32);
-            float cy = y + S(14);
+            DockFrame d = BeginDock("SUN, SHADOWS & LIGHTS", UiTheme.SUN_LABEL, Rgba.WithAlpha(UiTheme.SUN, 0.5f), w, _sunDockScroll, notice: false);
+            float cy = BeginDockBody(d, _sunDockScroll, input);
+            bool stay = BuildSunPanelBody(f, input, d.Ix, ref cy, d.Iw);
+            EndDockBody(_sunDockScroll, input, cy);
+            if (!stay) { return; } // CHANGE… or STUDY… left the dock
+            if (EndDock(d, null, HINT_SUN_FOOT.Text) == DOCK_CLOSE) { CloseSunPanel(); }
+        }
 
-            // Header
-            _ui.Text(f.Small, ix, cy, "SUN, SHADOWS & LIGHTS", UiTheme.SUN_LABEL, S(2f));
-            _ui.TextRight(f.Small, ix + iw, cy, HINT_SUN_CLOSE.Text, UiTheme.TEXT_FAINT, S(0.6f));
-            cy += S(22);
+        /// <summary>The sun dock's body (from its first line; <paramref name="cy"/> ends at its bottom).</summary>
+        /// <returns>False when a button left the dock (the location picker, the study).</returns>
+        private bool BuildSunPanelBody(FontAtlas f, InputState input, float ix, ref float cy, float iw)
+        {
+            // Place: the location label, CHANGE… and STUDY…
             float changeW = S(78), studyW = S(70);
             uint placeColour = HasLocationOverride ? UiTheme.SUN : _locationKnown ? UiTheme.TEXT_MUTED : UiTheme.MEASURE_LABEL;
             _ui.TextWrapped(f.Small, ix, cy + S(3), iw - changeW - studyW - S(14), _sunPlaceLabel, placeColour, maxLines: 1);
             if (SmallButton(f, input, ix + iw - changeW, cy - S(2), changeW, S(22), "CHANGE…"))
             {
                 OpenLocationPicker();
-                return;
+                return false;
             }
             // QOL round: hop to the sun / daylight study (it closes this panel)
             if (SmallButton(f, input, ix + iw - changeW - S(6) - studyW, cy - S(2), studyW, S(22), "STUDY…"))
             {
                 OpenSunHours();
-                return;
+                return false;
             }
             cy += S(26);
 
@@ -624,8 +640,8 @@ namespace BimGo.Game
             cy += S(34);
             if (_sunTab == 1)
             {
-                BuildSkyTab(f, input, ix, cy, iw);
-                return;
+                cy = BuildSkyTab(f, input, ix, cy, iw);
+                return true;
             }
 
             // Intensities
@@ -648,12 +664,15 @@ namespace BimGo.Game
                 SunChanged();
             }
             _ui.TextRight(f.Small, ix + iw, cy + S(8), HINT_SUN_KEYS.Text, UiTheme.TEXT_FAINT, S(0.4f));
+            cy += S(28);
+            return true;
         }
 
         /// <summary>
         /// Sky round: the SKY tab: cloud cover and drift, the sun disc's size and glare (a look only), RESET SKY.
         /// </summary>
-        private void BuildSkyTab(FontAtlas f, InputState input, float ix, float cy, float iw)
+        /// <returns>The tab's bottom.</returns>
+        private float BuildSkyTab(FontAtlas f, InputState input, float ix, float cy, float iw)
         {
             IntensitySlider(f, input, SLIDER_CLOUDS, ix, cy, iw, "Cloud cover", _sun.CloudCover, 1f);
             cy += S(54);
@@ -672,6 +691,7 @@ namespace BimGo.Game
                 _sun.CloudSpeed = _sun.SunSize = _sun.SunGlare = 1f;
                 SunChanged();
             }
+            return cy + S(28);
         }
 
         /// <summary>

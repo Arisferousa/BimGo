@@ -146,6 +146,7 @@ namespace BimGo.Game
             _profileHiddenFrom = want;
             if (want == null && _profileHidden == null) { return; }
             _profileHidden ??= new bool[Scene.Elements.Length];
+            Dynamics.SourceHidden = _profileHidden; // P-C: moved / cloned copies of hidden rows hide too (no shadows)
 
             bool changed = false;
             for (int e = 0; e < _profileHidden.Length; e++)
@@ -252,18 +253,20 @@ namespace BimGo.Game
 
         #region Legend
 
-        /// <summary>
-        /// The on-screen legend while a profile shows (left, under the status and coordinate panels): the profile's
-        /// name, a swatch, label and count per row (the first <see cref="PROFILE_LEGEND_ROWS"/>), and the others' look.
-        /// </summary>
-        private void BuildProfileLegend(FontAtlas f, int height)
-        {
-            if (!ProfileShowing || !_appearance.Legend || _profileResult == null || _profileResultFor != _appearance.Active) { return; }
-            if (_clashModeOn && _clashView != CLASH_VIEW_REAL) { return; }
+        /// <summary>The on-screen legend is wanted (a profile shows with its legend ticked; clash mode: the real view).</summary>
+        private bool ProfileLegendWanted => ProfileShowing && _appearance.Legend && _profileResult != null && _profileResultFor == _appearance.Active
+            && (!_clashModeOn || _clashView == CLASH_VIEW_REAL);
 
-            float top = S(20) + S(146) + S(10) + (_coordinateReadout != CoordinateReadout.Off ? S(110) : 0f);
-            float bottom = height - S(52) - (_sunStudy.Hours != null ? S(78) + S(12) : 0f);
-            DrawProfileLegend(f, S(20), top, bottom, anchorBottom: false);
+        /// <summary>
+        /// The on-screen legend while a profile shows (the left-hand column, between the panels above and the sun legend
+        /// or F1 sheet below; P-A2): the profile's name, a swatch, label and count per row (the first
+        /// <see cref="PROFILE_LEGEND_ROWS"/>), and the others' look. Collapsed (the F1 sheet is open, or not one row
+        /// fits): the title row only.
+        /// </summary>
+        private void BuildProfileLegend(FontAtlas f, float top, float bottom, bool collapsed)
+        {
+            if (!ProfileLegendWanted) { return; }
+            DrawProfileLegend(f, S(20), top, bottom, anchorBottom: false, collapsed);
         }
 
         /// <summary>Colour round B: the legend is wanted in photos and screenshots (the panel's tick, the profile showing).</summary>
@@ -280,7 +283,7 @@ namespace BimGo.Game
         }
 
         /// <summary>The legend panel between two heights (top-anchored for the HUD, bottom-anchored for shots).</summary>
-        private void DrawProfileLegend(FontAtlas f, float x, float top, float bottom, bool anchorBottom)
+        private void DrawProfileLegend(FontAtlas f, float x, float top, float bottom, bool anchorBottom, bool collapsed = false)
         {
             float w = S(250);
             float rowH = S(20);
@@ -289,7 +292,16 @@ namespace BimGo.Game
             shown = Math.Min(shown, fit);
             int more = _profileLegend.Count - shown;
             float h = S(34) + shown * rowH + (more > 0 ? rowH : 0f) + (_profileLegendFooter != null ? rowH : 0f) + S(8);
-            if (top + h > bottom) { return; } // too small a window for even one row
+            if (collapsed || top + h > bottom)
+            {
+                // P-A2: the title row only (too small a window for even one row, or the F1 sheet is open)
+                float ch = S(UiTheme.LEGEND_COLLAPSED_HEIGHT);
+                if (top + ch > bottom) { return; }
+                if (anchorBottom) { top = bottom - ch; }
+                _ui.Panel(x, top, w, ch, UiTheme.PANEL, UiTheme.PANEL_BORDER);
+                _ui.TextWrapped(f.Small, x + S(12), top + MathF.Round((ch - f.Small.LineHeight) * 0.5f), w - S(24), _profileLegendTitle, UiTheme.ACCENT, maxLines: 1);
+                return;
+            }
             if (anchorBottom) { top = bottom - h; }
 
             _ui.Panel(x, top, w, h, UiTheme.PANEL, UiTheme.PANEL_BORDER);

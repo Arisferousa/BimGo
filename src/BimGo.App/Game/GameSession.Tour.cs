@@ -51,6 +51,12 @@ namespace BimGo.Game
         private EyePreset _tourSavedPreset;
         private bool _tourSavedEyeCustom;
         private bool _tourSavedUiHidden;
+        private string _tourSavedProfile;
+        private bool _tourSavedProfileOn;
+
+        // Polish round P-C: the sun blending between stops (a scratch time shown while it blends; NaN minutes = no blend)
+        private readonly SunTime _tourBlendSun = new();
+        private bool _tourSunBlending;
 
         // What the current stop applied (reference checks skip re-applying the same state)
         private SunTime _tourAppliedSun;
@@ -114,13 +120,18 @@ namespace BimGo.Game
             _tourSavedPreset = _eyePreset;
             _tourSavedEyeCustom = _eyeCustom;
             _tourSavedUiHidden = _uiHidden;
+            _tourSavedProfile = _appearance.Active;
+            _tourSavedProfileOn = _appearance.On;
 
-            // Lay the stops out (eye height: the bookmark's, else the current one)
+            // Lay the stops out (eye height: the bookmark's, else the current one; P-C: a crouched bookmark films from the
+            // crouched eye, in the same proportion to its standing eye as the player's)
+            float crouchRatio = _player.Controller.StandEye > 0.01f ? _player.Controller.CrouchEye / _player.Controller.StandEye : 0.6f;
             _tourRecords = records.ToArray();
             var stops = new List<TourStop>(_tourRecords.Length);
             foreach (BookmarkRecord record in _tourRecords)
             {
-                stops.Add(new TourStop(record.Local, record.EyeHeight ?? _tourSavedEye, record.Yaw, Math.Clamp(record.Pitch, -1.5f, 1.5f),
+                float stopEye = (record.EyeHeight ?? _tourSavedEye) * (record.Crouched && !record.Flying ? crouchRatio : 1f);
+                stops.Add(new TourStop(record.Local, stopEye, record.Yaw, Math.Clamp(record.Pitch, -1.5f, 1.5f),
                     _tourRun.HoldFor(record), _tourRun.SwivelFor(record) * DEGREES));
             }
             _tour = new TourTimeline(stops, _tourRun.Transition, _tourRun.FadeSeconds, _tourRun.GlideSeconds);
@@ -162,7 +173,14 @@ namespace BimGo.Game
             _tourActive = false;
             _tourPaused = false;
 
+            EndTourSunBlend();
             SetSunQuiet(_tourSavedSun, _tourSavedShadows);
+            if (_appearance.Active != _tourSavedProfile || _appearance.On != _tourSavedProfileOn) // P-C: the profile as it was
+            {
+                _appearance.Active = _tourSavedProfile;
+                _appearance.On = _tourSavedProfileOn;
+                _profileDirty = true;
+            }
             _sunPlaying = _tourSavedSunPlaying && _tourSavedShadows;
             SetSectionQuiet(_tourSavedSection);
             ApplyVisibility(_tourSavedVisibility, record: false);
@@ -276,7 +294,70 @@ namespace BimGo.Game
             _tourPose = _tour.Evaluate(_tourTime);
             if (_tourPose.Stop < 0) { return; }
             if (_tourPose.Stop != _tourAppliedStop) { ApplyTourStop(_tourPose.Stop); }
+            BlendTourSun(_tourPose); // polish round P-C: the sun blends between stops instead of cutting
             _player.TeleportTo(_tourPose.Feet, _tourPose.Yaw, _tourPose.Pitch);
+        }
+
+        /// <summary>
+        /// Polish round P-C: between two stops with different suns, the sun's date and time move from one to the other
+        /// (shadows on / off switch halfway); held at a stop, the stop's own sun (applied by <see cref="ApplyTourStop"/>).
+        /// </summary>
+        private void BlendTourSun(in TourPose pose)
+        {
+            int from = pose.BlendFrom, to = pose.BlendTo;
+            if (from < 0 || to < 0 || from == to || pose.BlendT >= 1f || from >= _tourRecords.Length || to >= _tourRecords.Length)
+            {
+                EndTourSunBlend();
+                return;
+            }
+            SunTime a = _tourRecords[from].Sun ?? _tourSavedSun, b = _tourRecords[to].Sun ?? _tourSavedSun;
+            bool shadowsA = _tourRecords[from].Sun != null || _tourSavedShadows, shadowsB = _tourRecords[to].Sun != null || _tourSavedShadows;
+            if (a == null || b == null) { return; }
+            bool same = a.Month == b.Month && a.Day == b.Day && a.Minutes == b.Minutes && a.DaylightSaving == b.DaylightSaving && shadowsA == shadowsB;
+            if (same)
+            {
+                EndTourSunBlend();
+                return;
+            }
+
+            float t = pose.BlendT;
+            int year = DateTime.Today.Year;
+            int dayA = DayOfYear(year, a), dayB = DayOfYear(year, b);
+            int day = (int)MathF.Round(dayA + (dayB - dayA) * t);
+            DateTime date = new DateTime(year, 1, 1).AddDays(Math.Clamp(day, 1, DateTime.IsLeapYear(year) ? 366 : 365) - 1);
+            _tourBlendSun.Month = date.Month;
+            _tourBlendSun.Day = date.Day;
+            _tourBlendSun.DaylightSaving = t < 0.5f ? a.DaylightSaving : b.DaylightSaving;
+            double minutes = a.Minutes + (b.Minutes - a.Minutes) * (double)t;
+            _tourBlendSun.Minutes = Math.Clamp((int)minutes, 0, 1439);
+
+            _tourSunBlending = true;
+            _sunPlaying = false;
+            _sun.Time = _tourBlendSun;
+            _sun.Enabled = t < 0.5f ? shadowsA : shadowsB;
+            _sunBlendMinutes = minutes; // fractional: the sun moves smoothly (RecomputeSun)
+            RecomputeSun();
+            _tourAppliedSun = null; // the next stop applies its own sun
+        }
+
+        /// <summary>P-C: a blend that was showing ends: the stop's own sun again.</summary>
+        private void EndTourSunBlend()
+        {
+            if (!_tourSunBlending) { return; }
+            _tourSunBlending = false;
+            _sunBlendMinutes = double.NaN;
+            if (_tourActive && _tourAppliedStop >= 0 && _tourAppliedStop < _tourRecords.Length)
+            {
+                BookmarkRecord record = _tourRecords[_tourAppliedStop];
+                SetSunQuiet(record.Sun ?? _tourSavedSun, record.Sun != null || _tourSavedShadows);
+                _tourAppliedSun = record.Sun ?? _tourSavedSun;
+            }
+        }
+
+        private static int DayOfYear(int year, SunTime time)
+        {
+            int month = Math.Clamp(time.Month, 1, 12);
+            return new DateTime(year, month, Math.Clamp(time.Day, 1, DateTime.DaysInMonth(year, month))).DayOfYear;
         }
 
         /// <summary>
@@ -309,7 +390,8 @@ namespace BimGo.Game
                 _tourAppliedVisibility = visibility;
             }
 
-            ApplyEyeHeight(_tour[index].EyeHeight);
+            ApplyEyeHeight(record.EyeHeight ?? _tourSavedEye); // P-C: the standing eye (a crouched stop's camera is lower)
+            ApplyBookmarkProfile(record.ColourProfile ?? (_tourSavedProfileOn ? _tourSavedProfile : string.Empty), quiet: true); // P-C
         }
 
         /// <summary>The sun time and shadows on / off, without recording a change (tour).</summary>
@@ -343,8 +425,7 @@ namespace BimGo.Game
             FontAtlas f = _ui.Atlas;
             if (!_uiHidden)
             {
-                BuildStatusPanel(f);
-                BuildCoordinatePanel(f, S(20), S(20) + S(146) + S(10));
+                BuildInfoColumn(f, height, sunLegend: false, profileLegend: false, help: false); // P-A2: the left column
                 if (_showMap) { DrawMinimapOverlay(mapX, mapY); }
                 BuildRoomBanner(f, width);
                 BuildLiveBanner(f, width, height);

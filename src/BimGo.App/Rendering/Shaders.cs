@@ -37,6 +37,7 @@ in vec3 vWorld;
 in vec4 vColor;
 flat in vec4 vProfile;
 uniform int uProfilePass;
+uniform int uCapColourPass;
 uniform vec4 uCapPlane;
 uniform float uCapShade;
 out vec4 oColor;
@@ -44,10 +45,14 @@ void main()
 {
     if (dot(uCapPlane.xyz, vWorld) > uCapPlane.w) discard;
     // Colour round A fix: a colour profile's ghosted (and hidden) elements aren't solid, so they get no cap
-    if (uProfilePass > 0)
+    int code = uProfilePass > 0 ? int(vProfile.a * 255.0 + 0.5) : 0;
+    if (code == 1 || code == 2 || (code >= 128 && code < 255)) discard;
+    // Polish round P-C: the colour pass paints the caps of profile-coloured elements in their colour (others: flat cap)
+    if (uCapColourPass > 0)
     {
-        int code = int(vProfile.a * 255.0 + 0.5);
-        if (code == 1 || code == 2 || (code >= 128 && code < 255)) discard;
+        if (code != 255) discard;
+        oColor = vec4(vProfile.rgb * uCapShade, 1.0);
+        return;
     }
     oColor = vec4(vColor.rgb * uCapShade, 1.0);
 }";

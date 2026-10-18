@@ -959,11 +959,18 @@ namespace BimGo.Game
         {
             float h = S(28);
             float tab = w / labels.Length;
+            int stepped = TakePadTabStep(selected, labels.Length); // P-A2: LB / RB tapped alone
+            if (stepped != selected)
+            {
+                selected = stepped;
+                Sound.Play(SoundId.UiClick);
+            }
             _ui.Rect(x, y + h - MathF.Max(1f, UiScale), w, MathF.Max(1f, UiScale), Rgba.Hex(0xFFFFFF, 0.12f));
             for (int i = 0; i < labels.Length; i++)
             {
                 float tx = x + i * tab;
                 bool on = i == selected;
+                if (on) { RegisterFocus(tx, y, tab, h); }
                 bool hover = !on && Hover(input, tx, y, tab, h);
                 uint colour = on ? UiTheme.TEXT : hover ? UiTheme.ACCENT : UiTheme.TEXT_MUTED;
                 _ui.TextCentred(f.Small, tx + tab * 0.5f, y + S(7), labels[i], colour, S(1.4f));
@@ -1026,10 +1033,12 @@ namespace BimGo.Game
 
         /// <summary>
         /// True when the mouse is over a rectangle. Inside a scroll region (polish round P-A1) the part clipped away
-        /// never counts, so rows scrolled out of view can't be clicked.
+        /// never counts, so rows scrolled out of view can't be clicked. P-A2: the rectangle is also a gamepad focus
+        /// target (the D-pad's ring); panels, viewports and scroll tracks pass <paramref name="focus"/> false.
         /// </summary>
-        private bool Hover(InputState input, float x, float y, float w, float h)
+        private bool Hover(InputState input, float x, float y, float w, float h, bool focus = true)
         {
+            if (focus) { RegisterFocus(x, y, w, h); }
             Vector2 m = input.MousePosition;
             return m.X >= x && m.X < x + w && m.Y >= y && m.Y < y + h && _ui.ClipContains(m.X, m.Y);
         }
@@ -1089,6 +1098,8 @@ namespace BimGo.Game
 
             float trackY = y + S(30);
             float knobR = S(7);
+            float knobX = x + w * Math.Clamp((value - min) / (max - min), 0f, 1f);
+            RegisterFocus(x - knobR, trackY - S(12), w + knobR * 2f, S(24), slider: true, anchorX: knobX, anchorY: trackY); // P-A2: D-pad ← → steps it
             bool hover = Hover(input, x - knobR, trackY - S(12), w + knobR * 2f, S(24));
             if (hover && input.LeftPressed) { _activeSlider = id; }
 

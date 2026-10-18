@@ -381,6 +381,25 @@ namespace BimGo.Rendering
         /// <summary>Drops every clip (a frame that ended without popping them all).</summary>
         public void ResetClip() => _clipDepth = 0;
 
+        /// <summary>
+        /// The clip rectangle in force (polish round P-A2: gamepad focus targets keep the part that shows).
+        /// </summary>
+        /// <returns>False when no clip is in force (the outputs are then unbounded).</returns>
+        public bool GetClip(out float x0, out float y0, out float x1, out float y1)
+        {
+            if (_clipDepth == 0)
+            {
+                x0 = y0 = float.MinValue;
+                x1 = y1 = float.MaxValue;
+                return false;
+            }
+            x0 = _clipX0;
+            y0 = _clipY0;
+            x1 = _clipX1;
+            y1 = _clipY1;
+            return true;
+        }
+
         /// <summary>True when a point is inside the clip in force (always true without one).</summary>
         public bool ClipContains(float x, float y) =>
             _clipDepth == 0 || (x >= _clipX0 && x < _clipX1 && y >= _clipY0 && y < _clipY1);

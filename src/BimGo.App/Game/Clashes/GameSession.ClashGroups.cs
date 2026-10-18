@@ -84,9 +84,8 @@ namespace BimGo.Game
         // A group row's pencil clicked this frame (its comment picture's markup)
         private ClashGroup _clashGroupMarkupClick;
 
-        // The list's scroll bar: dragging, and where on the thumb it was grabbed
-        private bool _clashScrollDragging;
-        private float _clashScrollGrab;
+        // The list's scroll region (polish round P-A2: the shared ScrollRegion: wheel, thumb drag, track paging)
+        private readonly ScrollRegion _clashListScroll = new();
 
         // C-C2: TOOLS ▾ (the grouping tools, then the automatic methods: the test's ungrouped open clashes, 2+ per group)
         private static readonly string[] CLASH_TOOL_ACTIONS =
@@ -376,7 +375,7 @@ namespace BimGo.Game
         {
             _clashGroupFilter = Math.Clamp(filter, 0, CLASH_SHOW_LABELS.Length - 1);
             _clashListDirty = true;
-            _clashDockScroll = 0;
+            _clashListScroll.Reset();
         }
 
         /// <summary>

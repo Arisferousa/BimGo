@@ -182,17 +182,32 @@ namespace BimGo.Rendering
         #region Draw
 
         /// <summary>
+        /// Polish round P-C: reflection probes capture the blades (set by the session while blades show).
+        /// </summary>
+        public bool ProbeGrass { get; set; }
+
+        /// <summary>Probe faces draw blades this far at most (m), at the low density.</summary>
+        private const float PROBE_GRASS_RADIUS = 20f;
+
+        /// <summary>
         /// Draws the blades (call after the opaque scene and the ground, with depth test and writes on). Does nothing
         /// without a grass field.
         /// </summary>
-        public void DrawGrass(in SceneDrawParams p)
+        /// <param name="p">The pass.</param>
+        /// <param name="probe">P-C: a reflection probe's face: sparser blades, nearer, one grid (no count kept).</param>
+        public void DrawGrass(in SceneDrawParams p, bool probe = false)
         {
-            GrassInstances = 0;
+            if (!probe) { GrassInstances = 0; }
             if (_grassMap == 0 || _grassProgram == null) { return; }
             GrassLook look = Grass;
             float radius = Math.Clamp(look.Distance, 5f, 200f);
             float height = Math.Clamp(look.Height, 0.01f, 1f);
             float spacing = GRASS_SPACING[Math.Clamp(look.Density, 0, GRASS_SPACING.Length - 1)];
+            if (probe)
+            {
+                radius = MathF.Min(radius, PROBE_GRASS_RADIUS);
+                spacing = GRASS_SPACING[0] * GRASS_FAR_SPACING;
+            }
 
             _grassProgram.Use();
             Gl.UniformMatrix4(_gViewProj, p.ViewProjection);
@@ -221,7 +236,13 @@ namespace BimGo.Rendering
 
             // Near: dense clumps of thin blades, fading out over the band past the near radius
             float near = MathF.Min(GRASS_NEAR, radius);
-            if (radius <= near + GRASS_BAND)
+            if (probe)
+            {
+                int counted = GrassInstances;
+                DrawGrassGrid(spacing, GRASS_WIDTH * GRASS_FAR_WIDTH, GRASS_FAR_BLADES, 0f, 0f, radius * 0.7f, radius);
+                GrassInstances = counted; // the HUD's count is the main view's
+            }
+            else if (radius <= near + GRASS_BAND)
             {
                 DrawGrassGrid(spacing, GRASS_WIDTH, GRASS_NEAR_BLADES, 0f, 0f, radius * 0.7f, radius);
             }

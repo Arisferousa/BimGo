@@ -111,6 +111,9 @@ namespace BimGo.Game
             hash.Add(_lightIntensity);
             hash.Add(_realistic);
             hash.Add(_tintMode);
+            hash.Add(_renderer.ProbeGrass); // polish round P-C: blades came (or went), or the field was rebuilt
+            hash.Add(_grassField.GrassCells);
+            hash.Add(_grassHeightMm);
             long key = ShadowSceneKey() ^ ((long)hash.ToHashCode() << 17);
             return key == 0 ? 1 : key;
         }

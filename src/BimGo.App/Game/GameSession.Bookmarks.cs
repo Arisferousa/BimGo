@@ -49,6 +49,35 @@ namespace BimGo.Game
                 Bookmarks.Load();
             }
             Bookmarks.Changed += UpdateTitle;
+            Bookmarks.Stamp = StampBookmark; // P-C: crouching and the colour profile
+            Bookmarks.ProfileName = id => _appearance.Find(id)?.Name;
+        }
+
+        /// <summary>
+        /// Polish round P-C: what a new or re-pointed bookmark keeps beyond the store's fields: crouching (walking) and the
+        /// colour profile showing (its id, or "" when none shows).
+        /// </summary>
+        private void StampBookmark(BookmarkRecord record)
+        {
+            record.Crouched = _player != null && !_player.Flying && _player.Controller.Crouching;
+            record.ColourProfile = ProfileShowing ? _appearance.Active : string.Empty;
+        }
+
+        /// <summary>
+        /// Polish round P-C: a bookmark's colour profile (null: leave it; "": off; an id: that profile on). Recorded (saved
+        /// with the model) unless <paramref name="quiet"/> (the tour, which puts it back at the end).
+        /// </summary>
+        private void ApplyBookmarkProfile(string id, bool quiet)
+        {
+            if (id == null) { return; }
+            bool on = id.Length > 0 && _appearance.Find(id) != null;
+            string active = on ? id : _appearance.Active;
+            if (_appearance.On == on && _appearance.Active == active) { return; }
+            _appearance.Active = active;
+            _appearance.On = on;
+            _profileFailure = null;
+            if (quiet) { _profileDirty = true; }
+            else { ProfilesChanged(); }
         }
 
         #endregion
@@ -118,7 +147,9 @@ namespace BimGo.Game
             if (record.Visibility != null) { ApplyVisibility(record.Visibility, record: true); }
             if (record.EyeHeight is float eye) { ApplyEyeHeight(eye); }
             if (record.Flying != _player.Flying) { _player.ToggleFly(); }
+            ApplyBookmarkProfile(record.ColourProfile, quiet: false); // P-C
             _player.TeleportTo(record.Local, record.Yaw, Math.Clamp(record.Pitch, -1.5f, 1.5f));
+            _player.Controller.HoldCrouch = record.Crouched && !record.Flying; // P-C: arrive crouched (crouch or jump stands)
             Sound.Play(SoundId.Teleport);
             Flash(UiTheme.BOOKMARK, 0.25f);
             Toast(record.Name);

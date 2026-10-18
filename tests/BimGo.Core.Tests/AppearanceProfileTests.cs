@@ -486,5 +486,84 @@ namespace BimGo.Tests
         }
 
         #endregion
+
+        [TestMethod]
+        public void Ranges_EqualQuantileAndCustomEdges()
+        {
+            // Polish round P-C: 1 2 3 4 5 6 7 8 9 100 (one outlier)
+            double[] numbers = { 1, 2, 3, 4, 5, 6, 7, 8, 9, 100 };
+            List<double> equal = AppearanceProfiler.RangeEdges(numbers, BinMethod.EQUAL, 4, null);
+            CollectionAssert.AreEqual(new[] { 1, 25.75, 50.5, 75.25, 100 }, equal);
+
+            // Equal count: the outlier no longer squeezes nine values into one range
+            List<double> quantile = AppearanceProfiler.RangeEdges(numbers, BinMethod.QUANTILE, 4, null);
+            Assert.AreEqual(1, quantile[0]);
+            Assert.AreEqual(100, quantile[^1]);
+            Assert.IsTrue(quantile.Count >= 4, string.Join(" ", quantile));
+            for (int i = 1; i < quantile.Count; i++) { Assert.IsTrue(quantile[i] > quantile[i - 1], "ascending, no repeats"); }
+            Assert.IsTrue(quantile[1] < 10 && quantile[^2] < 10, "the inner edges sit among the nine small values");
+
+            // Many equal values: repeated edges merge (fewer ranges)
+            List<double> ties = AppearanceProfiler.RangeEdges(new double[] { 5, 5, 5, 5, 5, 5, 9 }, BinMethod.QUANTILE, 4, null);
+            CollectionAssert.AreEqual(new double[] { 5, 9 }, ties);
+
+            // Custom: breaks inside the numbers' span only
+            List<double> custom = AppearanceProfiler.RangeEdges(numbers, BinMethod.CUSTOM, 4, new[] { -5.0, 5.0, 50.0, 500.0 });
+            CollectionAssert.AreEqual(new double[] { 1, 5, 50, 100 }, custom);
+            CollectionAssert.AreEqual(new double[] { 1, 100 }, AppearanceProfiler.RangeEdges(numbers, BinMethod.CUSTOM, 4, null), "no breaks: one range");
+
+            // All the same: one range
+            CollectionAssert.AreEqual(new double[] { 7, 7 }, AppearanceProfiler.RangeEdges(new double[] { 7, 7 }, BinMethod.EQUAL, 5, null));
+        }
+
+        [TestMethod]
+        public void Ranges_BreaksParseCleanAndRoundTrip()
+        {
+            CollectionAssert.AreEqual(new double[] { 300, 450, 600 }, AppearanceProfiler.ParseBreaks("600; 300 mm; 450"));
+            CollectionAssert.AreEqual(new double[] { 1200, 1500 }, AppearanceProfiler.ParseBreaks("1,200, 1,500"));
+            CollectionAssert.AreEqual(new double[] { 2.5, 7 }, AppearanceProfiler.ParseBreaks("7 2.5 7"));
+            Assert.IsNull(AppearanceProfiler.ParseBreaks("none here"));
+            Assert.AreEqual("300; 450.5", AppearanceProfiler.FormatBreaks(new[] { 300, 450.5 }));
+
+            var profile = new AppearanceProfile { Ranges = true, Binning = "QUANTILE", Breaks = new List<double> { 3, double.NaN, 1, 3 } }.Clean();
+            Assert.AreEqual(BinMethod.QUANTILE, profile.Binning);
+            CollectionAssert.AreEqual(new double[] { 1, 3 }, profile.Breaks);
+            Assert.AreEqual(BinMethod.EQUAL, new AppearanceProfile { Binning = "odd" }.Clean().Binning);
+            AppearanceProfile copy = profile.Copy();
+            copy.Breaks.Add(9);
+            Assert.AreEqual(2, profile.Breaks.Count, "the copy's breaks are its own");
+        }
+
+        [TestMethod]
+        public void Import_LinksAndLevelsMatchedByName()
+        {
+            // Polish round P-C: a set naming another model's link (by UniqueId) and a level spelt differently
+            var file = new ProfileFile
+            {
+                Sets =
+                {
+                    new SearchSet
+                    {
+                        Name = "Linked services",
+                        Rules =
+                        {
+                            new SetRule { Field = RuleField.LINK, Op = RuleOp.IS_ONE_OF, Values = { "uid-there", "uid-gone" } },
+                            new SetRule { Field = RuleField.LEVEL, Op = RuleOp.IS_ONE_OF, Values = { "level 2", "Mezzanine" } }
+                        }
+                    }
+                },
+                Links =
+                {
+                    new ClashSetupLink { UniqueId = "uid-there", Name = "Services.rvt" },
+                    new ClashSetupLink { UniqueId = "uid-gone", Name = "Old.rvt" }
+                }
+            };
+            var links = new[] { new LinkInfo { Index = 1, Name = "Services.rvt", Title = "Services.rvt", InstanceUniqueId = "uid-here" } };
+            ProfileReconcile result = ProfileFiles.Reconcile(file, links, new[] { "Level 1", "Level 2" });
+            Assert.AreEqual(2, result.Matched, "the link by name, the level by its spelling here");
+            CollectionAssert.AreEqual(new[] { "uid-here", "uid-gone" }, file.Sets[0].Rules[0].Values);
+            CollectionAssert.AreEqual(new[] { "Level 2", "Mezzanine" }, file.Sets[0].Rules[1].Values);
+            CollectionAssert.AreEquivalent(new[] { "Link: Old.rvt", "Level: Mezzanine" }, result.Missing);
+        }
     }
 }

@@ -309,6 +309,7 @@ namespace BimGo.Game
                 if (Scene.Settings.LoadComments) { Comments.Load(); }
             }
             Comments.Changed += UpdateTitle;
+            Comments.CurrentEye = () => CurrentStandingEye; // P-C: views keep the eye-height preset
             InitialiseBookmarks();
             InitialiseSun();
             InitialiseVisibility();
@@ -335,6 +336,7 @@ namespace BimGo.Game
             else if (Bookmarks.LastError != null) { Toast(Bookmarks.LastError); }
             else if (!string.IsNullOrEmpty(Scene.PhaseNote)) { Toast(Scene.PhaseNote, 6f); }
             else if (replayFailures > 0) { Toast($"{replayFailures} saved edit{(replayFailures == 1 ? " refers" : "s refer")} to elements not in this file and {(replayFailures == 1 ? "was" : "were")} skipped.", 5f); }
+            else if (ShowControlsDefaultsNotice()) { /* polish round P-B: once after an update that changed default keys */ }
             else
             {
                 string edits = _journal.Count > 0 ? $" · {_journal.Count} edit{(_journal.Count == 1 ? string.Empty : "s")}" : string.Empty;
@@ -342,6 +344,24 @@ namespace BimGo.Game
                 string start = _startedAtSavedHome ? $" Starting at your saved home ({Key(InputAction.SetHome)} sets it)." : string.Empty;
                 Toast($"{Scene.Elements.Length:N0} elements · {Scene.TriangleCount:N0} triangles{links}{edits}.{start} Click to look around.", _startedAtSavedHome ? 4f : 2.6f);
             }
+        }
+
+        /// <summary>
+        /// Polish round P-B: after an update that changed default keys, a one-time toast (how many, any clash with the
+        /// user's own keys, where to look); the clashes are logged. settings.json then records the version as seen.
+        /// </summary>
+        /// <returns>True when the toast showed.</returns>
+        private bool ShowControlsDefaultsNotice()
+        {
+            string notice = Hotkeys.PendingDefaultsNotice();
+            if (notice == null) { return false; }
+            foreach ((BindingClash first, BindingClash second) in Hotkeys.NewDefaultClashes(Hotkeys.FreshChanges))
+            {
+                Utilities.Log_Utils.Write($"Key bindings: the new default {Hotkeys.Map.Display(first.Chord)} for “{first.Def.Label}” / “{second.Def.Label}” clashes with your own binding (CONTROLS shows it in red).");
+            }
+            Toast(notice, 7f);
+            Hotkeys.MarkDefaultsSeen();
+            return true;
         }
 
         /// <summary>
@@ -587,6 +607,7 @@ namespace BimGo.Game
 
             // The gamepad's cursor (menus, editors) follows what is open (build B; used from the next frame's poll)
             _window.PadCursor = CurrentPadCursorMode();
+            UpdatePadFocus(input); // polish round P-A2: the D-pad's focus ring and LB / RB tabs (before the keys below)
             if (_paused || _tourActive) { CloseGunWheel(pick: false); }
 
             // A bookmark tour has the keys (it carries on when the window loses focus)

@@ -59,8 +59,9 @@ namespace BimGo.Clashes
 
         /// <summary>
         /// C-B4: true when an element meets a group: any (or all, with <see cref="RuleGroup.MatchAll"/>) of its rules
-        /// with a value, a "not" rule being true for elements whose field does not match. No rule with a value: false
-        /// (callers leave such groups out).
+        /// with a value, a "not" rule being true for elements whose field does not match. Polish round P-C: each group
+        /// inside with a condition is one more condition (to any depth). No condition at all: false (callers leave such
+        /// groups out).
         /// </summary>
         public static bool GroupMatches(RuleGroup group, SceneData scene, ElementRecord element, int index = -1)
         {
@@ -72,6 +73,15 @@ namespace BimGo.Clashes
                 if (RuleOp.IsNegative(rule.Operator)) { hit = !hit; }
                 any = true;
                 result = group.MatchAll ? result && hit : result || hit;
+                if (group.MatchAll ? !result : result) { return result; } // decided: no need to read further
+            }
+            foreach (RuleGroup inner in group.Groups ?? Enumerable.Empty<RuleGroup>())
+            {
+                if (inner == null || !inner.HasConditions) { continue; }
+                bool hit = GroupMatches(inner, scene, element, index);
+                any = true;
+                result = group.MatchAll ? result && hit : result || hit;
+                if (group.MatchAll ? !result : result) { return result; }
             }
             return any && result;
         }

@@ -134,5 +134,29 @@ namespace BimGo.Game
 
         /// <summary>The cursor-mode docks (sun, study, section, grids, clash dock): width and header height (P-A2).</summary>
         public const float DOCK_WIDTH = 340f, DOCK_HEADER_HEIGHT = 34f;
+
+        /// <summary>The wider dock (the sun and daylight study).</summary>
+        public const float DOCK_WIDTH_WIDE = 380f;
+
+        /// <summary>A dock's inner padding: left / right, and top / bottom.</summary>
+        public const float DOCK_PAD = 16f, DOCK_PAD_Y = 10f;
+
+        /// <summary>A dock's footer buttons, and its notice strip (two small lines) above them.</summary>
+        public const float DOCK_FOOTER_HEIGHT = 30f, DOCK_NOTICE_HEIGHT = 32f;
+
+        /// <summary>
+        /// The right-hand column's edge margin and the gap under the minimap. A window whose column under the minimap is
+        /// shorter than <see cref="DOCK_MIN_HEIGHT"/> puts the dock at the top instead (the minimap hides while it's open).
+        /// </summary>
+        public const float COLUMN_MARGIN = 20f, COLUMN_GAP = 12f, DOCK_MIN_HEIGHT = 320f;
+
+        /// <summary>The minimap's size (the right column's top), and the sun icon's (the column's foot).</summary>
+        public const float MINIMAP_WIDTH = 220f, MINIMAP_HEIGHT = 208f, SUN_ICON_SIZE = 52f;
+
+        /// <summary>The left column's panels: status and coordinates (their heights), and its width.</summary>
+        public const float STATUS_HEIGHT = 146f, COORDS_HEIGHT = 100f, INFO_WIDTH = 250f;
+
+        /// <summary>A legend collapsed to its title row (the F1 sheet is open, or the column ran out of room).</summary>
+        public const float LEGEND_COLLAPSED_HEIGHT = 30f;
     }
 }

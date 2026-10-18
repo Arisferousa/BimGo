@@ -106,6 +106,7 @@ namespace BimGo.Game
             if (Comments.TryGetView(record, out Vector3 viewFeet))
             {
                 if (record.View.Section != null) { ApplySection(record.View.Section, announce: false); }
+                if (record.View.EyeHeight is float eye) { ApplyEyeHeight(eye); } // P-C: seen as it was made (seated, child…)
                 if (record.View.Flying != _player.Flying) { _player.ToggleFly(); }
                 _player.TeleportTo(viewFeet, record.View.Yaw, Math.Clamp(record.View.Pitch, -1.5f, 1.5f));
                 return;
@@ -136,7 +137,7 @@ namespace BimGo.Game
                 feet = FloorAt(new Vector2(marker.X, marker.Y), floorZ);
             }
 
-            Vector3 eye = feet + new Vector3(0f, 0f, CharacterController.STAND_EYE);
+            Vector3 eye = feet + new Vector3(0f, 0f, CurrentStandingEye); // P-C: the eye-height preset
             Vector3 look = marker - eye;
             yaw = MathF.Atan2(look.Y, look.X);
             pitch = Math.Clamp(MathF.Atan2(look.Z, MathF.Max(0.01f, new Vector2(look.X, look.Y).Length())), -1.2f, 1.2f);

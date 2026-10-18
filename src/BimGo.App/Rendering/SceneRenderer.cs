@@ -1164,6 +1164,7 @@ namespace BimGo.Rendering
                 DrawBatches(planes, groupVisible, transparent: false, countStats: false);
                 if (hasDynamics) { DrawDynamicInstances(dynamics, planes, transparent: false, _sceneUniforms.Model); }
                 DrawGround(matrix, eye, groundZ);
+                if (ProbeGrass && p.Realistic) { DrawGrass(p, probe: true); } // polish round P-C: blades in the reflections
 
                 Gl.Enable(Gl.BLEND);
                 Gl.BlendFunc(Gl.SRC_ALPHA, Gl.ONE_MINUS_SRC_ALPHA);

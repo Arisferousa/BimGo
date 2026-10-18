@@ -168,6 +168,7 @@ namespace BimGo.Game
                 up = input.Down(upAction);
                 down = input.Down(downAction);
             }
+            if (Controller.HoldCrouch && (up || down || _jumpQueued || Flying)) { Controller.HoldCrouch = false; } // P-C: stand up again
 
             float cy = MathF.Cos(Yaw), sy = MathF.Sin(Yaw);
             var flatForward = new Vector3(cy, sy, 0f);

@@ -222,7 +222,7 @@ namespace BimGo.Game
             if (input.Pressed(InputAction.Fullscreen)) { _window.ToggleFullscreen(); }
             if (input.Pressed(InputAction.Screenshot)) { RequestScreenshot(); }
             // C-C1: RMB pressed over the dock opens a row menu, so it doesn't look until it is released
-            if (input.RightPressed && _clashDockW > 0f && Hover(input, _clashDockX, _clashDockY, _clashDockW, _clashDockH)) { _clashMenuLook = true; }
+            if (input.RightPressed && _clashDockW > 0f && Hover(input, _clashDockX, _clashDockY, _clashDockW, _clashDockH, focus: false)) { _clashMenuLook = true; }
             if (!input.RightDown) { _clashMenuLook = false; }
             if (input.Down(InputAction.DragLook) && !_clashFlying && !_clashMenuLook) { _player.Look(input.MouseDeltaX, input.MouseDeltaY, _sensitivity, _invertY); }
             UpdateRoom();
@@ -253,6 +253,8 @@ namespace BimGo.Game
             else if (input.Pressed(InputAction.ClashPictures)) { ToggleClashThumbnails(); } // sky round: P / the pad's Back
             else if (input.Pressed(InputAction.ClashUngroup)) { UngroupFromKeys(); } // C-C1: Ctrl+Shift+G
             else if (input.Pressed(InputAction.ClashGroup)) { GroupClashes(ClashTargets(), null); } // C-C1: Ctrl+G
+            else if (input.Pressed(InputAction.ClashPickPoints)) { StartPickPointsFromKey(); } // P-B: K (TOOLS ▾ → PICK POINTS)
+            else if (input.Pressed(InputAction.ClashStatusCycle)) { CycleCurrentClashStatus(); } // P-B: the gamepad's LB+A
             else
             {
                 for (int k = 0; k < ClashStatus.All.Length; k++)
@@ -487,6 +489,22 @@ namespace BimGo.Game
         #endregion
 
         #region Status and Revit
+
+        /// <summary>
+        /// Polish round P-B: the next status for the picked group or the current clash (new → active → reviewed →
+        /// approved → resolved → new), through <see cref="SetCurrentClashStatus"/>.
+        /// </summary>
+        private void CycleCurrentClashStatus()
+        {
+            string status = _clashGroupCurrent?.Status ?? _clashCurrent?.Status;
+            if (status == null)
+            {
+                Sound.Play(SoundId.Error);
+                return;
+            }
+            int next = (ClashStatus.IndexOf(status) + 1) % ClashStatus.All.Length;
+            SetCurrentClashStatus(ClashStatus.All[next]);
+        }
 
         /// <summary>1–5: the current clash's status (stamped with who and when).</summary>
         private void SetCurrentClashStatus(string status)

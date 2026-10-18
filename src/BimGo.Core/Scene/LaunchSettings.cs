@@ -447,6 +447,13 @@ namespace BimGo.Scene
         /// <summary>Gamepad bindings changed from the defaults (build B): action id → chord ("PadLB+PadUp"; "" = none).</summary>
         public Dictionary<string, string> PadBindings { get; set; } = new(StringComparer.Ordinal);
 
+        /// <summary>
+        /// Polish round P-B: the controls defaults version (<see cref="InputCatalog.DEFAULTS_VERSION"/>) the user has seen.
+        /// Older than the app's: a one-time toast and NEW / CHANGED tags in CONTROLS. A settings file without it (written
+        /// before P-B) reads as 0; a new install starts at the current version.
+        /// </summary>
+        public int ControlsDefaultsVersion { get; set; } = InputCatalog.DEFAULTS_VERSION;
+
         /// <summary>Gamepad look speed (build B; 1 = about 170° a second at full tilt).</summary>
         public float PadLookSensitivity { get; set; } = 1f;
 
@@ -629,6 +636,8 @@ namespace BimGo.Scene
                     string json = File.ReadAllText(SettingsPath);
                     if (JsonSerializer.Deserialize<LaunchSettings>(json, JSON_OPTIONS) is LaunchSettings loaded)
                     {
+                        // P-B: a file from before the controls defaults version saw version 0
+                        if (!json.Contains("\"" + nameof(ControlsDefaultsVersion) + "\"", StringComparison.Ordinal)) { loaded.ControlsDefaultsVersion = 0; }
                         loaded.Sanitise();
                         return loaded;
                     }
@@ -781,6 +790,7 @@ namespace BimGo.Scene
                 }
             }
             PadBindings = pad;
+            ControlsDefaultsVersion = Math.Max(0, ControlsDefaultsVersion);
             var generic = new Dictionary<string, string>(StringComparer.Ordinal);
             if (GenericPadMap != null)
             {

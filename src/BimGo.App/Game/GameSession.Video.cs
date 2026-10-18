@@ -341,8 +341,7 @@ namespace BimGo.Game
                 FontAtlas f = _ui.Atlas;
                 float mapX = w - S(20) - S(220), mapY = S(20);
                 if (_showMap) { DrawMinimapPlan(mapX + S(8), mapY + S(30), S(204), S(170), w, h); }
-                BuildStatusPanel(f);
-                BuildCoordinatePanel(f, S(20), S(20) + S(146) + S(10));
+                BuildInfoColumn(f, h, sunLegend: false, profileLegend: false, help: false); // P-A2: the left column
                 if (_showMap) { DrawMinimapOverlay(mapX, mapY); }
                 BuildTourBar(f, w, h);
                 _ui.Flush(w, h);

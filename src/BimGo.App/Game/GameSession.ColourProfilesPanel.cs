@@ -353,20 +353,38 @@ namespace BimGo.Game
                 if (mode != (profile.Ranges ? 1 : 0)) { SetProfileRanges(profile, mode == 1); }
                 if (profile.Ranges)
                 {
-                    float bx = x + labelW + S(236);
-                    _ui.Text(f.Small, bx, cy + S(9), "BINS", UiTheme.TEXT_MUTED, S(1.2f));
-                    bx += S(44);
-                    if (SmallButton(f, input, bx, cy, S(30), S(30), "−") && profile.Bins > AppearanceProfiler.MIN_BINS)
+                    // Polish round P-C: how the ranges are cut (equal width / equal count / custom breaks), then the bins
+                    // (− n +) or the break values (BREAKS…)
+                    cy += S(40);
+                    _ui.Text(f.Small, x, cy + S(9), "CUT BY", UiTheme.TEXT_MUTED, S(1.2f));
+                    string binning = BinMethod.Normalise(profile.Binning);
+                    float methodW = MathF.Min(S(330), w - labelW - S(150));
+                    int method = Segmented(f, input, x + labelW, cy, methodW, BinMethod.Labels, Array.IndexOf(BinMethod.All, binning));
+                    if (method >= 0 && BinMethod.All[method] != binning)
                     {
-                        profile.Bins--;
-                        RebuildProfileRanges(profile);
+                        profile.Binning = BinMethod.All[method];
+                        if (profile.Binning == BinMethod.CUSTOM && profile.Breaks == null) { BeginProfileBreaks(profile); }
+                        else { RebuildProfileRanges(profile); }
                     }
-                    Text.Clear().Append(profile.Bins);
-                    _ui.TextCentred(f.Bold, bx + S(50), cy + S(6), Text.Span, UiTheme.TEXT);
-                    if (SmallButton(f, input, bx + S(70), cy, S(30), S(30), "+") && profile.Bins < AppearanceProfiler.MAX_BINS)
+                    float bx = x + labelW + methodW + S(14);
+                    if (profile.Binning == BinMethod.CUSTOM)
                     {
-                        profile.Bins++;
-                        RebuildProfileRanges(profile);
+                        if (SmallButton(f, input, bx, cy, x + w - bx, S(30), "BREAKS…")) { BeginProfileBreaks(profile); }
+                    }
+                    else
+                    {
+                        if (SmallButton(f, input, bx, cy, S(30), S(30), "−") && profile.Bins > AppearanceProfiler.MIN_BINS)
+                        {
+                            profile.Bins--;
+                            RebuildProfileRanges(profile);
+                        }
+                        Text.Clear().Append(profile.Bins);
+                        _ui.TextCentred(f.Bold, bx + S(50), cy + S(6), Text.Span, UiTheme.TEXT);
+                        if (SmallButton(f, input, bx + S(70), cy, S(30), S(30), "+") && profile.Bins < AppearanceProfiler.MAX_BINS)
+                        {
+                            profile.Bins++;
+                            RebuildProfileRanges(profile);
+                        }
                     }
                 }
             }
@@ -573,6 +591,29 @@ namespace BimGo.Game
             ProfilesChanged();
         }
 
+        /// <summary>
+        /// Polish round P-C: BREAKS…: the custom break values as typed text ("300; 450; 600"); Enter rebuilds the ranges.
+        /// </summary>
+        private void BeginProfileBreaks(AppearanceProfile profile)
+        {
+            AppearanceProfile target = profile;
+            BeginTextEdit("BREAK VALUES (e.g. 300; 450; 600)", AppearanceProfiler.FormatBreaks(profile.Breaks), 200, text =>
+            {
+                List<double> breaks = AppearanceProfiler.ParseBreaks(text);
+                if (breaks == null)
+                {
+                    Sound.Play(SoundId.Error);
+                    Toast("No numbers there: type the values where one range ends and the next starts", 3f);
+                    if (target.Breaks == null) { target.Binning = BinMethod.EQUAL; }
+                    RebuildProfileRanges(target);
+                    return;
+                }
+                target.Breaks = breaks;
+                target.Binning = BinMethod.CUSTOM;
+                RebuildProfileRanges(target);
+            });
+        }
+
         /// <summary>Colour round B: the ranges again (min / max from the model now, the bins, the ramp's colours).</summary>
         private void RebuildProfileRanges(AppearanceProfile profile)
         {
@@ -596,7 +637,7 @@ namespace BimGo.Game
             _window.Input.ReleaseAll();
             if (path == null) { return; }
 
-            ProfileFile file = ProfileFiles.Build(profiles, id => _clashDocument?.FindSet(id), Scene.ModelTitle, $"BimGo {Program.Version}");
+            ProfileFile file = ProfileFiles.Build(profiles, id => _clashDocument?.FindSet(id), Scene.ModelTitle, $"BimGo {Program.Version}", Scene.Links); // P-C: link names
             if (ProfileFiles.Export(path, file, out string error))
             {
                 Sound.Play(SoundId.Commit);
@@ -636,6 +677,10 @@ namespace BimGo.Game
                 return;
             }
 
+            // P-C: links and levels matched to this model by name; the misses are reported (and logged)
+            ProfileReconcile reconciled = ProfileFiles.Reconcile(file, Scene.Links, Scene.Levels.Select(l => l.Name));
+            foreach (string miss in reconciled.Missing) { Utilities.Log_Utils.Write($"Colour profile import ({System.IO.Path.GetFileName(path)}): not in this model: {miss}."); }
+
             bool needsSets = file.Sets.Count > 0 || file.Profiles.Any(p => p.IsBySet);
             if (needsSets) { EnsureClashes(); }
             List<AppearanceProfile> added = ProfileFiles.Merge(file, _appearance, needsSets ? _clashDocument.Sets : null, out int matched, out int setsAdded);
@@ -647,7 +692,10 @@ namespace BimGo.Game
             Sound.Play(SoundId.Commit);
             Toast($"{added.Count} profile{(added.Count == 1 ? string.Empty : "s")} imported" +
                 (matched > 0 ? $" · {matched} set{(matched == 1 ? string.Empty : "s")} matched by name" : string.Empty) +
-                (setsAdded > 0 ? $" · {setsAdded} set{(setsAdded == 1 ? string.Empty : "s")} added" : string.Empty), 4f);
+                (setsAdded > 0 ? $" · {setsAdded} set{(setsAdded == 1 ? string.Empty : "s")} added" : string.Empty) +
+                (reconciled.Matched > 0 ? $" · {reconciled.Matched} link / level value{(reconciled.Matched == 1 ? string.Empty : "s")} matched by name" : string.Empty) +
+                (reconciled.Missing.Count > 0 ? $" · not in this model: {string.Join(", ", reconciled.Missing.Take(3))}{(reconciled.Missing.Count > 3 ? $" +{reconciled.Missing.Count - 3} (see the log)" : string.Empty)}" : string.Empty),
+                reconciled.Missing.Count > 0 ? 7f : 4f);
         }
 
         /// <summary>A colour swatch button (faded when its row is off).</summary>

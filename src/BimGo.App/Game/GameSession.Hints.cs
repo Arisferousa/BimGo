@@ -47,7 +47,8 @@ namespace BimGo.Game
 
         #region Sun panel, photo mode, study, section box
 
-        private static readonly KeyHint HINT_SUN_CLOSE = new(() => $"ESC · {KeyUpper(InputAction.Shadows)} CLOSE");
+        // Polish round P-A2: the docks' footer hints (CLOSE is a button beside them)
+        private static readonly KeyHint HINT_SUN_FOOT = new(() => $"{Key(InputAction.Shadows)} / Esc closes");
         private static readonly KeyHint HINT_SUN_KEYS = new(() =>
             $"{Hotkeys.Map.DescribeJoined(" ", false, InputAction.SunEarlier, InputAction.SunLater).ToUpperInvariant()} TIME · {KeyUpper(InputAction.SunPlay)} PLAY");
 
@@ -56,11 +57,11 @@ namespace BimGo.Game
         private static readonly KeyHint HINT_PHOTO_TAKE = new(() => $"TAKE PHOTO ({KeyUpper(InputAction.PhotoTake)})");
         private static readonly KeyHint HINT_PHOTO_CLOSE = new(() => $"CLOSE ({KeyUpper(InputAction.PhotoMode)} / ESC)");
 
-        private static readonly KeyHint HINT_STUDY_CLOSE = new(() => $"CLOSE ({KeyUpper(InputAction.SunStudy)} / ESC) · results stay");
+        private static readonly KeyHint HINT_STUDY_FOOT = new(() => $"{Key(InputAction.SunStudy)} / Esc · results stay");
 
         private static readonly KeyHint HINT_SECTION_DRAG = new(() => $"Drag a handle along its arrow ({Key(InputAction.SectionFreeDrag)}: no snap) · RMB-drag to look");
         private static readonly KeyHint HINT_SECTION_CLEAR = new(() => $"CLEAR ALL CUTS ({Key(InputAction.SectionClear)})");
-        private static readonly KeyHint HINT_SECTION_CLOSE = new(() => $"CLOSE ({Key(InputAction.SectionBox)} / ESC) · cut stays");
+        private static readonly KeyHint HINT_SECTION_FOOT = new(() => $"{Key(InputAction.SectionBox)} / Esc · the cut stays");
 
         #endregion
 

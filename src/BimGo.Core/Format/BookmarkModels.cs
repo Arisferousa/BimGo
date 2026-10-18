@@ -69,6 +69,21 @@ namespace BimGo.Format
         /// </summary>
         public float? EyeHeight { get; set; }
 
+        /// <summary>
+        /// Polish round P-C: true when the player was crouching (walking, not flying) when it was saved: GO arrives
+        /// crouched (crouch or jump stands up), the tour films from the crouched eye. Not written when false.
+        /// </summary>
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+        public bool Crouched { get; set; }
+
+        /// <summary>
+        /// Polish round P-C: the colour profile showing when it was saved (the profile's id; "" = none showing). GO and the
+        /// tour show it (or switch profiles off); null (older bookmarks) leaves the profile alone. The profiles themselves
+        /// stay the model's (visibility.json).
+        /// </summary>
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string ColourProfile { get; set; }
+
         /// <summary>Tour: seconds to hold at this stop, or null for the tour's hold time.</summary>
         public float? TourHold { get; set; }
 
