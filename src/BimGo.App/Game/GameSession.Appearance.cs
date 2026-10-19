@@ -17,7 +17,7 @@ namespace BimGo.Game
         #region Fields
 
         /// <summary>Colour-by modes: off, reflection tiers, reflection probe cells (not saved).</summary>
-        private static readonly string[] COLOUR_BY_OPTIONS = { "Off", "Reflection", "Probes" };
+        private static readonly string[] COLOUR_BY_OPTIONS = { "Off", "Reflection", "Probes", "SSR" };
 
         /// <summary>Grass round: the water colour presets' labels (<see cref="MaterialOverrides.WATER_PRESETS"/> order).</summary>
         private static readonly string[] WATER_COLOUR_OPTIONS = MaterialOverrides.WATER_PRESETS.Select(p => p.Label).ToArray();
@@ -167,7 +167,7 @@ namespace BimGo.Game
                 _reflectDebug = mode;
                 if (mode != 0 && (!_realistic || _renderer == null || !_renderer.HasMaterials))
                 {
-                    Toast("Colour by reflection / probe needs the Realistic colour mode and a snapshot with materials.", 4f);
+                    Toast("Colour by reflection / probe / SSR needs the Realistic colour mode and a snapshot with materials.", 4f);
                 }
             }
             y += S(60);
@@ -175,6 +175,7 @@ namespace BimGo.Game
             {
                 1 => "Red 75 %+, orange 50 %, yellow 25 %, grey none, cyan glass, blue water.",
                 2 => "One colour per reflection probe, blended at room edges; grey = sky.",
+                3 => "Green: screen-space reflection found (brighter = surer); magenta: probes / sky instead; grey: not reflective.",
                 _ => "Colours surfaces by reflection tier or probe (Realistic mode). Not saved."
             };
             y += _ui.TextWrapped(f.Small, ix, y, iw, help, UiTheme.TEXT_MUTED, maxLines: 3) + S(6);

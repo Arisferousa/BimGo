@@ -288,6 +288,13 @@ namespace BimGo.Game
                 return;
             }
 
+            // Round X-A: batch stills step from view to view and time to time (Esc stops)
+            if (_stillsBatch != null)
+            {
+                UpdateStillsBatch(input);
+                return;
+            }
+
             if (input.Pressed(InputAction.Back))
             {
                 StopTour(finished: false);
@@ -483,6 +490,11 @@ namespace BimGo.Game
             {
                 // K-C: PHOTOS OF ALL KEYS: only its progress (no fades, no hint)
                 BuildKeyPhotosOverlay(f, width, height);
+                return;
+            }
+            if (_stillsBatch != null)
+            {
+                BuildStillsBatchOverlay(f, width, height); // X-A: batch stills, the same way
                 return;
             }
             if (!_uiHidden)

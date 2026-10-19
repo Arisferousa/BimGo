@@ -193,6 +193,12 @@ namespace BimGo.Scene
         public int ProbeResolution { get; set; } = 128;
 
         /// <summary>
+        /// Round X-C1: screen-space reflections in the Realistic mode (glass, water, shiny floors and metals reflect
+        /// what is on screen; the probes or sky elsewhere): 0 off, 1 low, 2 medium (default), 3 high.
+        /// </summary>
+        public int ScreenReflections { get; set; } = 2;
+
+        /// <summary>
         /// Revit's tint (appearance and bitmap "Tint") in the Realistic colour mode: <see cref="TintMode.Multiply"/>
         /// (Revit's blend, the default) or <see cref="TintMode.Off"/>.
         /// </summary>
@@ -249,6 +255,12 @@ namespace BimGo.Scene
 
         /// <summary>Artificial light brightness multiplier (0–2, 1 = default).</summary>
         public float ArtificialLightIntensity { get; set; } = 1f;
+
+        /// <summary>
+        /// Round X-C1: light every fixture in view in the live view too (the nearest 32 keep their shadows, the rest are
+        /// unshadowed; slower with many fixtures). Photos, videos and batch stills always light every fixture. Off by default.
+        /// </summary>
+        public bool AllLightsLive { get; set; }
 
         /// <summary>Bloom (the halo around glowing surfaces) multiplier (0–2, 1 = default; 0 = no bloom).</summary>
         public float BloomIntensity { get; set; } = 1f;
@@ -368,6 +380,33 @@ namespace BimGo.Scene
 
         /// <summary>Walkthrough video frames per second: 30 or 60.</summary>
         public int VideoFps { get; set; } = 30;
+
+        /// <summary>Round X-A: the sun time-lapse runs over a custom range (false: sunrise → sunset).</summary>
+        public bool TimeLapseCustom { get; set; }
+
+        /// <summary>Round X-A: the custom range's start and end (clock minutes; an end at or before the start is the next day).</summary>
+        public int TimeLapseFrom { get; set; } = 6 * 60;
+
+        /// <summary>See <see cref="TimeLapseFrom"/>.</summary>
+        public int TimeLapseTo { get; set; } = 20 * 60;
+
+        /// <summary>Round X-A: minutes before sunrise and after sunset (0–120).</summary>
+        public int TimeLapseMargin { get; set; } = 30;
+
+        /// <summary>Round X-A: the time-lapse clip's length (s, 5–120).</summary>
+        public int TimeLapseSeconds { get; set; } = 20;
+
+        /// <summary>Round X-A: the date and time burned into the time-lapse.</summary>
+        public bool TimeLapseStamp { get; set; }
+
+        /// <summary>Round X-A: batch stills' time list ("9:00 12:00 15:00", dates as 21/6 before their times).</summary>
+        public string BatchTimes { get; set; } = BatchStills.DEFAULT_TIMES;
+
+        /// <summary>Round X-A: batch stills of the tour's stops only (false: every bookmark).</summary>
+        public bool BatchTourStops { get; set; }
+
+        /// <summary>Round X-A: the date and time burned into batch stills.</summary>
+        public bool BatchStamp { get; set; }
 
         /// <summary>Units for lengths and areas on screen (review tools round): metric or imperial (per machine).</summary>
         public UnitSystem DisplayUnits { get; set; } = UnitSystem.Metric;
@@ -744,6 +783,7 @@ namespace BimGo.Scene
             ReflectionThreshold = ReflectionThreshold <= 37 ? 25 : 50;
             ReflectionStrength = float.IsFinite(ReflectionStrength) ? Math.Clamp(ReflectionStrength, 0.5f, 2f) : 1f;
             ProbeResolution = ProbeResolution >= 192 ? 256 : 128;
+            ScreenReflections = Math.Clamp(ScreenReflections, 0, 3); // X-C1
             FamilyLibraryMax = Math.Clamp(FamilyLibraryMax <= 0 ? 200 : FamilyLibraryMax, 10, MAX_FAMILY_LIBRARY);
             EmissiveKeywords = (EmissiveKeywords ?? DefaultEmissiveKeywords())
                 .Where(k => !string.IsNullOrWhiteSpace(k))
@@ -772,6 +812,12 @@ namespace BimGo.Scene
             if (!Enum.IsDefined(VideoSize)) { VideoSize = VideoSize.FullHd; }
             if (!Enum.IsDefined(DisplayUnits)) { DisplayUnits = UnitSystem.Metric; }
             VideoFps = VideoFps >= 45 ? 60 : 30;
+            TimeLapseFrom = Math.Clamp(TimeLapseFrom, 0, 1439);
+            TimeLapseTo = Math.Clamp(TimeLapseTo, 0, 1439);
+            TimeLapseMargin = Math.Clamp(TimeLapseMargin, 0, TimeLapsePlan.MAX_MARGIN);
+            TimeLapseSeconds = Math.Clamp(TimeLapseSeconds, TimeLapsePlan.MIN_SECONDS, TimeLapsePlan.MAX_SECONDS);
+            BatchTimes = string.IsNullOrWhiteSpace(BatchTimes) ? BatchStills.DEFAULT_TIMES : BatchTimes.Trim();
+            if (BatchTimes.Length > 200) { BatchTimes = BatchTimes[..200]; }
             EyeHeightStanding = CleanEye(EyeHeightStanding, DEFAULT_EYE_STANDING);
             EyeHeightSeated = CleanEye(EyeHeightSeated, DEFAULT_EYE_SEATED);
             EyeHeightChild = CleanEye(EyeHeightChild, DEFAULT_EYE_CHILD);

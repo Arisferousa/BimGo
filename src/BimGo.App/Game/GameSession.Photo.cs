@@ -166,7 +166,8 @@ namespace BimGo.Game
                 Camera.Update();
                 _photoTarget?.Dispose();
                 _photoResolve?.Dispose();
-                _photoTarget = _photoResolve = null;
+                _warmTarget?.Dispose(); // X-C1
+                _photoTarget = _photoResolve = _warmTarget = null;
             }
         }
 
@@ -284,6 +285,25 @@ namespace BimGo.Game
             });
         }
 
+        // Round X-C1: the warm-up target, and true while it renders
+        private RenderTarget _warmTarget;
+        private bool _reflectionWarmup;
+
+        /// <summary>
+        /// Round X-C1: with sharp reflections on, a still's camera is first drawn small (at most 1600 px wide, no mirrored
+        /// views) so its floors and water have a previous frame from the same view to reflect (a bookmark or a 360 face
+        /// is far from what was on screen).
+        /// </summary>
+        private void WarmReflections(int width, int height)
+        {
+            if (_sharpOff || !_realistic || _whitecard || !_reflections || _ssrQuality == 0 || _reflectDebug != 0 || _renderer == null || !_renderer.HasMaterials) { return; }
+            int w = Math.Min(width, 1600), h = Math.Max(16, (int)((long)height * w / Math.Max(width, 1)));
+            _warmTarget ??= new RenderTarget();
+            _reflectionWarmup = true;
+            try { RenderScene(w, h, _warmTarget, 0, photo: true); }
+            finally { _reflectionWarmup = false; }
+        }
+
         /// <summary>
         /// Renders the camera's current view into an off-screen target (MSAA when it fits the budget), resolves it and
         /// reads it back as bottom-up BGRA.
@@ -293,19 +313,33 @@ namespace BimGo.Game
         /// Polish round P-C: the still's size against the window (2–4×): the legend is drawn that much bigger, so it reads
         /// as it does on screen.
         /// </param>
-        private byte[] RenderPhotoView(int width, int height, bool legend = false, int legendScale = 1)
+        /// <param name="sharp">Round X-C1: false for thumbnails (no sharp reflections: not worth the time at that size).</param>
+        private byte[] RenderPhotoView(int width, int height, bool legend = false, int legendScale = 1, bool sharp = true)
+        {
+            _sharpOff = !sharp;
+            try { return RenderPhotoViewSharp(width, height, legend, legendScale); }
+            finally { _sharpOff = false; }
+        }
+
+        // Round X-C1: true while a thumbnail renders (no sharp reflections)
+        private bool _sharpOff;
+
+        private byte[] RenderPhotoViewSharp(int width, int height, bool legend, int legendScale)
         {
             long pixels = (long)width * height;
             int samples = pixels * 4 <= PHOTO_SAMPLE_BUDGET ? 4 : pixels * 2 <= PHOTO_SAMPLE_BUDGET ? 2 : 0;
             _photoTarget ??= new RenderTarget();
             _photoResolve ??= new RenderTarget();
+            WarmReflections(width, height); // X-C1
             RenderScene(width, height, _photoTarget, samples, photo: true);
-            if (legend && ProfileLegendInShots)
+            bool stamp = legend && _photoStampOn; // Round X-A: a batch still's date / time stamp (bottom right)
+            if (legend && (ProfileLegendInShots || stamp))
             {
                 // P-C: laid out on a screen 1/k the size, then flushed over the whole target (k× bigger)
                 int k = Math.Clamp(legendScale, 1, 4);
                 _photoTarget.Bind();
                 QueueProfileLegendForShot(width / k, height / k);
+                if (stamp) { QueueSunStamp(width / k, height / k); }
                 _ui.Flush(width / k, height / k);
             }
             _photoResolve.Ensure(width, height, 0);

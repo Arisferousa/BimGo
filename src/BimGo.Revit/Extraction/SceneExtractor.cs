@@ -268,6 +268,7 @@ namespace BimGo.Extraction
                 Elements = _elements.ToArray(),
                 Levels = levels,
                 Grids = grids,
+                EntourageSlots = CollectEntourageSlots(sources, view), // Round X-B2
                 Rooms = rooms.ToArray(),
                 Links = _links.ToArray(),
                 PhaseId = phase?.Id.Value ?? -1,

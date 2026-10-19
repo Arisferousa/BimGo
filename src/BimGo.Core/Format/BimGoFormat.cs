@@ -21,6 +21,9 @@ namespace BimGo.Format
     /// journal.json      ordered edits (replayed on load; never baked into the geometry)
     /// bookmarks.json    saved viewpoints and the home viewpoint (optional; only written when there are some)
     /// paths.json        keyframed camera paths (optional, Round K; only written when there are some)
+    /// entourage.json    billboards: placed trees / people…, imported picture types, their look (optional, Round X-B)
+    /// entourage/…       the imported billboard pictures (PNG), referenced from entourage.json (optional, Round X-B)
+    /// entourage-slots.json  the snapshot's Revit Planting / Entourage instances (optional, Round X-B2)
     /// sun.json          sun / shadow state: on/off, date, time, intensities (optional)
     /// visibility.json   hidden categories, links and elements (optional; only written when something is hidden)
     /// lighting.json     glowing vertex ranges and lighting-fixture lights (optional; only written when there are some)
@@ -60,6 +63,9 @@ namespace BimGo.Format
         /// <summary>Round K: the camera path sidecar suffix beside an older snapshot (<c>paths.json</c> in the model folder).</summary>
         public const string PATHS_SIDECAR_SUFFIX = ".bimgo-paths.json";
 
+        /// <summary>Round X-B: the entourage sidecar suffix beside an older snapshot (<c>entourage.json</c> in the model folder).</summary>
+        public const string ENTOURAGE_SIDECAR_SUFFIX = ".bimgo-entourage.json";
+
         /// <summary>Suffix of the clash sidecar beside a Revit model when sharing is on (Round C; <c>clashes.json</c> in the model folder).</summary>
         public const string CLASH_SIDECAR_SUFFIX = ".bimgo-clashes.json";
 
@@ -97,6 +103,18 @@ namespace BimGo.Format
 
         /// <summary>Optional (Round K): keyframed camera paths (<see cref="CameraPathDocument"/>).</summary>
         internal const string ENTRY_PATHS = "paths.json";
+
+        /// <summary>Optional (Round X-B): billboards and their imported picture types (<see cref="EntourageDocument"/>).</summary>
+        internal const string ENTRY_ENTOURAGE = "entourage.json";
+
+        /// <summary>Optional (Round X-B2): the snapshot's Revit Planting / Entourage instances (<see cref="EntourageSlotsDto"/>).</summary>
+        internal const string ENTRY_ENTOURAGE_SLOTS = "entourage-slots.json";
+
+        /// <summary>The folder (entry name prefix) imported billboard pictures live under (Round X-B).</summary>
+        public const string ENTOURAGE_FOLDER = "entourage/";
+
+        /// <summary>Largest billboard picture kept (bytes).</summary>
+        public const long MAX_ENTOURAGE_IMAGE_BYTES = 8L * 1024 * 1024;
 
         /// <summary>Largest thumbnail read back (bytes).</summary>
         internal const long MAX_THUMBNAIL_BYTES = 2L * 1024 * 1024;

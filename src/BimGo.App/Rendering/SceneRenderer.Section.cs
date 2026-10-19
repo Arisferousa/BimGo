@@ -101,9 +101,23 @@ namespace BimGo.Rendering
         private void ApplyClip(int countLocation, int planesLocation, bool on)
         {
             int count = on ? _clipCount : 0;
+            if (_mirrorClipOn)
+            {
+                // Round X-C1: a mirrored pass also cuts away everything behind the mirror (CLIP_GLSL holds 8 planes)
+                Array.Copy(_clipPlanes, _clipScratch, count);
+                _clipScratch[count++] = _mirrorClip;
+                Gl.Uniform1(countLocation, count);
+                Gl.Uniform4(planesLocation, count, _clipScratch);
+                return;
+            }
             Gl.Uniform1(countLocation, count);
             if (count > 0) { Gl.Uniform4(planesLocation, count, _clipPlanes); }
         }
+
+        // Round X-C1: the mirror plane added to the cut while a planar reflection renders
+        private readonly Vector4[] _clipScratch = new Vector4[BimGo.Scene.SectionCut.MAX_PLANES + 1];
+        private bool _mirrorClipOn;
+        private Vector4 _mirrorClip;
 
         #endregion
 

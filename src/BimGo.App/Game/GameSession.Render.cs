@@ -153,6 +153,20 @@ namespace BimGo.Game
         }
 
         /// <summary>
+        /// Round X-C1: the sharp reflections' quality this frame (0 = off): stills only (photos, videos, batch stills and
+        /// photo mode's preview; Gavin, after testing them live: panes popped between views), Realistic mode with reflections
+        /// on, not in the clash view; colour by SSR turns them on live too (medium at least). Off frees the history.
+        /// </summary>
+        private int ScreenReflectionQuality(bool clashView, bool photo)
+        {
+            bool realistic = _realistic && !_whitecard && _renderer.HasMaterials;
+            bool still = (photo || _photoOpen) && !_sharpOff;
+            int quality = !realistic || clashView ? 0 : _reflectDebug == 3 ? Math.Max(_ssrQuality, 2) : _reflections && _reflectDebug == 0 && still ? _ssrQuality : 0;
+            if (quality == 0 && !clashView && !_clashShot) { _renderer.ReleaseReflectionHistory(); }
+            return quality;
+        }
+
+        /// <summary>
         /// The 3D passes into a target: shadows, lights, AO and glow, the scene, caps, ground, highlights, glass, bloom,
         /// photo exposure, then (not for photos) markers and the section gizmo. Uses <see cref="Camera"/> as it stands.
         /// </summary>
@@ -165,6 +179,9 @@ namespace BimGo.Game
         {
             // ---- Colour round A: the active colour profile (evaluated again only when something changed)
             UpdateProfile();
+
+            // ---- Round X-B: billboards (pictures once drawn, then the instances when they change: before the shadow maps)
+            UpdateBillboards();
 
             // ---- Round W-B / W-C: the cover map, this frame's rain / snow and lightning (before the lighting: a flash lifts it)
             UpdateWeather();
@@ -185,7 +202,7 @@ namespace BimGo.Game
             // (unlit clash pictures keep the main view's picks, so no light shadow is re-rendered for them)
             if (!clashShotUnlit)
             {
-                UpdateArtificialLights();
+                UpdateArtificialLights(photo || _photoOpen || _allLightsLive); // X-C1: photos (and photo mode's preview), videos and stills light every fixture
                 string lightShadowError = _renderer.UpdateLightShadows(_groupVisible, Dynamics, ShadowSceneKey());
                 if (lightShadowError != null) { Toast(lightShadowError, 6f, important: true); }
             }
@@ -196,32 +213,19 @@ namespace BimGo.Game
             // targets stay sized for the window instead of being remade for every picture)
             bool clashView = ClashViewActive && (!photo || _clashShot);
             bool clashNoAo = clashView && _clashView != CLASH_VIEW_REAL; // the real model view keeps AO
+            int ssr = ScreenReflectionQuality(clashView, photo); // Round X-C1
             if (_clashShot)
             {
                 _renderer.SkipScreenEffects();
             }
             else
             {
-                string effectsError = _renderer.UpdateScreenEffects(Camera, width, height, _groupVisible, Dynamics, _groundZ, _ambientOcclusion && !clashNoAo, glow);
+                string effectsError = _renderer.UpdateScreenEffects(Camera, width, height, _groupVisible, Dynamics, _groundZ, _ambientOcclusion && !clashNoAo, glow, ssr > 0);
                 if (effectsError != null) { OnScreenEffectsFailure(effectsError); }
             }
 
             // ---- Reflection probes: a couple of faces per frame until baked, re-baked a moment after things change
             if (!photo) { UpdateReflectionProbes(); }
-
-            // ---- 3D scene into the (optionally multisampled) target
-            target.Ensure(width, height, samples);
-            target.Bind();
-            Vector3 fog = _renderer.FogColour;
-            Gl.ClearColor(fog.X, fog.Y, fog.Z, 1f);
-            Gl.Clear(Gl.COLOR_BUFFER_BIT | Gl.DEPTH_BUFFER_BIT);
-            Gl.Enable(Gl.DEPTH_TEST);
-            Gl.DepthFunc(Gl.LEQUAL);
-            Gl.Disable(Gl.CULL_FACE);
-            Gl.Disable(Gl.BLEND);
-
-            _renderer.DrawSky(Camera);
-            UpdateGrass(); // grass round: builds / uploads the grass field when needed
 
             var p = new SceneDrawParams
             {
@@ -241,8 +245,43 @@ namespace BimGo.Game
                 ClipZ = new Vector2(-1e7f, 1e7f),
                 FogDensity = 0.0022f * WeatherFog, // W-B: thicker in the rain / snow
                 Sun = true,
-                Section = true
+                Section = true,
+                ScreenReflections = ssr // Round X-C1
             };
+
+            // ---- Round X-C1: mirrored views of the biggest glass / mirror planes in view (stills; not in the clash view or
+            // its pictures)
+            if (!_clashShot)
+            {
+                // Stills: Low 2 planes at half resolution, Medium 4 at full, High 8 at full (none in a warm-up pass)
+                int planarPlanes = clashView || ssr == 0 || _reflectionWarmup ? 0 : ssr == 1 ? 2 : ssr == 2 ? 4 : 8;
+                float planarScale = ssr >= 2 ? 1f : 0.5f;
+                if (!photo && planarPlanes > 0)
+                {
+                    // Photo mode's preview (and colour by SSR, live): 2 at half resolution, enough to frame the shot
+                    planarPlanes = Math.Min(planarPlanes, 2);
+                    planarScale = 0.5f;
+                }
+                if (planarPlanes > 0 || !_reflectionWarmup)
+                {
+                    _renderer.UpdatePlanarReflections(p, width, height, planarPlanes, planarScale, _groupVisible, Dynamics, _groundZ);
+                }
+            }
+            p.Planar = !clashView && !_clashShot && _renderer.PlanarCount > 0;
+
+            // ---- 3D scene into the (optionally multisampled) target
+            target.Ensure(width, height, samples);
+            target.Bind();
+            Vector3 fog = _renderer.FogColour;
+            Gl.ClearColor(fog.X, fog.Y, fog.Z, 1f);
+            Gl.Clear(Gl.COLOR_BUFFER_BIT | Gl.DEPTH_BUFFER_BIT);
+            Gl.Enable(Gl.DEPTH_TEST);
+            Gl.DepthFunc(Gl.LEQUAL);
+            Gl.Disable(Gl.CULL_FACE);
+            Gl.Disable(Gl.BLEND);
+
+            _renderer.DrawSky(Camera);
+            UpdateGrass(); // grass round: builds / uploads the grass field when needed
 
             if (clashView)
             {
@@ -261,6 +300,7 @@ namespace BimGo.Game
                 }
                 _renderer.DrawGround(Camera, _groundZ);
                 DrawGrass(p); // grass round: blades over the grass materials (Realistic)
+                _renderer.DrawBillboards(p); // Round X-B: entourage (trees, people, cars…)
 
                 // Gun highlights (scan target, primed demolitions, gizmo target…)
                 Gun active = _guns[_activeGun];
@@ -289,6 +329,9 @@ namespace BimGo.Game
                 Gl.Disable(Gl.BLEND);
 
                 DrawWeather(p); // Round W-B: falling rain / snow (in photos and videos too)
+
+                // Round X-C1: this frame's colour (before bloom, markers and UI) for next frame's screen-space reflections
+                if (ssr > 0 && !_clashShot) { _renderer.CaptureReflectionHistory(target, Camera.ViewProjection, Camera.Position); }
             }
 
             // Bloom from glowing surfaces over everything (glass included)

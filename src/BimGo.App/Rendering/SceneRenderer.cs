@@ -48,7 +48,7 @@ namespace BimGo.Rendering
         /// <summary>Reflection strength multiplier (0.5–2).</summary>
         public float ReflectGain;
 
-        /// <summary>Debug colours instead of the material: 0 off, 1 reflection tiers, 2 reflection probe cells.</summary>
+        /// <summary>Debug colours instead of the material: 0 off, 1 reflection tiers, 2 reflection probe cells, 3 SSR hits (X-C1).</summary>
         public int ReflectDebug;
 
         /// <summary>Reflect the reflection probes where they exist (else the sky).</summary>
@@ -62,6 +62,15 @@ namespace BimGo.Rendering
 
         /// <summary>Apply the section cut (<see cref="SceneRenderer.SetSection"/>): the player's view and highlights only.</summary>
         public bool Section;
+
+        /// <summary>
+        /// Round X-C1: screen-space reflections (0 off, 1 low, 2 medium, 3 high): the player's view, photos and videos
+        /// only (needs this frame's pre-pass and a history).
+        /// </summary>
+        public int ScreenReflections;
+
+        /// <summary>Round X-C1: glass and mirrors read this frame's mirrored views (the player's view, photos and videos only).</summary>
+        public bool Planar;
     }
 
     /// <summary>
@@ -271,7 +280,7 @@ namespace BimGo.Rendering
         /// </summary>
         private struct ArtificialUniforms
         {
-            public int Count, Pos, Color, Shadow, Emissive, Shoulder;
+            public int Count, Pos, Color, Shadow, Emissive, Shoulder, FarCount;
 
             public static ArtificialUniforms From(ShaderProgram p)
             {
@@ -279,8 +288,12 @@ namespace BimGo.Rendering
                 p.Use();
                 Gl.Uniform1(p.Uniform("uLightShadowMap"), LightShadows.UNIT);
                 Gl.Uniform1(p.Uniform("uLightShadowTexel"), LightShadows.Texel);
+                // Round X-C1: the far lights block reads the shared uniform buffer's binding point
+                uint block = Gl.GetUniformBlockIndex(p.Id, "FarLights");
+                if (block != Gl.INVALID_INDEX) { Gl.UniformBlockBinding(p.Id, block, FAR_LIGHTS_BINDING); }
                 return new ArtificialUniforms
                 {
+                    FarCount = p.Uniform("uFarCount"),
                     Count = p.Uniform("uLightCount"),
                     Pos = p.Uniform("uLightPos[0]"),
                     Color = p.Uniform("uLightColor[0]"),
@@ -402,6 +415,8 @@ namespace BimGo.Rendering
             _groundGeometryProgram = ShaderProgram.Create("ao ground geometry", Shaders.GROUND_VS, Shaders.GEOMETRY_GROUND_FS);
 
             _sceneUniforms = SceneUniforms.From(_sceneProgram);
+            InitialiseScreenReflections(); // Round X-C1
+            InitialisePlanarReflections();
             _sceneLight = LightUniforms.From(_sceneProgram);
             _groundLight = LightUniforms.From(_groundProgram);
             _sceneAo = AoUniforms.From(_sceneProgram);
@@ -484,6 +499,7 @@ namespace BimGo.Rendering
             // Glowing surfaces: a second vertex stream on both VAOs (left disabled when there are none: reads as no glow)
             UploadEmissive(scene);
             UploadMaterials(scene);
+            if (HasMaterials) { RefreshReflectivePlanes(); } // Round X-C1: glass / mirror planes
             _dynamicRanges = new ElementRange[scene.Elements.Length];
             _hasDynamicRange = new bool[scene.Elements.Length];
 
@@ -592,6 +608,7 @@ namespace BimGo.Rendering
             _materials.WaterKeywords = keywords ?? Array.Empty<string>();
             _materials.WaterKeywordsOpaque = keywordsOpaque;
             _materials.RefreshTable();
+            if (HasMaterials) { RefreshReflectivePlanes(); } // Round X-C1: water no longer counts as glass, or does
         }
 
         /// <summary>Water materials in the current table (QOL round: shown under the override).</summary>
@@ -613,6 +630,7 @@ namespace BimGo.Rendering
         {
             if (_materialVbo == 0 || materials == null || materials.IsEmpty) { return null; }
             MaterialWarning = _materials.Initialise(materials, ProxyPack.Shared, AutoProxy);
+            RefreshReflectivePlanes(materials); // Round X-C1
             return MaterialWarning;
         }
 
@@ -845,6 +863,7 @@ namespace BimGo.Rendering
             Gl.UniformMatrix4(_depthModel, Matrix4x4.Identity);
             DrawBatches(planes, groupVisible, transparent: false, countStats: false);
             if (dynamics != null && dynamics.Instances.Count > 0) { DrawDynamicInstances(dynamics, planes, transparent: false, _depthModel); }
+            DrawBillboardShadows(matrix); // Round X-B: billboards cast their silhouettes (turned to face the sun)
             Gl.Disable(Gl.POLYGON_OFFSET_FILL);
             Gl.ColorMask(true, true, true, true);
 
@@ -926,11 +945,12 @@ namespace BimGo.Rendering
         /// <param name="glow">Bloom wanted (ignored when the model has no glowing surfaces).</param>
         /// <returns>Null, or a reason the effects could not be shown (the caller switches them off).</returns>
         public string UpdateScreenEffects(FpsCamera camera, int width, int height, bool[] groupVisible, DynamicSet dynamics, float groundZ,
-            bool ao, bool glow)
+            bool ao, bool glow, bool reflections = false)
         {
             glow &= HasEmissive;
             _aoActive = _glowActive = false;
-            if (!ao && !glow)
+            _ssrGeometry = false; // Round X-C1
+            if (!ao && !glow && !reflections)
             {
                 _effects.Release();
                 return null;
@@ -964,6 +984,7 @@ namespace BimGo.Rendering
             Gl.BindVertexArray(0);
 
             _effects.Compute(camera, ao, glow);
+            SetScreenReflectionGeometry(reflections, right, up, forward); // Round X-C1: the ray march reads the pre-pass
             _aoForward = forward;
             _aoActive = ao;
             _glowActive = glow;
@@ -986,6 +1007,7 @@ namespace BimGo.Rendering
         public void DisableScreenEffects()
         {
             _aoActive = _glowActive = false;
+            _ssrGeometry = false;
             _effects.Release();
         }
 
@@ -997,6 +1019,7 @@ namespace BimGo.Rendering
         public void SkipScreenEffects()
         {
             _aoActive = _glowActive = false;
+            _ssrGeometry = false;
         }
 
         /// <summary>
@@ -1151,6 +1174,8 @@ namespace BimGo.Rendering
             p.Reflections = false;
             p.Probes = false;
             p.ReflectDebug = 0;
+            p.ScreenReflections = 0; // Round X-C1: never in probe faces
+            p.Planar = false;
             p.Plan = false;
             p.Sun = true;
             p.ClipZ = new Vector2(-1e7f, 1e7f);
@@ -1232,13 +1257,47 @@ namespace BimGo.Rendering
             ArtificialLighting a = Artificial;
             int count = on ? a.Count : 0;
             float emissive = on ? a.Emissive : 0f;
+            int far = on ? a.FarCount : 0;
+            UploadFarLights(); // X-C1 (once per change)
             Gl.Uniform1(u.Count, count);
+            Gl.Uniform1(u.FarCount, far);
             Gl.Uniform1(u.Emissive, emissive);
-            Gl.Uniform1(u.Shoulder, count > 0 || emissive > 0f ? 1 : 0);
+            Gl.Uniform1(u.Shoulder, count > 0 || far > 0 || emissive > 0f ? 1 : 0);
             if (count == 0) { return; }
             Gl.Uniform4(u.Pos, count, a.Position);
             Gl.Uniform4(u.Color, count, a.Colour);
             Gl.Uniform4(u.Shadow, count, a.Shadow);
+        }
+
+        /// <summary>Round X-C1: the uniform buffer binding point of the far lights block.</summary>
+        private const uint FAR_LIGHTS_BINDING = 1;
+
+        private uint _farLightsBuffer;
+
+        /// <summary>
+        /// Round X-C1: the unshadowed ("all fixtures") lights' block: the buffer made once (zeroed, full size, so the
+        /// block is always backed) and bound to its binding point; this frame's lights uploaded when they changed.
+        /// </summary>
+        private void UploadFarLights()
+        {
+            ArtificialLighting a = Artificial;
+            const int bytes = ArtificialLighting.MAX_FAR * 16;
+            if (_farLightsBuffer == 0)
+            {
+                _farLightsBuffer = Gl.GenBuffer();
+                Gl.BindBuffer(Gl.UNIFORM_BUFFER, _farLightsBuffer);
+                var zero = new byte[bytes * 2];
+                fixed (byte* z = zero) { Gl.BufferData(Gl.UNIFORM_BUFFER, bytes * 2, z, Gl.DYNAMIC_DRAW); }
+                Gl.BindBufferBase(Gl.UNIFORM_BUFFER, FAR_LIGHTS_BINDING, _farLightsBuffer);
+                a.FarDirty = true;
+            }
+            if (!a.FarDirty) { return; }
+            a.FarDirty = false;
+            if (a.FarCount == 0) { return; }
+            Gl.BindBuffer(Gl.UNIFORM_BUFFER, _farLightsBuffer);
+            fixed (Vector4* pos = a.FarPosition) { Gl.BufferSubData(Gl.UNIFORM_BUFFER, 0, a.FarCount * 16, pos); }
+            fixed (Vector4* col = a.FarColour) { Gl.BufferSubData(Gl.UNIFORM_BUFFER, bytes, a.FarCount * 16, col); }
+            Gl.BindBuffer(Gl.UNIFORM_BUFFER, 0);
         }
 
         #endregion
@@ -1419,6 +1478,8 @@ namespace BimGo.Rendering
             Gl.Uniform2(u.CloudOffset, Sky.CloudOffset.X, Sky.CloudOffset.Y);
 
             bool realistic = p.Realistic && !p.Whitecard && HasMaterials;
+            ApplyScreenReflections(_sceneSsr, realistic ? p : default); // Round X-C1 (off outside the Realistic mode)
+            ApplyPlanarReflections(_scenePlanar, realistic ? p : default);
             Gl.Uniform1(u.Realistic, realistic ? 1 : 0);
             if (!realistic) { return; }
             _materials.Bind();
@@ -1464,8 +1525,12 @@ namespace BimGo.Rendering
             DisposeSection();
             DisposePhoto();
             DisposeGrass();
+            DisposeBillboards(); // Round X-B
             DisposeWeather();
             DisposeProfile();
+            DisposeScreenReflections(); // Round X-C1
+            DisposePlanarReflections();
+            Gl.DeleteBuffer(_farLightsBuffer); // X-C1
             _shadows.Dispose();
             _effects.Dispose();
             _lightShadows.Dispose();

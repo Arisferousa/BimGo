@@ -87,6 +87,7 @@ namespace BimGo.Scene
 
         // Holding an element (Gizmo / Clone / Place locked on)
         HoldUp, HoldDown, HoldRotate, HoldStepDown, HoldStepUp, HoldFine, HoldSnapInvert,
+        HoldScale, // Round X-B3: the Place gun (entourage): hold + wheel resizes the aimed billboard
 
         // Markup editor
         MarkupArrow, MarkupBox, MarkupEllipse, MarkupPen, MarkupText,
@@ -378,6 +379,7 @@ namespace BimGo.Scene
             Add(InputAction.HoldStepUp, c, "Larger snap step", P, "X");
             Add(InputAction.HoldFine, c, "Fine moves (hold)", H, "Shift");
             Add(InputAction.HoldSnapInvert, c, "Flip snapping (hold)", H, "Ctrl");
+            Add(InputAction.HoldScale, InputContext.GizmoGuns, "Resize the aimed billboard (hold + wheel; Place gun, entourage)", H, "Alt"); // Round X-B3
 
             // Markup editor
             c = InputContext.Markup;
@@ -749,7 +751,8 @@ namespace BimGo.Scene
                 new InputSituation(SIT_DEMOLISH, With(InputContext.DemolishGun), Array.Empty<InputAction>(), Walk(
                     H("Demolish / delete", InputAction.DemolishMode))),
                 new InputSituation(SIT_GIZMO, With(InputContext.GizmoGuns), Array.Empty<InputAction>(), Walk(
-                    H("Drop onto the surface · snap", InputAction.GizmoDrop, InputAction.GizmoSnap))),
+                    H("Drop onto the surface · snap", InputAction.GizmoDrop, InputAction.GizmoSnap),
+                    H("Billboard size (hold + wheel)", InputAction.HoldScale))),
                 new InputSituation(SIT_HOLDING, new[] { InputContext.Holding, InputContext.GizmoGuns }, new[]
                 {
                     InputAction.MoveForward, InputAction.MoveBack, InputAction.MoveLeft, InputAction.MoveRight,
@@ -882,10 +885,10 @@ namespace BimGo.Scene
 
         /// <summary>
         /// The controls defaults version (polish round P-B). 0: the defaults up to P-A2; 1: P-B's hotkey review; 2: Round
-        /// K-A's media panel; 3: Round K-B's path editor. Raise it when a default changes and add the changes to
+        /// K-A's media panel; 3: Round K-B's path editor; 4: Round X-B3's billboard resize (HoldScale). Raise it when a default changes and add the changes to
         /// <see cref="DefaultsChanges"/> (ControlsTests checks the table against the defaults).
         /// </summary>
-        public const int DEFAULTS_VERSION = 3;
+        public const int DEFAULTS_VERSION = 4;
 
         /// <summary>Every default that changed, by version (oldest first). <c>Was</c>: the old binding ("none" for none).</summary>
         public static readonly DefaultsChange[] DefaultsChanges =
@@ -922,7 +925,10 @@ namespace BimGo.Scene
             new(3, InputAction.PathFlyUp, true, null),
             new(3, InputAction.PathFlyDown, true, null),
             new(3, InputAction.PathFlyFast, true, null),
-            new(3, InputAction.PathUndo, true, null)
+            new(3, InputAction.PathUndo, true, null),
+
+            // Version 4 (Round X-B3): hold + wheel resizes the aimed billboard
+            new(4, InputAction.HoldScale, true, null)
         };
 
         /// <summary>The changes made after a version the user saw (empty when it is current or newer).</summary>

@@ -48,6 +48,15 @@ namespace BimGo.Game
         private readonly Vector4[] _viewPlanes = new Vector4[6];
         private int _pickCount, _candidateCount;
 
+        // Round X-C1: all fixtures (photos, videos, stills; live with the setting): every light in view this frame, and
+        // whether to collect them
+        private readonly List<(int Light, Vector3 Position, float Distance, long Key)> _allCandidates = new();
+        private bool _collectAll;
+        private static readonly Comparison<(int Light, Vector3 Position, float Distance, long Key)> BY_DISTANCE = (a, b) => a.Distance.CompareTo(b.Distance);
+
+        /// <summary>Round X-C1: light every fixture in view live too (photos, videos and stills always do). Saved.</summary>
+        private bool _allLightsLive;
+
         #endregion
 
         /// <summary>True if the model has lighting fixtures or glowing surfaces.</summary>
@@ -62,6 +71,7 @@ namespace BimGo.Game
         {
             _lightMode = settings.ArtificialLights;
             _lightIntensity = settings.ArtificialLightIntensity;
+            _allLightsLive = settings.AllLightsLive; // X-C1
             _bloomIntensity = settings.BloomIntensity;
 
             LightSource[] lights = Scene.Lighting.Lights;
@@ -87,8 +97,10 @@ namespace BimGo.Game
 
         /// <summary>
         /// Fills the renderer's <see cref="ArtificialLighting"/> for this frame (call after the sun lighting is set).
+        /// Round X-C1: with <paramref name="allFixtures"/>, every fixture in view beyond the nearest shadowed ones is lit
+        /// too, unshadowed (nearest first, up to <see cref="ArtificialLighting.MAX_FAR"/>), and nothing fades.
         /// </summary>
-        private void UpdateArtificialLights()
+        private void UpdateArtificialLights(bool allFixtures = false)
         {
             ArtificialLighting a = _renderer.Artificial;
             a.Clear();
@@ -105,11 +117,14 @@ namespace BimGo.Game
 
             float scale = brightness * Lerp(1f, 0.35f, day);
             if (scale <= 0f) { return; }
+            _collectAll = allFixtures;
             PickLights();
+            _collectAll = false;
+            a.KeepUnshadowed = allFixtures;
 
-            // Fade the farthest picked lights when some were left out
+            // Fade the farthest picked lights when some were left out (not when every fixture is lit)
             float fadeFrom = float.MaxValue, fadeTo = float.MaxValue;
-            if (_candidateCount > _pickCount && _pickCount > 0)
+            if (!allFixtures && _candidateCount > _pickCount && _pickCount > 0)
             {
                 fadeTo = _pickDistance[_pickCount - 1];
                 fadeFrom = fadeTo * 0.7f;
@@ -127,6 +142,17 @@ namespace BimGo.Game
                 a.Key[k] = _pickKey[k];
             }
             a.Count = _pickCount;
+
+            // Round X-C1: the rest, unshadowed, nearest first
+            if (!allFixtures || _allCandidates.Count <= _pickCount) { return; }
+            _allCandidates.Sort(BY_DISTANCE);
+            foreach (var (i, p, _, key) in _allCandidates)
+            {
+                if (a.FarCount >= ArtificialLighting.MAX_FAR) { break; }
+                if (Array.IndexOf(_pickKey, key, 0, _pickCount) >= 0) { continue; }
+                Vector3 c = _lightColour[i] * scale;
+                a.AddFar(new Vector4(p, _lightRadius[i]), new Vector4(c, lights[i].Downward));
+            }
         }
 
         /// <summary>
@@ -137,6 +163,7 @@ namespace BimGo.Game
         {
             _pickCount = 0;
             _candidateCount = 0;
+            _allCandidates.Clear();
 
             // Normalised view planes (sphere tests)
             Vector4[] planes = Camera.Planes;
@@ -191,6 +218,7 @@ namespace BimGo.Game
             _candidateCount++;
 
             float distance = Vector3.Distance(position, Camera.Position);
+            if (_collectAll) { _allCandidates.Add((light, position, distance, key)); } // X-C1
             int max = ArtificialLighting.MAX_LIGHTS;
             if (_pickCount == max && distance >= _pickDistance[max - 1]) { return; }
 
@@ -246,7 +274,7 @@ namespace BimGo.Game
         }
 
         /// <summary>
-        /// The sun panel's artificial-light rows: mode and brightness.
+        /// The sun panel's artificial-light rows: mode, X-C1's all fixtures live, and brightness.
         /// </summary>
         /// <returns>The height used.</returns>
         private float BuildLightControls(FontAtlas f, InputState input, float x, float y, float w)
@@ -260,6 +288,15 @@ namespace BimGo.Game
                 else { CycleLightMode(); }
             }
             y += S(46);
+
+            // Round X-C1: every fixture in view, live (photos, videos and stills always do)
+            bool all = Checkbox(f, input, x, y, w, "All fixtures live (slower)", _allLightsLive);
+            if (all != _allLightsLive)
+            {
+                _allLightsLive = all;
+                Toast(all ? "Every fixture in view is lit (the nearest 32 cast shadows): slower with many fixtures" : "The nearest 32 fixtures are lit live (photos and videos still light them all)", 3f);
+            }
+            y += S(32);
 
             // Brightness and bloom side by side (keeps the panel's height)
             float half = (w - S(16)) * 0.5f;

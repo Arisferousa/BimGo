@@ -108,6 +108,9 @@ namespace BimGo.Game
         private bool _probeHigh;
         private int _reflectDebug;
 
+        // Round X-C1: screen-space reflections (0 off, 1 low, 2 medium, 3 high; Realistic mode)
+        private int _ssrQuality = 2;
+
         // Realistic mode: how Revit's tint is drawn, and CC0 proxies for missing images (files made before proxies)
         private TintMode _tintMode;
         private bool _proxyMissing;
@@ -206,6 +209,7 @@ namespace BimGo.Game
             _reflectThreshold = settings.ReflectionThreshold <= 37 ? 25 : 50;
             _reflectStrength = float.IsFinite(settings.ReflectionStrength) ? Math.Clamp(settings.ReflectionStrength, 0.5f, 2f) : 1f;
             _reflectProbes = settings.ReflectionProbes;
+            _ssrQuality = Math.Clamp(settings.ScreenReflections, 0, 3); // X-C1
             _probeHigh = settings.ProbeResolution >= 192;
             _tintMode = settings.RevitTint == TintMode.Off ? TintMode.Off : TintMode.Multiply;
             _proxyMissing = settings.ProxyMissingTextures;
@@ -312,6 +316,7 @@ namespace BimGo.Game
             Comments.CurrentEye = () => CurrentStandingEye; // P-C: views keep the eye-height preset
             InitialiseBookmarks();
             InitialisePaths(); // Round K-A: camera paths
+            InitialiseEntourage(); // Round X-B: billboards
             InitialiseSun();
             InitialiseVisibility();
 
@@ -556,8 +561,9 @@ namespace BimGo.Game
                 previous = now;
                 _clock += dt;
                 _frameTime = dt;
-                AdvanceSky(dt); // sky round: clouds drift, the sky look reaches the renderer
-                AdvanceWater(dt); // water round W: the ripples' clock runs at the ripple speed
+                float worldDt = _video != null ? 0f : dt; // Round X-A: while recording, each video frame moves them by its own step
+                AdvanceSky(worldDt); // sky round: clouds drift, the sky look reaches the renderer
+                AdvanceWater(worldDt); // water round W: the ripples' clock runs at the ripple speed
                 AdvanceWeather(dt); // Round W-B: the rain and snow's clock
 
                 if (_window.IsMinimised)
@@ -878,6 +884,7 @@ namespace BimGo.Game
             }
             if (input.Pressed(InputAction.Unarmed)) { SetUnarmed(!_unarmed); }
             else if (_unarmed) { /* no gun: the wheel and gun keys below wait */ }
+            else if (input.Wheel != 0 && _guns[_activeGun].OnWheel(input)) { input.ConsumeWheel(); } // X-B3: billboard size
             else if (input.Pressed(InputAction.PreviousGun)) { SelectGun((_activeGun - 1 + _guns.Length) % _guns.Length); }
             else if (input.Pressed(InputAction.NextGun)) { SelectGun((_activeGun + 1) % _guns.Length); }
             // The mouse wheel (polish round): the selected gun's modes (Measure: distance / area / angle / clearance;
@@ -1263,6 +1270,7 @@ namespace BimGo.Game
             settings.ReflectionThreshold = _reflectThreshold;
             settings.ReflectionStrength = _reflectStrength;
             settings.ReflectionProbes = _reflectProbes;
+            settings.ScreenReflections = _ssrQuality; // X-C1
             settings.ProbeResolution = _probeHigh ? 256 : 128;
             settings.RevitTint = _tintMode;
             settings.ProxyMissingTextures = _proxyMissing;
@@ -1272,6 +1280,7 @@ namespace BimGo.Game
             settings.AmbientOcclusion = _ambientOcclusion;
             settings.ArtificialLights = _lightMode;
             settings.ArtificialLightIntensity = _lightIntensity;
+            settings.AllLightsLive = _allLightsLive; // X-C1
             settings.BloomIntensity = _bloomIntensity;
             settings.FieldOfView = _fov;
             settings.MouseSensitivity = _sensitivity;
@@ -1310,6 +1319,7 @@ namespace BimGo.Game
             _window.SetCaptured(false);
             _push?.Dispose();
             try { ReleaseThumbnails(); } catch (Exception ex) { Utilities.Log_Utils.Write($"Thumbnail cleanup failed: {ex.Message}"); }
+            try { DisposeEntourage(); } catch (Exception ex) { Utilities.Log_Utils.Write($"Entourage cleanup failed: {ex.Message}"); } // Round X-B
             try { ReleaseLibraryPreviews(); } catch (Exception ex) { Utilities.Log_Utils.Write($"Library preview cleanup failed: {ex.Message}"); }
             try { ReleaseMarkup(); } catch (Exception ex) { Utilities.Log_Utils.Write($"Markup cleanup failed: {ex.Message}"); }
             Sound.Dispose();
@@ -1322,6 +1332,7 @@ namespace BimGo.Game
             _sectionOverlay?.Dispose();
             _photoTarget?.Dispose();
             _photoResolve?.Dispose();
+            _warmTarget?.Dispose(); // X-C1
             _target.Dispose();
             _ui?.Dispose();
         }

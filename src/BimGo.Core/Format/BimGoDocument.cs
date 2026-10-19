@@ -25,6 +25,12 @@ namespace BimGo.Format
         /// <summary>Round K: the camera paths (paths.json), or null when there are none. Optional: older readers ignore it.</summary>
         public CameraPathDocument Paths { get; set; }
 
+        /// <summary>Round X-B: billboards (entourage.json), or null when there are none. Optional: older readers ignore it.</summary>
+        public EntourageDocument Entourage { get; set; }
+
+        /// <summary>Round X-B: the imported billboard pictures by file name (PNG bytes), or null.</summary>
+        public Dictionary<string, byte[]> EntourageImages { get; set; }
+
         /// <summary>The sun / shadow state, or null if the file has none (defaults then come from the site).</summary>
         public SunSettings Sun { get; init; }
 

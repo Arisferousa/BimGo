@@ -70,7 +70,8 @@ namespace BimGo.Game
             _keyDeleteArmed = null;
             if (tab == MEDIA_TOUR) { ResetTourSettingsView(); }
             if (tab == MEDIA_PATHS) { _pathListScroll.Reset(); _keyListScroll.Reset(); _keyEditorScroll.Reset(); }
-            if (tab == MEDIA_VIDEO) { _videoSourceScroll.Reset(); }
+            if (tab == MEDIA_VIDEO) { _videoSourceScroll.Reset(); _timeLapseScroll.Reset(); }
+            if (tab == MEDIA_PHOTO) { _photoRightScroll.Reset(); }
         }
 
         /// <summary>One level back: the panel closes (to the pause menu).</summary>
@@ -113,7 +114,7 @@ namespace BimGo.Game
                 case MEDIA_PHOTO: Text.Append("Stills and 360° panoramas · saved to Pictures\\BimGo"); break;
                 case MEDIA_TOUR: Text.Append("The bookmark tour · ").AppendGrouped(Bookmarks.Bookmarks.Count).Append(" bookmarks · saved to ").Append(Bookmarks.FileName); break;
                 case MEDIA_PATHS: Text.Append("Keyframed camera paths · ").AppendGrouped(CameraPaths.Paths.Count).Append(" · saved to ").Append(CameraPaths.FileName); break;
-                default: Text.Append("Walkthrough videos (MP4) · saved to Videos\\BimGo"); break;
+                default: Text.Append("Walkthrough videos and sun time-lapses (MP4) · saved to Videos\\BimGo"); break;
             }
             float tabsW = MathF.Min(S(440), _window.Width * 0.4f);
             PanelFrame frame = BeginPanel(PanelSize.Wide, "MEDIA", UiTheme.BOOKMARK_LABEL, Text.Span, headerControls: tabsW);
@@ -133,6 +134,7 @@ namespace BimGo.Game
                 case MEDIA_PHOTO:
                     BuildPhotoTab(f, input, x, y, w, bottom);
                     action1 = FooterAction("OPEN FOLDER");
+                    action3 = FooterAction("RENDER BATCH STILLS", ShellStyle.Normal, CanStartStillsBatch); // Round X-A
                     action2 = FooterAction(HINT_MEDIA_PHOTO_OPEN.Text, ShellStyle.Primary);
                     hint = HINT_MEDIA_PHOTO.Text;
                     break;
@@ -154,7 +156,8 @@ namespace BimGo.Game
                 default:
                     BuildVideoTab(f, input, x, y, w, bottom);
                     action1 = FooterAction("OPEN FOLDER");
-                    action2 = FooterAction("RECORD VIDEO", ShellStyle.Primary);
+                    action2 = FooterAction(_videoTimeLapse ? "RECORD TIME-LAPSE" : "RECORD VIDEO", ShellStyle.Primary,
+                        !_videoTimeLapse || TimeLapsePreview(out _) != null); // Round X-A
                     hint = "Rendered off-screen at a fixed frame rate (smooth on any PC) · Esc cancels a recording and deletes the partial file";
                     break;
             }
@@ -165,6 +168,7 @@ namespace BimGo.Game
             {
                 case MEDIA_PHOTO:
                     if (pressed == action1) { OpenPhotoFolder(); }
+                    else if (pressed == action3) { StartStillsBatch(); } // Round X-A
                     else if (pressed == action2)
                     {
                         CloseMediaPanel();
@@ -182,7 +186,11 @@ namespace BimGo.Game
                     break;
                 default:
                     if (pressed == action1) { OpenVideoFolder(); }
-                    else if (pressed == action2) { StartVideo(_videoPath); }
+                    else if (pressed == action2)
+                    {
+                        if (_videoTimeLapse) { StartTimeLapse(); } // Round X-A
+                        else { StartVideo(_videoPath); }
+                    }
                     break;
             }
         }
@@ -243,9 +251,10 @@ namespace BimGo.Game
             cy += S(40);
             EndScroll(_photoTabScroll, input, cy);
 
-            // What photo mode does (right)
-            float rx = x + lw + S(40), rw = w - lw - S(40);
-            float ry = SectionLabel(f, rx, y, "PHOTO MODE");
+            // What photo mode does, then (Round X-A) batch stills (right; scrolls in a short window)
+            float rx = x + lw + S(40);
+            float ry = BeginScroll(_photoRightScroll, input, rx, y, w - lw - S(40), bottom - y, out float rw);
+            ry = SectionLabel(f, rx, ry, "PHOTO MODE");
             ry += _ui.TextWrapped(f.Body, rx, ry, rw, HINT_MEDIA_PHOTO_ABOUT.Text, UiTheme.TEXT_SOFT, maxLines: 6) + S(16);
             if (!ShadowsOn)
             {
@@ -255,8 +264,10 @@ namespace BimGo.Game
             if (last != null)
             {
                 ry = SectionLabel(f, rx, ry, "LAST PHOTO");
-                _ui.TextWrapped(f.Small, rx, ry, rw, Path.GetFileName(last), UiTheme.TEXT_MUTED, maxLines: 2);
+                ry += _ui.TextWrapped(f.Small, rx, ry, rw, Path.GetFileName(last), UiTheme.TEXT_MUTED, maxLines: 2) + S(12);
             }
+            ry = BuildBatchStillsSettings(f, input, rx, ry + S(6), rw);
+            EndScroll(_photoRightScroll, input, ry);
         }
 
         #endregion
@@ -276,27 +287,41 @@ namespace BimGo.Game
             float lw = MathF.Min(S(420), w * 0.45f);
             float ly = SectionLabel(f, x, y, "RECORD");
             float rowH = S(48);
-            int count = 1 + CameraPaths.Paths.Count;
+            int count = 2 + CameraPaths.Paths.Count; // X-A: the sun time-lapse, the tour, then the paths
             float top = BeginScroll(_videoSourceScroll, input, x, ly, lw, bottom - ly, out float cw);
             VisibleRows(_videoSourceScroll, rowH, count, out int first, out int lastRow);
             CameraPath picked = _videoPath;
-            bool pickedTour = false;
+            bool pickedTour = false, pickedTimeLapse = false, pickedPath = false;
             for (int i = first; i < lastRow; i++)
             {
                 float ry = top + i * rowH;
-                CameraPath path = i == 0 ? null : CameraPaths.Paths[i - 1];
-                bool on = ReferenceEquals(path, _videoPath);
+                CameraPath path = i <= 1 ? null : CameraPaths.Paths[i - 2];
+                bool on = i == 0 ? _videoTimeLapse : !_videoTimeLapse && ReferenceEquals(path, _videoPath);
                 if (on) { _ui.Rect(x, ry, cw, rowH - S(4), Rgba.WithAlpha(UiTheme.ACCENT, 0.16f)); }
                 else if ((i & 1) == 0) { _ui.Rect(x, ry, cw, rowH - S(4), UiTheme.ROW_STRIPE); }
                 if (Hover(input, x, ry, cw, rowH - S(4)) && input.LeftPressed)
                 {
                     input.ConsumeClicks();
                     Sound.Play(SoundId.UiClick);
-                    if (path == null) { pickedTour = true; }
-                    else { picked = path; }
+                    if (i == 0) { pickedTimeLapse = true; }
+                    else if (path == null) { pickedTour = true; }
+                    else
+                    {
+                        picked = path;
+                        pickedPath = true;
+                    }
                 }
                 _ui.Circle(x + S(14), ry + rowH * 0.5f - S(2), S(5), on ? UiTheme.ACCENT : UiTheme.CONTROL_BORDER, 12);
-                if (path == null)
+                if (i == 0)
+                {
+                    // Round X-A: the sun time-lapse (its view, range and length)
+                    _ui.TextWrapped(f.Bold, x + S(30), ry + S(5), cw - S(40), "Sun time-lapse", UiTheme.TEXT, maxLines: 1);
+                    BookmarkRecord view = TimeLapseBookmark;
+                    Text.Clear().Append(view != null ? view.Name : "Where you are").Append(" · ")
+                        .Append(_timeLapseCustom ? "custom range · " : "sunrise → sunset · ").Append(_timeLapseSeconds).Append(" s");
+                    _ui.TextWrapped(f.Small, x + S(30), ry + S(26), cw - S(40), Text.Span, UiTheme.TEXT_MUTED, maxLines: 1);
+                }
+                else if (path == null)
                 {
                     float length = TourLength(Bookmarks.Tour, out int stops);
                     _ui.TextWrapped(f.Bold, x + S(30), ry + S(5), cw - S(40), "Bookmark tour", UiTheme.TEXT, maxLines: 1);
@@ -311,12 +336,27 @@ namespace BimGo.Game
                 }
             }
             EndScroll(_videoSourceScroll, input, top + count * rowH);
-            if (pickedTour) { _videoPath = null; }
-            else if (!ReferenceEquals(picked, _videoPath)) { _videoPath = picked; }
+            if (pickedTimeLapse)
+            {
+                _videoTimeLapse = true;
+                _timeLapseScroll.Reset();
+            }
+            else if (pickedTour)
+            {
+                _videoTimeLapse = false;
+                _videoPath = null;
+            }
+            else if (pickedPath)
+            {
+                _videoTimeLapse = false;
+                _videoPath = picked;
+            }
 
-            // Size, rate and the summary (right)
+            // Size, rate and the summary (right; X-A: the time-lapse's settings scroll in a short window)
             float rx = x + lw + S(40), rw = MathF.Min(w - lw - S(40), S(460));
-            float cy = SectionLabel(f, rx, y, "SIZE AND FRAME RATE (THIS PC)");
+            float cy = y;
+            if (_videoTimeLapse) { cy = BeginScroll(_timeLapseScroll, input, rx, y, MathF.Min(w - lw - S(40), rw + S(UiTheme.SCROLL_GUTTER)), bottom - y, out rw); }
+            cy = SectionLabel(f, rx, cy, "SIZE AND FRAME RATE (THIS PC)");
             int size = Segmented(f, input, rx, cy, rw, VIDEO_SIZE_OPTIONS, (int)_videoSize);
             if (size != (int)_videoSize) { _videoSize = (VideoSize)size; }
             cy += S(42);
@@ -324,6 +364,12 @@ namespace BimGo.Game
             int pickedRate = Segmented(f, input, rx, cy, rw, VIDEO_FPS_OPTIONS, rate);
             if (pickedRate != rate) { _videoFps = pickedRate == 1 ? 60 : 30; }
             cy += S(52);
+            if (_videoTimeLapse)
+            {
+                cy = BuildTimeLapseSettings(f, input, rx, cy, rw); // Round X-A
+                EndScroll(_timeLapseScroll, input, cy);
+                return;
+            }
 
             cy = SectionLabel(f, rx, cy, "THE VIDEO");
             VideoFrameSize(out int vw, out int vh);

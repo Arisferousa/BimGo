@@ -79,6 +79,17 @@ namespace BimGo.Format
                     {
                         WriteJson(zip, BimGoFormat.ENTRY_PATHS, document.Paths, BimGoFormat.JSON_INDENTED);
                     }
+                    if (document.Entourage != null && !document.Entourage.IsEmpty) // Round X-B
+                    {
+                        WriteJson(zip, BimGoFormat.ENTRY_ENTOURAGE, document.Entourage, BimGoFormat.JSON_INDENTED);
+                        foreach (EntourageType type in document.Entourage.Types)
+                        {
+                            if (document.EntourageImages == null || !document.EntourageImages.TryGetValue(type.Image ?? string.Empty, out byte[] png) || png == null) { continue; }
+                            ZipArchiveEntry picture = zip.CreateEntry(BimGoFormat.ENTOURAGE_FOLDER + type.Image, CompressionLevel.NoCompression);
+                            using Stream pictureStream = picture.Open();
+                            pictureStream.Write(png);
+                        }
+                    }
                     if (document.Visibility != null && !document.Visibility.IsEmpty)
                     {
                         WriteJson(zip, BimGoFormat.ENTRY_VISIBILITY, document.Visibility, BimGoFormat.JSON_INDENTED);
@@ -104,6 +115,8 @@ namespace BimGo.Format
                     }
                     GridsDto grids = GridFiles.ToDto(scene.Grids); // grids round A (optional)
                     if (grids != null) { WriteJson(zip, BimGoFormat.ENTRY_GRIDS, grids, BimGoFormat.JSON_COMPACT); }
+                    EntourageSlotsDto slots = EntourageSlots.ToDto(scene.EntourageSlots); // Round X-B2 (optional)
+                    if (slots != null) { WriteJson(zip, BimGoFormat.ENTRY_ENTOURAGE_SLOTS, slots, BimGoFormat.JSON_COMPACT); }
                     MaterialData materials = document.Materials ?? scene.Materials;
                     if (materials != null && !materials.IsEmpty && materials.VertexMaterial.Length == scene.Vertices.Length)
                     {

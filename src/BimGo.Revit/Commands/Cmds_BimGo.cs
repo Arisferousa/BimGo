@@ -312,11 +312,18 @@ namespace BimGo.Commands.Cmds_BimGo
                     ? null
                     : BookmarkFiles.Read(BookmarkFiles.SidecarFor(scene.CommentsPath), out _);
 
+                // Round X-B: and the billboards with their pictures (entourage.json and its images in the model folder)
+                string entouragePath = EntourageFiles.SidecarFor(scene.CommentsPath);
+                EntourageDocument entourage = entouragePath == null ? null : EntourageFiles.Read(entouragePath, out _);
+                Dictionary<string, byte[]> entourageImages = entourage == null ? null : EntourageFiles.ReadImages(EntourageFiles.ImagesFolderFor(entouragePath), entourage);
+
                 var document = new BimGoDocument
                 {
                     Scene = scene,
                     Bookmarks = bookmarks ?? new BookmarkDocument { Model = scene.ModelTitle },
                     Comments = comments ?? new CommentDocument { Model = scene.ModelTitle },
+                    Entourage = entourage,
+                    EntourageImages = entourageImages,
                     Journal = new EditJournal(),
                     CreatedUtc = scene.Provenance.ExtractedUtc,
                     Kind = FileKinds.EXPORT,

@@ -27,10 +27,44 @@ namespace BimGo.Rendering
         public readonly long[] Key = new long[MAX_LIGHTS];
 
         /// <summary>
-        /// Removes light k, keeping the order of the rest.
+        /// Round X-C1: most lights beyond the shadowed ones ("all fixtures": photos, videos, stills, and live when asked;
+        /// the std140 block in <see cref="Shaders.LIGHTS_GLSL"/> is this size: 15 KB, within GL's 16 KB minimum).
+        /// </summary>
+        public const int MAX_FAR = 480;
+
+        /// <summary>Round X-C1: the unshadowed lights (as <see cref="Position"/> / <see cref="Colour"/>, fade folded in).</summary>
+        public readonly Vector4[] FarPosition = new Vector4[MAX_FAR], FarColour = new Vector4[MAX_FAR];
+
+        /// <summary>Round X-C1: unshadowed lights in use.</summary>
+        public int FarCount;
+
+        /// <summary>Round X-C1: all fixtures this frame: a shadowed light that loses its map is lit unshadowed instead of dropped.</summary>
+        public bool KeepUnshadowed;
+
+        /// <summary>Round X-C1: the far lights changed since the renderer last uploaded them.</summary>
+        public bool FarDirty = true;
+
+        /// <summary>Round X-C1: adds an unshadowed light (ignored when full).</summary>
+        public void AddFar(Vector4 position, Vector4 colour)
+        {
+            if (FarCount >= MAX_FAR) { return; }
+            FarPosition[FarCount] = position;
+            FarColour[FarCount] = colour;
+            FarCount++;
+            FarDirty = true;
+        }
+
+        /// <summary>
+        /// Removes light k, keeping the order of the rest (with <see cref="KeepUnshadowed"/>, it moves to the unshadowed lights).
         /// </summary>
         public void RemoveAt(int k)
         {
+            if (KeepUnshadowed)
+            {
+                Vector4 c = Colour[k];
+                float fade = Shadow[k].Y;
+                AddFar(Position[k], new Vector4(c.X * fade, c.Y * fade, c.Z * fade, c.W));
+            }
             for (int i = k; i < Count - 1; i++)
             {
                 Position[i] = Position[i + 1];
@@ -56,6 +90,9 @@ namespace BimGo.Rendering
         public void Clear()
         {
             Count = 0;
+            FarCount = 0; // X-C1
+            KeepUnshadowed = false;
+            FarDirty = true;
             Emissive = 0f;
             Bloom = 0f;
         }

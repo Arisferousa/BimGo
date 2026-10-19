@@ -16,7 +16,7 @@ namespace BimGo.Rendering
         /// </summary>
         public const string CLIP_GLSL = @"
 uniform int uClipCount;
-uniform vec4 uClipPlanes[7];
+uniform vec4 uClipPlanes[8];
 bool sectionCut(vec3 p)
 {
     for (int i = 0; i < uClipCount; i++)
@@ -426,6 +426,9 @@ vec3 probeEnvironment(vec3 world, vec3 n, vec3 dir, float rough, out bool have, 
     weight = 1.0;
     vec3 cell = probeCell(world, n);
     if (cell.x < 0.0) return vec3(0.0);
+    // Round X-C1: roofs, decks and other up-facing surfaces outside rooms reflect the sky: their fallback probes sit on
+    // an 8 m grid, each box-projected differently, which drew a patchwork of blocks (plainest at night)
+    if (n.z > 0.3 && texelFetch(uProbeData, ivec2(2, int(cell.x)), 0).w > 0.5) return vec3(0.0);
     float lod = max(clamp(rough, 0.0, 1.0) * uProbeMaxLod, 0.5);
     bool okA, okB;
     float nearA, nearB;
@@ -464,6 +467,140 @@ vec3 reflectionDebugColour(vec4 info, float glass)
     if (tier == 2) return vec3(1.0, 0.55, 0.10);
     if (tier == 1) return vec3(0.95, 0.90, 0.25);
     return vec3(0.55);
+}
+";
+
+        /// <summary>
+        /// Round X-C1: screen-space reflections for the scene shader (after MATERIALS_GLSL; see
+        /// SceneRenderer.ScreenReflections). The reflected ray is marched through this frame's half-resolution pre-pass
+        /// (camera-basis normal, view depth; 0 = sky) in steps that grow from 6 cm to 60 m; a step that passes behind a
+        /// surface (within a thickness that grows with the step) is refined by halving, and the hit is looked up in the
+        /// previous frame's colour through the previous camera. The alpha is how far to trust it: faded at the screen
+        /// edges, far along the ray, on surfaces facing away from the ray and on rough surfaces (whose blur reads a lower
+        /// mip). 0 = keep the probe or sky reflection.
+        /// </summary>
+        public const string SSR_GLSL = @"
+uniform int uSsrQuality;
+uniform sampler2D uSsrGeometry;
+uniform sampler2D uSsrColour;
+uniform mat4 uSsrViewProj;
+uniform mat4 uSsrPrevViewProj;
+uniform vec3 uSsrRight;
+uniform vec3 uSsrUp;
+uniform vec3 uSsrForward;
+uniform float uSsrMaxLod;
+
+const float SSR_T0 = 0.06;
+const float SSR_TMAX = 60.0;
+
+vec2 ssrProject(mat4 m, vec3 p, out bool front)
+{
+    vec4 c = m * vec4(p, 1.0);
+    front = c.w > 1e-3;
+    return (c.xy / max(c.w, 1e-3)) * 0.5 + 0.5;
+}
+
+bool ssrOnScreen(vec2 uv)
+{
+    return uv.x >= 0.0 && uv.y >= 0.0 && uv.x <= 1.0 && uv.y <= 1.0;
+}
+
+// The pre-pass at a screen position: xyz the normal (camera basis, facing the camera), w the view depth (0 = sky)
+vec4 ssrGeometry(vec2 uv)
+{
+    ivec2 size = textureSize(uSsrGeometry, 0);
+    return texelFetch(uSsrGeometry, clamp(ivec2(uv * vec2(size)), ivec2(0), size - 1), 0);
+}
+
+vec4 screenReflection(vec3 world, vec3 n, vec3 dir, float rough, vec3 eye)
+{
+    if (uSsrQuality <= 0 || rough > 0.6) return vec4(0.0);
+    int steps = uSsrQuality == 1 ? 12 : uSsrQuality == 2 ? 24 : 48;
+    int halvings = uSsrQuality == 1 ? 3 : uSsrQuality == 2 ? 4 : 6;
+    float grow = pow(SSR_TMAX / SSR_T0, 1.0 / float(steps - 1));
+    vec3 origin = world + n * 0.03;
+    float t = SSR_T0, before = 0.0;
+    bool hit = false;
+    for (int i = 0; i < 48; i++)
+    {
+        if (i >= steps) break;
+        vec3 q = origin + dir * t;
+        bool front;
+        vec2 uv = ssrProject(uSsrViewProj, q, front);
+        if (!front || !ssrOnScreen(uv)) return vec4(0.0);
+        float scene = ssrGeometry(uv).w;
+        float depth = dot(q - eye, uSsrForward);
+        float behind = depth - scene;
+        if (scene > 0.0 && behind > 0.02 + 0.002 * depth && behind < max(0.3, (t - before) * 1.5))
+        {
+            hit = true;
+            break;
+        }
+        before = t;
+        t *= grow;
+    }
+    if (!hit) return vec4(0.0);
+
+    // Halve the last step to land on the surface
+    float a = before, b = t;
+    for (int i = 0; i < 6; i++)
+    {
+        if (i >= halvings) break;
+        float m = 0.5 * (a + b);
+        vec3 q = origin + dir * m;
+        bool front;
+        vec2 uv = ssrProject(uSsrViewProj, q, front);
+        float scene = ssrGeometry(uv).w;
+        if (scene > 0.0 && dot(q - eye, uSsrForward) > scene) b = m; else a = m;
+    }
+    vec3 q = origin + dir * b;
+    bool frontNow, frontThen;
+    vec2 now = ssrProject(uSsrViewProj, q, frontNow);
+    vec2 then = ssrProject(uSsrPrevViewProj, q, frontThen);
+    if (!frontThen || !ssrOnScreen(then)) return vec4(0.0);
+
+    // The surface met must face the ray (the pre-pass normal faces the camera)
+    vec4 g = ssrGeometry(now);
+    vec3 hn = g.x * uSsrRight + g.y * uSsrUp + g.z * uSsrForward;
+    float facing = smoothstep(0.0, 0.25, -dot(hn, dir));
+    vec2 edgeNow = min(now, 1.0 - now), edgeThen = min(then, 1.0 - then);
+    float edge = smoothstep(0.0, 0.06, min(edgeNow.x, edgeNow.y)) * smoothstep(0.0, 0.06, min(edgeThen.x, edgeThen.y));
+    float trust = facing * edge * (1.0 - smoothstep(SSR_TMAX * 0.4, SSR_TMAX, b)) * (1.0 - smoothstep(0.3, 0.6, rough));
+    vec3 colour = textureLod(uSsrColour, then, rough * uSsrMaxLod).rgb;
+    return vec4(colour, trust);
+}
+";
+
+        /// <summary>
+        /// Round X-C1: planar reflections for the scene shader (after SSR_GLSL; see SceneRenderer.PlanarReflections): up to
+        /// eight glass / mirror planes drawn for a still from the mirrored camera into the layers of uPlanarTex. A fragment
+        /// lying on one of them (within its slack: the pane's thickness, a second door track, + 3 cm; facing along it) reads
+        /// the layer at its own screen position.
+        /// </summary>
+        public const string PLANAR_GLSL = @"
+uniform int uPlanarCount;
+uniform vec4 uPlanarPlane[8];
+uniform vec4 uPlanarSlack[2];
+uniform vec2 uPlanarInvScreen;
+uniform sampler2DArray uPlanarTex;
+
+bool planarReflection(vec3 world, vec3 n, out vec3 colour)
+{
+    colour = vec3(0.0);
+    for (int i = 0; i < 8; i++)
+    {
+        if (i >= uPlanarCount) break;
+        vec4 P = uPlanarPlane[i];
+        vec4 slack4 = uPlanarSlack[i / 4];
+        int j = i - (i / 4) * 4;
+        float slack = j == 0 ? slack4.x : j == 1 ? slack4.y : j == 2 ? slack4.z : slack4.w;
+        if (abs(dot(P.xyz, world) - P.w) < slack && abs(dot(P.xyz, n)) > 0.97)
+        {
+            colour = texture(uPlanarTex, vec3(gl_FragCoord.xy * uPlanarInvScreen, float(i))).rgb;
+            return true;
+        }
+    }
+    return false;
 }
 ";
 
@@ -600,6 +737,13 @@ uniform sampler2DArrayShadow uLightShadowMap;
 uniform float uLightShadowTexel;
 uniform float uEmissive;
 uniform int uShoulder;
+// Round X-C1: all fixtures (photos, videos, stills; live when asked): the lights beyond the shadowed ones, unshadowed
+uniform int uFarCount;
+layout(std140) uniform FarLights
+{
+    vec4 uFarPos[480];
+    vec4 uFarColor[480];
+};
 
 const float LIGHT_BOUNCE = 0.06;
 const float LIGHT_NEAR = 0.08;
@@ -659,6 +803,25 @@ vec3 artificialLight(vec3 world, vec3 n, float ao)
         float lobe = mix(1.0, 4.0 * max(l.z, 0.0), lc.w);
         sum += lc.rgb * (lobe * window * ndl / (dist2 + 0.25));
     }
+    // Round X-C1: the unshadowed far lights (same falloff and lobe; their fill counts as seen)
+    for (int i = 0; i < 480; i++)
+    {
+        if (i >= uFarCount) break;
+        vec4 lp = uFarPos[i];
+        vec3 d = lp.xyz - world;
+        float dist2 = dot(d, d);
+        float r2 = lp.w * lp.w;
+        if (dist2 >= r2) continue;
+        float window = 1.0 - (dist2 * dist2) / (r2 * r2);
+        window *= window;
+        vec4 lc = uFarColor[i];
+        sum += lc.rgb * (LIGHT_BOUNCE * window * ao);
+        vec3 l = d * inversesqrt(max(dist2, 1e-8));
+        float ndl = dot(n, l);
+        if (ndl <= 0.0) continue;
+        float lobe = mix(1.0, 4.0 * max(l.z, 0.0), lc.w);
+        sum += lc.rgb * (lobe * window * ndl / (dist2 + 0.25));
+    }
     return sum;
 }
 
@@ -671,7 +834,7 @@ vec3 shoulder(vec3 c)
 }
 ";
 
-        public const string SCENE_FS = "#version 330 core\n" + CLIP_GLSL + SUN_GLSL + AO_GLSL + LIGHTS_GLSL + CLOUD_GLSL + MATERIALS_GLSL + WEATHER_GLSL + @"
+        public const string SCENE_FS = "#version 330 core\n" + CLIP_GLSL + SUN_GLSL + AO_GLSL + LIGHTS_GLSL + CLOUD_GLSL + MATERIALS_GLSL + SSR_GLSL + PLANAR_GLSL + WEATHER_GLSL + @"
 in vec3 vWorld;
 in vec3 vNormal;
 in vec4 vColor;
@@ -768,6 +931,27 @@ void main()
         reflectivity *= 1.0 - snow;
         shine.x *= 1.0 - snow;
     }
+    // Round X-C1: colour by SSR: blue where a mirrored (planar) view is drawn, green where the screen-space reflection
+    // finds a surface (brighter = trusted more), magenta where it falls back to the probes or sky, grey where nothing
+    // reflects
+    if (uReflectDebug == 3 && uRealistic == 1 && uWhitecard == 0 && vMaterial >= 0 && vMaterial < 65535)
+    {
+        bool reflective = reflectivity > 0.0 || ((shineFlags & 2) != 0) || (reflectionTier(shine.x) > 0 && float(reflectionTier(shine.x)) * 0.25 >= uReflectThreshold - 0.01);
+        if (!reflective) base.rgb = vec3(0.55);
+        else
+        {
+            vec3 view = normalize(vWorld - uEye);
+            vec3 planar;
+            if (planarReflection(vWorld, n, planar)) base.rgb = vec3(0.2, 0.55, 1.0);
+            else if (n.z <= 0.9) base.rgb = vec3(0.85, 0.2, 0.75);
+            else
+            {
+                vec4 ssr = screenReflection(vWorld, n, reflect(view, n), reflectivity > 0.0 ? 0.0 : clamp(shine.y, 0.0, 1.0), uEye);
+                base.rgb = mix(vec3(0.85, 0.2, 0.75), vec3(0.2, 0.95, 0.3), ssr.a);
+            }
+        }
+    }
+
     float ao = ambientOcclusion(vWorld, uEye);
     vec3 lit;
     if (uSun == 1)
@@ -780,7 +964,7 @@ void main()
         float hemi = 0.5 + 0.5 * n.z;
         lit = base.rgb * ((0.40 + 0.20 * hemi) * ao + 0.45 * diffuse);
     }
-    if (uLightCount > 0) { lit += base.rgb * artificialLight(vWorld, n, ao); }
+    if (uLightCount + uFarCount > 0) { lit += base.rgb * artificialLight(vWorld, n, ao); }
     lit += vEmissive * uEmissive;
 
     // Reflections (Realistic mode, sky only until probes): Schlick's Fresnel, stronger at grazing angles
@@ -797,11 +981,17 @@ void main()
             // Glass: Revit's head-on value lifted so the sheen reads (2.5x, 10-50 %); the room's probe inside
             float r0 = clamp(reflectivity * 2.5, 0.10, 0.5) * uReflectGain;
             fresnel = min((r0 + (1.0 - r0) * grazing) * 0.85, 0.95);
-            bool have;
-            float weight;
-            vec3 env = probeEnvironment(vWorld, n, dir, 0.0, have, weight);
-            if (have) fresnel *= weight;
-            lit = mix(lit, have ? env : skyColour(dir), fresnel);
+            // Round X-C1: the mirrored view where this pane's plane was drawn this frame, else the room's probe or the sky
+            vec3 env;
+            if (!planarReflection(vWorld, n, env))
+            {
+                bool have;
+                float weight;
+                env = probeEnvironment(vWorld, n, dir, 0.0, have, weight);
+                if (have) fresnel *= weight;
+                else env = skyColour(dir);
+            }
+            lit = mix(lit, env, fresnel);
         }
         else
         {
@@ -815,13 +1005,32 @@ void main()
                 // Rough surfaces lose most of the grazing-angle boost
                 fresnel = min(r0 + (1.0 - r0) * grazing * (1.0 - rough) * 0.8, 0.95);
                 // The probes where baked; else the sky, toned down where AO says the surface is enclosed
-                bool have;
-                float weight;
-                vec3 env = probeEnvironment(vWorld, n, dir, rough, have, weight);
-                if (!have) env = blurredSky(dir, rough) * mix(0.55, 1.0, ao);
-                else fresnel *= weight;
+                // Round X-C1: a mirror's plane drawn this frame shows the mirrored view; else the probes where baked (or
+                // the sky, toned down where AO says the surface is enclosed), sharpened on floors and water (surfaces
+                // facing up) by what is on screen
+                vec3 env;
+                bool mirrored = !water && planarReflection(vWorld, n, env);
+                if (mirrored)
+                {
+                    // A mirror reads as a mirror (silvered glass): strong head-on, untinted
+                    fresnel = max(fresnel, min(0.85 * uReflectGain, 0.95));
+                }
+                else
+                {
+                    bool have;
+                    float weight;
+                    env = probeEnvironment(vWorld, n, dir, rough, have, weight);
+                    if (!have) env = blurredSky(dir, rough) * mix(0.55, 1.0, ao);
+                    else fresnel *= weight;
+                    if (n.z > 0.9) // flat floors, tops and water only (sloped roofs stay with the probes)
+                    {
+                        vec4 ssr = screenReflection(vWorld, n, dir, rough, uEye);
+                        env = mix(env, ssr.rgb, ssr.a);
+                        if (have) fresnel = mix(fresnel, fresnel / max(weight, 0.4), ssr.a); // a real hit needn't fade like a close probe hit
+                    }
+                }
                 // Metals: the reflection takes the metal's colour (kept fairly bright: chrome is near white)
-                if (metal) env *= mix(base.rgb, vec3(1.0), 0.5);
+                if (metal && !mirrored) env *= mix(base.rgb, vec3(1.0), 0.5);
                 if (water) fresnel *= uWaterReflect; // grass round: water's reflection strength
                 lit = mix(lit, env, fresnel);
                 // Water: the sun glints on the ripples (water is usually outdoors, so no shadow lookup)
@@ -1201,7 +1410,7 @@ void main()
     float ao = ambientOcclusion(vWorld, uEye);
     if (uSun == 1) { c *= sunLight(up, vWorld, uEye, ao); }
     else { c *= mix(1.0, ao, 0.6); }
-    if (uLightCount > 0) { c += albedo * artificialLight(vWorld, up, ao); }
+    if (uLightCount + uFarCount > 0) { c += albedo * artificialLight(vWorld, up, ao); }
     if (wet > 0.01)
     {
         // A sheen of the horizon, stronger at grazing angles and in the puddles
@@ -1358,10 +1567,126 @@ void main()
     {
         c = albedo * (0.45 * ao + 0.45 * max(n.z, 0.0));
     }
-    if (uLightCount > 0) c += albedo * artificialLight(vWorld, n, ao);
+    if (uLightCount + uFarCount > 0) c += albedo * artificialLight(vWorld, n, ao);
     float dist = length(vWorld - uEye);
     float fog = clamp(1.0 - exp(-dist * uFogDensity), 0.0, 0.65);
     oColor = vec4(shoulder(mix(c, uFogColor, fog)), 1.0);
+}";
+
+        #endregion
+
+        #region Billboards (Round X-B: entourage)
+
+        /// <summary>
+        /// Round X-B: billboards (trees, people, cars…): one instanced quad each, standing on its base and turned about
+        /// the vertical to face the eye (or, for the shadow maps, the sun: uFaceSun = 1 with uFaceDir the horizontal
+        /// direction to the sun, so the silhouette casts its full shadow). Per instance: aPos = base xyz, height; aShape =
+        /// width, flip (±1), picture layer, textured (1) or tinted (0); aTint = colour, 1 / mean luminance; aUv = the
+        /// picture's content box (u0, v0 top, u1, v1 bottom; the layers are uploaded top row first).
+        /// </summary>
+        public const string BILLBOARD_VS = @"#version 330 core
+layout(location = 0) in vec4 aPos;
+layout(location = 1) in vec4 aShape;
+layout(location = 2) in vec4 aTint;
+layout(location = 3) in vec4 aUv;
+uniform mat4 uViewProj;
+uniform vec3 uEye;
+uniform int uFaceSun;
+uniform vec3 uFaceDir;
+out vec3 vWorld;
+out vec3 vUv;
+out vec3 vNormal;
+out float vT;
+flat out vec4 vTint;
+flat out float vTextured;
+flat out float vPush;
+void main()
+{
+    int v = gl_VertexID;
+    float sx = (v == 1 || v == 3) ? 1.0 : 0.0;
+    float sy = v >= 2 ? 1.0 : 0.0;
+    vec3 base = aPos.xyz;
+    vec3 toward = uFaceSun == 1 ? uFaceDir : uEye - base;
+    toward.z = 0.0;
+    toward = dot(toward, toward) > 1e-8 ? normalize(toward) : vec3(0.0, -1.0, 0.0);
+    vec3 right = vec3(-toward.y, toward.x, 0.0);
+    float w = aShape.x;
+    vec3 world = base + right * ((sx - 0.5) * w) + vec3(0.0, 0.0, sy * aPos.w);
+    float u = aShape.y < 0.0 ? 1.0 - sx : sx;
+    vUv = vec3(mix(aUv.x, aUv.z, u), mix(aUv.w, aUv.y, sy), aShape.z);
+    vWorld = world;
+    vNormal = toward;
+    vT = sy;
+    vTint = aTint;
+    vTextured = aShape.w;
+    vPush = 0.5 * w + 0.05;
+    gl_Position = uViewProj * vec4(world, 1.0);
+}";
+
+        /// <summary>
+        /// Round X-B: a billboard's colour: the picture's own (textured) or the category colour shaded by the picture's
+        /// luminance (tinted); alpha-tested at 0.5. Lit like foliage: the sky (more towards the top), the sun wrapped
+        /// round (light gets through leaves), its shadows looked up a little towards the sun (past the billboard's own
+        /// sun-facing caster), the artificial lights, fog.
+        /// </summary>
+        public const string BILLBOARD_FS = "#version 330 core\n" + CLIP_GLSL + SUN_GLSL + AO_GLSL + LIGHTS_GLSL + @"
+in vec3 vWorld;
+in vec3 vUv;
+in vec3 vNormal;
+in float vT;
+flat in vec4 vTint;
+flat in float vTextured;
+flat in float vPush;
+uniform sampler2DArray uBillboards;
+uniform vec3 uEye;
+uniform vec3 uFogColor;
+uniform float uFogDensity;
+out vec4 oColor;
+void main()
+{
+    if (sectionCut(vWorld)) discard;
+    vec4 t = texture(uBillboards, vUv);
+    if (t.a < 0.5) discard;
+    vec3 albedo;
+    if (vTextured > 0.5)
+    {
+        albedo = t.rgb;
+    }
+    else
+    {
+        float lum = dot(t.rgb, vec3(0.299, 0.587, 0.114)) * vTint.a;
+        albedo = vTint.rgb * clamp(mix(1.0, lum, 0.7), 0.45, 1.5);
+    }
+    vec3 n = normalize(vNormal);
+    vec3 c;
+    if (uSun == 1)
+    {
+        vec3 level = vec3(uSunDir.x, uSunDir.y, 0.0);
+        level = dot(level, level) > 1e-8 ? normalize(level) : vec3(0.0);
+        vec3 vis = sunVisibility(vWorld + level * vPush, uSunDir, uEye);
+        vis = mix(vec3(1.0), vis, uShadowStrength * 0.85); // a little light gets through leaves and past edges
+        float wrap = 0.6 + 0.4 * max(dot(n, uSunDir), 0.0);
+        c = albedo * (uSkyColor * (0.8 + 0.35 * vT) + uSunColor * (0.8 * wrap) * vis);
+    }
+    else
+    {
+        c = albedo * (0.62 + 0.3 * vT);
+    }
+    if (uLightCount + uFarCount > 0) c += albedo * artificialLight(vWorld, n, 1.0);
+    float dist = length(vWorld - uEye);
+    float fog = clamp(1.0 - exp(-dist * uFogDensity), 0.0, 0.65);
+    oColor = vec4(shoulder(mix(c, uFogColor, fog)), 1.0);
+}";
+
+        /// <summary>Round X-B: a billboard in the sun's shadow maps: depth only, cut out by the picture's alpha.</summary>
+        public const string BILLBOARD_SHADOW_FS = @"#version 330 core
+in vec3 vUv;
+uniform sampler2DArray uBillboards;
+out vec4 oColor;
+void main()
+{
+    if (texture(uBillboards, vUv).a < 0.5) discard;
+    oColor = vec4(1.0);
 }";
 
         #endregion

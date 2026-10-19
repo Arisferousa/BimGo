@@ -179,6 +179,17 @@ File formats
   Media Foundation.
 
 --------------------------------------------------------------------------------
+Entourage billboards (Round X-B)
+
+The built-in billboards (trees, shrubs, people, cars) are drawn in code by
+BimGo itself (BimGo.Core EntourageArt) and are part of BimGo under MIT-0; no
+third-party pictures are bundled. Traced silhouettes (EntourageShapes) will be
+Gavin's own drawings (Aussie BIM Guru, MIT-0), each credited in its entry.
+Pictures a user imports (IMPORT PNG / IMPORT FOLDER) stay under their own
+licence: BimGo never ships them, but a .bimgo the user saves carries them, so
+sharing that file is subject to the pack's terms.
+
+--------------------------------------------------------------------------------
 Licence review and contact
 
 BimGo is intended as freely available, open source software for the building

@@ -133,7 +133,8 @@ namespace BimGo.Game
         }
 
         /// <summary>True when the shown profile hides an element (its row is hidden).</summary>
-        private bool ProfileHides(int element) => _profileHidden != null && (uint)element < (uint)_profileHidden.Length && _profileHidden[element];
+        private bool ProfileHides(int element) => (_profileHidden != null && (uint)element < (uint)_profileHidden.Length && _profileHidden[element])
+            || EntourageHides(element); // Round X-B2: a Revit planting / entourage swapped for a billboard is hidden the same way
 
         /// <summary>
         /// Colour round B: hides the elements of hidden rows while the profile shows (as the Scan gun's hiding: drawing,
@@ -155,8 +156,8 @@ namespace BimGo.Game
                 if (hide == _profileHidden[e]) { continue; }
                 _profileHidden[e] = hide;
                 changed = true;
-                _renderer.SetElementHidden(e, hide || _hidden[e] || _userHidden[e]);
-                bool visible = !hide && !_hidden[e] && !_userHidden[e] && _groupVisible[Rendering.SceneBatches.GroupOf(Scene.Elements[e])];
+                _renderer.SetElementHidden(e, hide || _hidden[e] || _userHidden[e] || EntourageHides(e));
+                bool visible = !hide && !_hidden[e] && !_userHidden[e] && !EntourageHides(e) && _groupVisible[Rendering.SceneBatches.GroupOf(Scene.Elements[e])];
                 _pickMask[e] = visible;
                 _collisionMask[e] = visible && Scene.Elements[e].CategoryIndex != _doorCategory;
             }

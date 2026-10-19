@@ -103,7 +103,18 @@ namespace BimGo.Format
                 MaterialsDto materials = ReadOptionalJson<MaterialsDto>(zip, BimGoFormat.ENTRY_MATERIALS);
                 LibraryDto library = ReadOptionalJson<LibraryDto>(zip, BimGoFormat.ENTRY_LIBRARY);
                 GridsDto grids = ReadOptionalJson<GridsDto>(zip, BimGoFormat.ENTRY_GRIDS); // grids round A
+                EntourageSlotsDto slots = ReadOptionalJson<EntourageSlotsDto>(zip, BimGoFormat.ENTRY_ENTOURAGE_SLOTS); // Round X-B2
                 CameraPathDocument paths = ReadOptionalJson<CameraPathDocument>(zip, BimGoFormat.ENTRY_PATHS)?.Clean(); // Round K
+                EntourageDocument entourage = ReadOptionalJson<EntourageDocument>(zip, BimGoFormat.ENTRY_ENTOURAGE)?.Clean(); // Round X-B
+                var entourageImages = new Dictionary<string, byte[]>(StringComparer.Ordinal);
+                if (entourage != null)
+                {
+                    foreach (EntourageType type in entourage.Types)
+                    {
+                        byte[] png = ReadBytes(zip, BimGoFormat.ENTOURAGE_FOLDER + type.Image);
+                        if (png != null && png.Length <= BimGoFormat.MAX_ENTOURAGE_IMAGE_BYTES) { entourageImages[type.Image] = png; }
+                    }
+                }
                 progress?.Step(0.1);
                 progress?.ThrowIfCancelled();
                 ReadGeometry(zip, out SceneVertex[] vertices, out uint[] indices, progress);
@@ -111,7 +122,7 @@ namespace BimGo.Format
 
                 MaterialData materialData = ReadMaterials(zip, materials, vertices.Length);
                 SceneData scene = BuildScene(path, manifest, model, elements, parameters, vertices, indices, settings ?? new LaunchSettings(), lighting, materialData,
-                    records => BuildLibrary(zip, library, records, vertices.Length), grids);
+                    records => BuildLibrary(zip, library, records, vertices.Length), grids, slots);
                 comments.Comments ??= new List<CommentRecord>();
                 comments.Comments.RemoveAll(c => c == null || string.IsNullOrWhiteSpace(c.Text));
                 foreach (CommentRecord comment in comments.Comments)
@@ -137,6 +148,8 @@ namespace BimGo.Format
                     Journal = new EditJournal(journal.Entries),
                     Bookmarks = bookmarks,
                     Paths = paths,
+                    Entourage = entourage,
+                    EntourageImages = entourageImages,
                     Sun = sun,
                     Visibility = visibility,
                     CreatedUtc = manifest.CreatedUtc,
@@ -159,7 +172,7 @@ namespace BimGo.Format
 
         private static SceneData BuildScene(string path, ManifestDto manifest, ModelDto model, ElementsDto elementsDto, ParametersDto parametersDto,
             SceneVertex[] vertices, uint[] indices, LaunchSettings settings, LightingDto lightingDto, MaterialData materials,
-            Func<ElementRecord[], LibraryData> buildLibrary = null, GridsDto gridsDto = null)
+            Func<ElementRecord[], LibraryData> buildLibrary = null, GridsDto gridsDto = null, EntourageSlotsDto slotsDto = null)
         {
             IReadOnlyList<CategoryDef> catalog = CategoryCatalog.All;
             int genericIndex = CategoryCatalog.Find(CategoryCatalog.KEY_GENERIC)?.Index ?? 0;
@@ -294,6 +307,7 @@ namespace BimGo.Format
                 Elements = records,
                 Levels = levels,
                 Grids = GridFiles.FromDto(gridsDto, links.Length),
+                EntourageSlots = EntourageSlots.FromDto(slotsDto, records.Length), // Round X-B2
                 Rooms = rooms.ToArray(),
                 Links = links,
                 PhaseId = model.PhaseId,

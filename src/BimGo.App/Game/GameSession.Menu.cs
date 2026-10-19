@@ -433,6 +433,11 @@ namespace BimGo.Game
                 BuildMediaPanel(); // Round K-A
                 return;
             }
+            if (IsEntouragePanelOpen)
+            {
+                BuildEntouragePanel(); // Round X-B
+                return;
+            }
             if (IsTexturesPanelOpen)
             {
                 BuildTexturesPanel();
@@ -519,7 +524,7 @@ namespace BimGo.Game
             bool libraryButton = HasLibrary;
             bool roomsButton = Scene.Rooms.Length > 0;
             int sessionButtons = 4 + (IsFileMode ? 3 : 1); // + CONTROLS (input round B2)
-            int reviewButtons = 6 + (hiddenThings > 0 ? 1 : 0) + (texturesButton ? 1 : 0) + (libraryButton ? 1 : 0) + (roomsButton ? 1 : 0);
+            int reviewButtons = 7 + (hiddenThings > 0 ? 1 : 0) + (texturesButton ? 1 : 0) + (libraryButton ? 1 : 0) + (roomsButton ? 1 : 0);
             int rows = twoStacks ? Math.Max(sessionButtons, reviewButtons) : sessionButtons + reviewButtons;
             float step = Math.Clamp((endY - S(12) - buttonsTop) / rows, S(32), S(44));
             float buttonH = step - S(6);
@@ -566,6 +571,8 @@ namespace BimGo.Game
             if (MenuButton(f, x, y, stackW, BookmarksMenuLabel(), false, false, height: buttonH, compact: true)) { OpenBookmarks(); return; }
             y += step;
             if (MenuButton(f, x, y, stackW, "MEDIA", false, false, height: buttonH, compact: true)) { OpenMedia(_mediaTab); return; } // Round K-A
+            y += step;
+            if (MenuButton(f, x, y, stackW, EntourageMenuLabel(), false, false, height: buttonH, compact: true)) { OpenEntourage(); return; } // Round X-B
             y += step;
             if (texturesButton)
             {

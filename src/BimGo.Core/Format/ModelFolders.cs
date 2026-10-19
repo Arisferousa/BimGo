@@ -68,6 +68,9 @@ namespace BimGo.Format
         /// <summary>Round K: keyframed camera paths in a model folder.</summary>
         public const string PATHS_FILE = "paths.json";
 
+        /// <summary>Round X-B: billboards in a model folder (their pictures in <c>entourage-images</c> beside it).</summary>
+        public const string ENTOURAGE_FILE = "entourage.json";
+
         /// <summary>Texture choices in a model folder (machine-specific image paths: never shared).</summary>
         public const string TEXTURE_OVERRIDES_FILE = "texture-overrides.json";
 
@@ -85,7 +88,8 @@ namespace BimGo.Format
             (SUN_FILE, BimGoFormat.SUN_SIDECAR_SUFFIX),
             (VISIBILITY_FILE, BimGoFormat.VISIBILITY_SIDECAR_SUFFIX),
             (CLASHES_FILE, BimGoFormat.CLASH_SIDECAR_SUFFIX),
-            (PATHS_FILE, BimGoFormat.PATHS_SIDECAR_SUFFIX) // Round K
+            (PATHS_FILE, BimGoFormat.PATHS_SIDECAR_SUFFIX), // Round K
+            (ENTOURAGE_FILE, BimGoFormat.ENTOURAGE_SIDECAR_SUFFIX) // Round X-B
         };
 
         #endregion

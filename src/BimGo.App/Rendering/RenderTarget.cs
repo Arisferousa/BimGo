@@ -125,6 +125,18 @@ namespace BimGo.Rendering
         }
 
         /// <summary>
+        /// Round X-C1: copies (resolving MSAA) this target's colour into a framebuffer of the same size (the reflections'
+        /// history).
+        /// </summary>
+        public void ResolveColourTo(uint framebuffer, int width, int height)
+        {
+            Gl.BindFramebuffer(Gl.READ_FRAMEBUFFER, _framebuffer);
+            Gl.BindFramebuffer(Gl.DRAW_FRAMEBUFFER, framebuffer);
+            Gl.BlitFramebuffer(0, 0, Width, Height, 0, 0, width, height, Gl.COLOR_BUFFER_BIT, Gl.NEAREST);
+            Gl.BindFramebuffer(Gl.FRAMEBUFFER, 0);
+        }
+
+        /// <summary>
         /// Reads this target's colour as bottom-up BGRA (single-sample targets only; resolve an MSAA one first).
         /// </summary>
         public unsafe void ReadPixels(byte[] bgra)

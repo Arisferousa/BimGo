@@ -295,7 +295,7 @@ namespace BimGo.Game
                 SunSize = _sun.SunSize,
                 SunGlare = _sun.SunGlare,
                 Stars = _sun.Stars ? new Vector4(_sun.StarDensity, _sun.StarBrightness * (1f - WeatherOvercast), _sun.StarTwinkle, _sun.MilkyWay * (1f - WeatherOvercast)) : Vector4.Zero, // W-A (W-B: hidden by the storm)
-                Time = _clock % 3600f,
+                Time = _video != null ? _videoFrame / (float)_videoFps : _clock % 3600f, // X-A: twinkle at the video's time
                 CelestialX = _celestialX,
                 CelestialY = _celestialY,
                 CelestialZ = _celestialZ
@@ -333,6 +333,7 @@ namespace BimGo.Game
         {
             var hash = new HashCode();
             hash.Add(_whitecard);
+            hash.Add(_billboardKey); // Round X-B: billboards cast shadows
             foreach (Physics.DynamicInstance instance in Dynamics.Instances)
             {
                 if (!Dynamics.IsActive(instance)) { continue; }

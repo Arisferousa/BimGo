@@ -25,6 +25,7 @@ namespace BimGo.Game
         private int _savedCommentRevision;
         private int _savedBookmarkRevision;
         private int _savedPathRevision; // Round K-A
+        private int _savedEntourageRevision; // Round X-B
         private float _noticeTimer;
         private string _lastTitle;
 
@@ -44,7 +45,8 @@ namespace BimGo.Game
         /// <summary>True if a standalone file has edits, comments or bookmarks that are not saved yet.</summary>
         public bool IsDirty => IsFileMode && Comments != null && Bookmarks != null &&
             (_journal.Revision != _savedJournalRevision || Comments.Revision != _savedCommentRevision || Bookmarks.Revision != _savedBookmarkRevision || SunDirty || VisibilityDirty
-             || _materialsRevision != _savedMaterialsRevision || ClashesDirty || (CameraPaths != null && CameraPaths.Revision != _savedPathRevision));
+             || _materialsRevision != _savedMaterialsRevision || ClashesDirty || (CameraPaths != null && CameraPaths.Revision != _savedPathRevision)
+             || (Entourage != null && Entourage.Revision != _savedEntourageRevision));
 
         /// <summary>The document's display name (file name, or the Revit model title).</summary>
         public string DocumentName => IsFileMode && !string.IsNullOrEmpty(DocumentPath) ? Path.GetFileName(DocumentPath) : Scene.ModelTitle;
@@ -59,6 +61,7 @@ namespace BimGo.Game
             _savedCommentRevision = Comments?.Revision ?? 0;
             _savedBookmarkRevision = Bookmarks?.Revision ?? 0;
             _savedPathRevision = CameraPaths?.Revision ?? 0;
+            _savedEntourageRevision = Entourage?.Revision ?? 0;
             _savedSunRevision = _sunRevision;
             _savedVisibilityRevision = _visibilityRevision;
             _savedClashRevision = _clashRevision;
@@ -416,6 +419,8 @@ namespace BimGo.Game
                 Journal = _journal,
                 Bookmarks = Bookmarks.ToDocument(),
                 Paths = CameraPaths?.ToDocument(), // Round K-A
+                Entourage = Entourage?.ToDocument(), // Round X-B
+                EntourageImages = Entourage?.ImagesForSave(),
                 Sun = _sun?.Copy(),
                 Visibility = ToVisibilitySettings(),
                 Materials = MaterialsChanged ? CurrentMaterials : null, // Textures panel: picked images are embedded
