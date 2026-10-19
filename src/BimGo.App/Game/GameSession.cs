@@ -220,6 +220,7 @@ namespace BimGo.Game
             _sensitivity = settings.MouseSensitivity;
             _invertY = settings.InvertY;
             _vsync = settings.VSync;
+            _frameLimit = LaunchSettings.NearestFrameRateLimit(settings.FrameRateLimit);
             _showFps = settings.ShowFps;
             GizmoSnap = settings.GizmoSnap;
             SnapMoveMm = LaunchSettings.NearestStep(LaunchSettings.SNAP_MOVE_STEPS_MM, settings.SnapMoveMm);
@@ -553,6 +554,7 @@ namespace BimGo.Game
                         previous = clock.Elapsed.TotalSeconds;
                         continue;
                     }
+                    EndFrameLimit();
                     return open ? _endReason : SessionEndReason.WindowClosed;
                 }
 
@@ -597,6 +599,7 @@ namespace BimGo.Game
                 _window.Swap();
                 _window.Input.EndFrame();
                 UpdateFps(dt);
+                WaitForFrameLimit(); // Round X-D0: the frame rate limit
             }
         }
 
@@ -1289,6 +1292,7 @@ namespace BimGo.Game
             settings.ShowGunBar = _showGunBar;
             settings.InvertY = _invertY;
             settings.VSync = _vsync;
+            settings.FrameRateLimit = _frameLimit;
             settings.ShowFps = _showFps;
             settings.GizmoSnap = GizmoSnap;
             settings.SnapMoveMm = SnapMoveMm;
@@ -1311,6 +1315,7 @@ namespace BimGo.Game
         public void Dispose()
         {
             try { AbortVideo(); } catch (Exception ex) { Utilities.Log_Utils.Write($"Video stop failed: {ex.Message}"); }
+            EndFrameLimit();
             if (_tourActive) { try { StopTour(finished: false); } catch (Exception ex) { Utilities.Log_Utils.Write($"Tour stop failed: {ex.Message}"); } }
             _window.PadCursor = PadCursorMode.Menu; // the start screen
             try { SaveSettings(); } catch { /* logged inside */ }

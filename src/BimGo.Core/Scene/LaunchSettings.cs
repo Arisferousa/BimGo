@@ -366,6 +366,29 @@ namespace BimGo.Scene
         /// <summary>Synchronise presentation to the display refresh rate.</summary>
         public bool VSync { get; set; } = true;
 
+        /// <summary>Round X-D0: the frame rate limit choices (0 = off).</summary>
+        public static readonly int[] FRAME_RATE_LIMITS = { 0, 30, 45, 60 };
+
+        /// <summary>Round X-D0: the default frame rate limit (quieter laptop fans).</summary>
+        public const int DEFAULT_FRAME_RATE_LIMIT = 30;
+
+        /// <summary>Round X-D0: frames per second the walkthrough waits for (0 = no limit; not while recording a video or batch stills).</summary>
+        public int FrameRateLimit { get; set; } = DEFAULT_FRAME_RATE_LIMIT;
+
+        /// <summary>
+        /// The nearest of <see cref="FRAME_RATE_LIMITS"/> (a hand-edited settings file); 0 or less is off.
+        /// </summary>
+        public static int NearestFrameRateLimit(int value)
+        {
+            if (value <= 0) { return 0; }
+            int best = FRAME_RATE_LIMITS[1];
+            for (int i = 1; i < FRAME_RATE_LIMITS.Length; i++)
+            {
+                if (Math.Abs(FRAME_RATE_LIMITS[i] - value) < Math.Abs(best - value)) { best = FRAME_RATE_LIMITS[i]; }
+            }
+            return best;
+        }
+
         /// <summary>Load comments from the JSON sidecar.</summary>
         public bool LoadComments { get; set; } = true;
 

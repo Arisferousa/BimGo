@@ -523,7 +523,7 @@ Envelope: `protocol`, `id`, `seq`, `sessionId`, `type`, `replyTo`, `sentUtc`, `p
 
 Every build up to X-C1 is built and confirmed by Gavin; their notes stay in `ai/` (§9 lists the folders). Only the open build is listed here.
 
-**No open build.** Next: X-D (IES light profiles); handoff `ai/261019j_Handoff/0_handoff.md`.
+**Open: X-D0 frame rate limit** (`ai/261019k_FrameCap_XD0`). Check: Show FPS reads ~30 by default (VSync on or off); Pause → Display → Frame rate limit Off / 30 / 45 / 60 changes it at once and is kept after a restart; videos and batch stills still run at full speed; `FrameRateLimitTests` pass. Next: X-D (IES light profiles); handoff `ai/261019j_Handoff/0_handoff.md`.
 
 ### Standing limitations
 - Undo / redo are file-only (live: undo in Revit, then F5). Refresh is a full re-extract. Show in Revit needs the session's model to be Revit's active document. One window walks one model.
@@ -642,6 +642,7 @@ Every round's handoff and build notes live in `ai/<yymmdd>_<round>/`. Same-day f
 | 2026-10-19 | Entourage polish, build X-B3 (`261019h_EntouragePolish_XB3`) | Alt + wheel (and Z / X held) live resize of the aimed billboard, saved on release; people redrawn (adult proportions, tapered limbs, natural stances), trees redrawn (branches and small-leaf clusters, gaps, a better palm) and a gum tree; traced-drawings pipeline (`tools/entourage/trace.py` → `EntourageShapes`, even-odd rings); IMPORT FOLDER…; card counts include Revit swaps |
 | 2026-10-19 | Reflections, build X-C1 (`261019i_Reflections_XC1`) | Sharp reflections (Realistic mode; off / low / medium / high, medium by default and in the Realistic profile): live planar (mirrored-view) reflections of the nearest 1–2 glass / mirror planes; screen-space reflections on floors and water (last frame's colour, reprojected, mip-blurred by roughness); the probes / sky elsewhere; Debug → SSR colours. All fixtures lit (480 unshadowed beyond the nearest 32) in photos, videos and stills, live as an option |
 | 2026-10-19 | Handoff (`261019j_Handoff`) | Handoff for X-D onwards in a new chat: X-C1 as it landed (stills-only sharp reflections, roof fix, all fixtures, why live was set aside), X-D answers and scope (IES per fixture type, built-in profiles), X-E outline, things to watch (16 samplers, units 17–19) |
+| 2026-10-19 | Frame rate limit, build X-D0 (`261019k_FrameCap_XD0`) | Pause → Display: frame rate limit Off / 30 / 45 / 60 (default 30, per machine; sleep + short spin with a 1 ms timer); not while recording videos or batch stills |
 
 ## 10. Dependencies
 

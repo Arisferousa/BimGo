@@ -63,7 +63,7 @@ namespace BimGo.Game
         /// Height of the right column's card (unscaled): fits the Display tab, the tallest. Polish round P-A1: the card is
         /// shorter in a short window and its content scrolls (<see cref="SettingsCardHeight"/>).
         /// </summary>
-        private const float RIGHT_CARD_HEIGHT = 440f;
+        private const float RIGHT_CARD_HEIGHT = 482f;
 
         // The settings card's scroll (polish round P-A1)
         private readonly ScrollRegion _settingsScroll = new();
@@ -945,6 +945,7 @@ namespace BimGo.Game
                 Native.Wgl.SetSwapInterval(_vsync);
             }
             y += S(28);
+            y += BuildFrameLimitRow(f, input, ix, y + S(6), iw) + S(6);
             _invertY = Checkbox(f, input, ix, y, iw, "Invert Y", _invertY);
             y += S(28);
             _showFps = Checkbox(f, input, ix, y, iw, "Show FPS", _showFps);

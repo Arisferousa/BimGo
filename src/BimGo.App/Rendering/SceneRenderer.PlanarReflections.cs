@@ -1,5 +1,6 @@
 using System.Numerics;
 using BimGo.Native;
+using BimGo.Physics;
 using BimGo.Scene;
 
 // The class belongs to the Rendering namespace

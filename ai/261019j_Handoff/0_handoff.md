@@ -83,6 +83,11 @@ No open build in README §8 (X-C1 accepted). Gavin has **no traced entourage dra
    "from Revit / built-in name / none"), ASSIGN… (a built-in or IMPORT .IES…), RESET; saved in the model folder /
    `.bimgo` like entourage rules.
 6. Check visually with headless WebGL renders: a wall with a downlight and a wall washer.
+7. **Fold in: a frame-rate cap** (Gavin's P5200 laptop fans run loud at 50–60 fps: the GPU works flat out to reach
+   VSync's 60): a setting *Frame rate limit* Off / 30 / 45 / 60 (default Off; saved in `LaunchSettings`), next to VSync
+   in the settings; the main loop sleeps to the target (`Thread.Sleep` for most of the wait, a short spin for the
+   rest, high-resolution timer `timeBeginPeriod(1)` while running), not applied while recording a video or rendering
+   stills. Works with or without VSync.
 
 ## 4. After X-D
 - **X-E two-way Revit camera sync** (live sessions only): new additive message kinds (e.g. `view.camera`) both ways
@@ -91,7 +96,7 @@ No open build in README §8 (X-C1 accepted). Gavin has **no traced entourage dra
   active 3D view's eye / direction (ViewOrientation3D; feet ↔ scene-local metres via `GameSession.Coordinates`); a toggle
   for direction (off / BimGo → Revit / Revit → BimGo / both), loop guard. Ask: default direction, throttle, whether the
   Revit view should match FOV / section box.
-- **Later:** live sharp reflections (above); find element search, accessibility checks, travel-distance tape, kiosk
+- **Later:** live sharp reflections (above); billboards in the probe captures and a probe re-bake when entourage is planted / moved (live glass would show the people and trees, still soft); find element search, accessibility checks, travel-distance tape, kiosk
   launch, profile schedule CSV, OpenXR VR, IFC import, occlusion culling / LOD, multiplayer; entourage: wind sway,
   fixed-heading cars, billboards in reflections, undo for planting; Gavin's traced drawings when he has them.
 
