@@ -1,4 +1,5 @@
 using System.IO.Compression;
+using System.Numerics;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using BimGo.Edits;
@@ -90,6 +91,14 @@ namespace BimGo.Format
                             pictureStream.Write(png);
                         }
                     }
+                    if (document.Measurements != null && !document.Measurements.IsEmpty) // Round Y-A
+                    {
+                        WriteJson(zip, BimGoFormat.ENTRY_MEASUREMENTS, document.Measurements, BimGoFormat.JSON_INDENTED);
+                    }
+                    if (document.LightProfiles != null && !document.LightProfiles.IsEmpty) // Round X-D1
+                    {
+                        WriteJson(zip, BimGoFormat.ENTRY_LIGHT_PROFILES, document.LightProfiles, BimGoFormat.JSON_INDENTED);
+                    }
                     if (document.Visibility != null && !document.Visibility.IsEmpty)
                     {
                         WriteJson(zip, BimGoFormat.ENTRY_VISIBILITY, document.Visibility, BimGoFormat.JSON_INDENTED);
@@ -108,6 +117,13 @@ namespace BimGo.Format
                     if (scene.Lighting != null && !scene.Lighting.IsEmpty)
                     {
                         WriteJson(zip, BimGoFormat.ENTRY_LIGHTING, BuildLighting(scene.Lighting), BimGoFormat.JSON_COMPACT);
+                        foreach (LightIesFile ies in scene.Lighting.IesFiles) // Round X-D1
+                        {
+                            if (!LightProfiles.IsSafeHash(ies.Hash) || string.IsNullOrEmpty(ies.Text)) { continue; }
+                            ZipArchiveEntry iesEntry = zip.CreateEntry(BimGoFormat.IES_FOLDER + ies.Hash + ".ies", CompressionLevel.Optimal);
+                            using Stream iesStream = iesEntry.Open();
+                            iesStream.Write(System.Text.Encoding.UTF8.GetBytes(ies.Text));
+                        }
                     }
                     if (scene.Library != null && !scene.Library.IsEmpty)
                     {
@@ -257,8 +273,16 @@ namespace BimGo.Format
                     Lumens = light.Lumens,
                     Kelvin = light.Kelvin,
                     Downward = light.Downward,
-                    Estimated = light.Estimated
+                    Estimated = light.Estimated,
+                    Ies = light.Ies, // Round X-D1
+                    Aim = light.Ies == null && light.Aim == -Vector3.UnitZ ? null : light.Aim,
+                    Across = light.Ies == null && light.Across == Vector3.UnitX ? null : light.Across
                 });
+            }
+            if (lighting.IesFiles.Length > 0)
+            {
+                dto.Ies = new List<LightIesDto>();
+                foreach (LightIesFile ies in lighting.IesFiles) { dto.Ies.Add(new LightIesDto { Hash = ies.Hash, Name = ies.Name }); }
             }
             return dto;
         }

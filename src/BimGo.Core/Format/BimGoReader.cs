@@ -100,11 +100,14 @@ namespace BimGo.Format
                 SunSettings sun = ReadJson<SunSettings>(zip, BimGoFormat.ENTRY_SUN, required: false)?.Clean();
                 VisibilitySettings visibility = ReadJson<VisibilitySettings>(zip, BimGoFormat.ENTRY_VISIBILITY, required: false)?.Clean();
                 LightingDto lighting = ReadJson<LightingDto>(zip, BimGoFormat.ENTRY_LIGHTING, required: false);
+                ReadIesTexts(zip, lighting); // Round X-D1
+                LightProfileDocument lightProfiles = ReadOptionalJson<LightProfileDocument>(zip, BimGoFormat.ENTRY_LIGHT_PROFILES)?.Clean(); // Round X-D1
                 MaterialsDto materials = ReadOptionalJson<MaterialsDto>(zip, BimGoFormat.ENTRY_MATERIALS);
                 LibraryDto library = ReadOptionalJson<LibraryDto>(zip, BimGoFormat.ENTRY_LIBRARY);
                 GridsDto grids = ReadOptionalJson<GridsDto>(zip, BimGoFormat.ENTRY_GRIDS); // grids round A
                 EntourageSlotsDto slots = ReadOptionalJson<EntourageSlotsDto>(zip, BimGoFormat.ENTRY_ENTOURAGE_SLOTS); // Round X-B2
                 CameraPathDocument paths = ReadOptionalJson<CameraPathDocument>(zip, BimGoFormat.ENTRY_PATHS)?.Clean(); // Round K
+                MeasurementDocument measurements = ReadOptionalJson<MeasurementDocument>(zip, BimGoFormat.ENTRY_MEASUREMENTS)?.Clean(); // Round Y-A
                 EntourageDocument entourage = ReadOptionalJson<EntourageDocument>(zip, BimGoFormat.ENTRY_ENTOURAGE)?.Clean(); // Round X-B
                 var entourageImages = new Dictionary<string, byte[]>(StringComparer.Ordinal);
                 if (entourage != null)
@@ -150,6 +153,8 @@ namespace BimGo.Format
                     Paths = paths,
                     Entourage = entourage,
                     EntourageImages = entourageImages,
+                    LightProfiles = lightProfiles,
+                    Measurements = measurements,
                     Sun = sun,
                     Visibility = visibility,
                     CreatedUtc = manifest.CreatedUtc,
@@ -429,6 +434,14 @@ namespace BimGo.Format
                 next = start + count;
             }
 
+            // Round X-D1: the photometric files (by hash, with their names)
+            var files = new Dictionary<string, LightIesFile>(StringComparer.Ordinal);
+            foreach (LightIesDto ies in dto.Ies ?? new List<LightIesDto>())
+            {
+                if (ies == null || dto.IesTexts == null || !dto.IesTexts.TryGetValue(ies.Hash ?? string.Empty, out string text) || files.ContainsKey(ies.Hash)) { continue; }
+                files[ies.Hash] = new LightIesFile(ies.Hash, string.IsNullOrWhiteSpace(ies.Name) ? ies.Hash + ".ies" : ies.Name, text);
+            }
+
             var lights = new List<LightSource>();
             foreach (LightDto light in dto.Lights ?? new List<LightDto>())
             {
@@ -442,13 +455,41 @@ namespace BimGo.Format
                     Lumens = float.IsFinite(light.Lumens) ? Math.Clamp(light.Lumens, 10f, 100000f) : 1000f,
                     Kelvin = float.IsFinite(light.Kelvin) ? Math.Clamp(light.Kelvin, 1000f, 15000f) : 3500f,
                     Downward = float.IsFinite(light.Downward) ? Math.Clamp(light.Downward, 0f, 1f) : 0.7f,
-                    Estimated = light.Estimated
+                    Estimated = light.Estimated,
+                    Ies = files.ContainsKey(light.Ies ?? string.Empty) ? light.Ies : null, // Round X-D1
+                    Aim = UnitOr(light.Aim, -Vector3.UnitZ),
+                    Across = UnitOr(light.Across, Vector3.UnitX)
                 });
             }
 
             return runs.Count == 0 && lights.Count == 0
                 ? LightingData.Empty
-                : new LightingData { Emissive = runs.ToArray(), Lights = lights.ToArray() };
+                : new LightingData { Emissive = runs.ToArray(), Lights = lights.ToArray(), IesFiles = files.Values.ToArray() };
+
+            static Vector3 UnitOr(Vector3? v, Vector3 fallback)
+            {
+                if (v == null) { return fallback; }
+                Vector3 value = v.Value;
+                float length = value.Length();
+                return float.IsFinite(length) && length > 1e-4f ? value / length : fallback;
+            }
+        }
+
+        /// <summary>
+        /// Round X-D1: the photometric files lighting.json names (<c>ies/&lt;hash&gt;.ies</c>), into <see cref="LightingDto.IesTexts"/>;
+        /// missing, oversized or misnamed ones are left out (their fixtures fall back to the lobe).
+        /// </summary>
+        private static void ReadIesTexts(ZipArchive zip, LightingDto dto)
+        {
+            if (dto?.Ies == null) { return; }
+            dto.IesTexts = new Dictionary<string, string>(StringComparer.Ordinal);
+            foreach (LightIesDto ies in dto.Ies)
+            {
+                if (ies == null || !LightProfiles.IsSafeHash(ies.Hash) || dto.IesTexts.ContainsKey(ies.Hash)) { continue; }
+                byte[] bytes = ReadBytes(zip, BimGoFormat.IES_FOLDER + ies.Hash + ".ies");
+                if (bytes == null || bytes.Length > LightProfile.MAX_IES_BYTES) { continue; }
+                dto.IesTexts[ies.Hash] = System.Text.Encoding.UTF8.GetString(bytes);
+            }
         }
 
         /// <summary>

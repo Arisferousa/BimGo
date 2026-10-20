@@ -66,6 +66,7 @@ namespace BimGo.Scene
 
         // General
         Help, Fullscreen, Screenshot, HideUi, Minimap, Refresh, Save, SaveAs, Undo, Redo,
+        RevitViewNew, RevitViewUpdate, // Round X-E: a Revit view from here (live)
 
         // Movement
         MoveForward, MoveBack, MoveLeft, MoveRight, Jump, Run, Crouch, Fly, LevelUp, LevelDown, GoHome, SetHome, FindRoom,
@@ -84,6 +85,7 @@ namespace BimGo.Scene
 
         // Gun keys
         ScanSelectInRevit, ScanHide, ScanIsolate, MeasureNormal, CommentEdit, DemolishMode, GizmoSnap, GizmoDrop,
+        MeasureShowAll, MeasureExport, // Round Y-A: saved measurements
 
         // Holding an element (Gizmo / Clone / Place locked on)
         HoldUp, HoldDown, HoldRotate, HoldStepDown, HoldStepUp, HoldFine, HoldSnapInvert,
@@ -301,6 +303,8 @@ namespace BimGo.Scene
             Add(InputAction.SaveAs, c, "Save as", P, "Ctrl+Shift+S");
             Add(InputAction.Undo, c, "Undo (files)", P, "Ctrl+Z");
             Add(InputAction.Redo, c, "Redo (files)", P, "Ctrl+Y", "Ctrl+Shift+Z");
+            Add(InputAction.RevitViewNew, c, "New Revit view from here (live)", P, "Shift+F5"); // Round X-E
+            Add(InputAction.RevitViewUpdate, c, "Update Revit's active view to here (live)", P, "Alt+F5");
 
             // Movement
             c = InputContext.Movement;
@@ -365,6 +369,8 @@ namespace BimGo.Scene
             Add(InputAction.ScanHide, InputContext.ScanGun, "Hide the target", P, "I");
             Add(InputAction.ScanIsolate, InputContext.ScanGun, "Isolate its category (again: show all)", P, "Shift+I");
             Add(InputAction.MeasureNormal, InputContext.MeasureGun, "Normal projection (distance mode)", P, "N");
+            Add(InputAction.MeasureShowAll, InputContext.MeasureGun, "Show / hide the saved measurements", P, "I"); // Round Y-A
+            Add(InputAction.MeasureExport, InputContext.MeasureGun, "Export the measurements (CSV)", P, "E");
             Add(InputAction.CommentEdit, InputContext.CommentGun, "Edit the hovered comment", P, "E");
             Add(InputAction.DemolishMode, InputContext.DemolishGun, "Demolish / delete mode", P, "T");
             Add(InputAction.GizmoSnap, InputContext.GizmoGuns, "Snap on / off", P, "G");
@@ -745,7 +751,8 @@ namespace BimGo.Scene
                 new InputSituation(SIT_MEASURE, With(InputContext.MeasureGun), Array.Empty<InputAction>(), Walk(
                     H("Measure mode", InputAction.GunModePrevious, InputAction.GunModeNext),
                     H("Normal projection", InputAction.MeasureNormal),
-                    H("Clear the markers", InputAction.ClearMarkers))),
+                    H("Show / hide saved · export CSV", InputAction.MeasureShowAll, InputAction.MeasureExport),
+                    H("Delete all (twice)", InputAction.ClearMarkers))),
                 new InputSituation(SIT_COMMENT, With(InputContext.CommentGun), Array.Empty<InputAction>(), Walk(
                     H("Edit the hovered comment", InputAction.CommentEdit))),
                 new InputSituation(SIT_DEMOLISH, With(InputContext.DemolishGun), Array.Empty<InputAction>(), Walk(
@@ -851,13 +858,14 @@ namespace BimGo.Scene
                 }),
                 new InputSituation(SIT_PAUSE, new[] { InputContext.PauseMenu }, Join(padMenu,
                     InputAction.Help, InputAction.Fullscreen, InputAction.Screenshot, InputAction.Refresh, InputAction.Save, InputAction.SaveAs,
-                    InputAction.Undo, InputAction.Redo, InputAction.Click), new[]
+                    InputAction.Undo, InputAction.Redo, InputAction.RevitViewNew, InputAction.RevitViewUpdate, InputAction.Click), new[]
                 {
                     click,
                     H("Options preview", InputAction.MenuPreview),
                     H("Save · save as", InputAction.Save, InputAction.SaveAs),
                     H("Undo · redo (files)", InputAction.Undo, InputAction.Redo),
-                    H("Refresh from Revit (live)", InputAction.Refresh)
+                    H("Refresh from Revit (live)", InputAction.Refresh),
+                    H("New Revit view · update Revit's view (live)", InputAction.RevitViewNew, InputAction.RevitViewUpdate)
                 }),
 
                 // Round K-B: the 3D path editor. ← / → snap into keys, so it flies on its own WASD / E / Q actions (the walking
@@ -885,10 +893,11 @@ namespace BimGo.Scene
 
         /// <summary>
         /// The controls defaults version (polish round P-B). 0: the defaults up to P-A2; 1: P-B's hotkey review; 2: Round
-        /// K-A's media panel; 3: Round K-B's path editor; 4: Round X-B3's billboard resize (HoldScale). Raise it when a default changes and add the changes to
+        /// K-A's media panel; 3: Round K-B's path editor; 4: Round X-B3's billboard resize (HoldScale); 5: Round X-E's
+        /// Revit views from here (RevitViewNew, RevitViewUpdate); 6: Round Y-A's saved measurements (MeasureShowAll, MeasureExport). Raise it when a default changes and add the changes to
         /// <see cref="DefaultsChanges"/> (ControlsTests checks the table against the defaults).
         /// </summary>
-        public const int DEFAULTS_VERSION = 4;
+        public const int DEFAULTS_VERSION = 6;
 
         /// <summary>Every default that changed, by version (oldest first). <c>Was</c>: the old binding ("none" for none).</summary>
         public static readonly DefaultsChange[] DefaultsChanges =
@@ -928,7 +937,15 @@ namespace BimGo.Scene
             new(3, InputAction.PathUndo, true, null),
 
             // Version 4 (Round X-B3): hold + wheel resizes the aimed billboard
-            new(4, InputAction.HoldScale, true, null)
+            new(4, InputAction.HoldScale, true, null),
+
+            // Version 5 (Round X-E): a new Revit view from here, or Revit's active view updated to here
+            new(5, InputAction.RevitViewNew, true, null),
+            new(5, InputAction.RevitViewUpdate, true, null),
+
+            // Version 6 (Round Y-A): the Measure gun's saved measurements: show / hide, export CSV
+            new(6, InputAction.MeasureShowAll, true, null),
+            new(6, InputAction.MeasureExport, true, null)
         };
 
         /// <summary>The changes made after a version the user saw (empty when it is current or newer).</summary>

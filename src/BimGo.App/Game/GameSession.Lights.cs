@@ -45,14 +45,15 @@ namespace BimGo.Game
         private readonly float[] _pickDistance = new float[ArtificialLighting.MAX_LIGHTS];
         private readonly Vector3[] _pickPosition = new Vector3[ArtificialLighting.MAX_LIGHTS];
         private readonly long[] _pickKey = new long[ArtificialLighting.MAX_LIGHTS];
+        private readonly float[] _pickCode = new float[ArtificialLighting.MAX_LIGHTS]; // X-D1: downward share or profile code
         private readonly Vector4[] _viewPlanes = new Vector4[6];
         private int _pickCount, _candidateCount;
 
         // Round X-C1: all fixtures (photos, videos, stills; live with the setting): every light in view this frame, and
         // whether to collect them
-        private readonly List<(int Light, Vector3 Position, float Distance, long Key)> _allCandidates = new();
+        private readonly List<(int Light, Vector3 Position, float Distance, long Key, float Code)> _allCandidates = new();
         private bool _collectAll;
-        private static readonly Comparison<(int Light, Vector3 Position, float Distance, long Key)> BY_DISTANCE = (a, b) => a.Distance.CompareTo(b.Distance);
+        private static readonly Comparison<(int Light, Vector3 Position, float Distance, long Key, float Code)> BY_DISTANCE = (a, b) => a.Distance.CompareTo(b.Distance);
 
         /// <summary>Round X-C1: light every fixture in view live too (photos, videos and stills always do). Saved.</summary>
         private bool _allLightsLive;
@@ -137,7 +138,7 @@ namespace BimGo.Game
                 float fade = 1f - SmoothStep(fadeFrom, fadeTo, _pickDistance[k]);
                 Vector3 p = _pickPosition[k], c = _lightColour[i] * scale;
                 a.Position[k] = new Vector4(p, _lightRadius[i]);
-                a.Colour[k] = new Vector4(c, lights[i].Downward);
+                a.Colour[k] = new Vector4(c, _pickCode[k]);
                 a.Shadow[k] = new Vector4(-1f, fade, 0f, 0f);
                 a.Key[k] = _pickKey[k];
             }
@@ -146,12 +147,12 @@ namespace BimGo.Game
             // Round X-C1: the rest, unshadowed, nearest first
             if (!allFixtures || _allCandidates.Count <= _pickCount) { return; }
             _allCandidates.Sort(BY_DISTANCE);
-            foreach (var (i, p, _, key) in _allCandidates)
+            foreach (var (i, p, _, key, code) in _allCandidates)
             {
                 if (a.FarCount >= ArtificialLighting.MAX_FAR) { break; }
                 if (Array.IndexOf(_pickKey, key, 0, _pickCount) >= 0) { continue; }
                 Vector3 c = _lightColour[i] * scale;
-                a.AddFar(new Vector4(p, _lightRadius[i]), new Vector4(c, lights[i].Downward));
+                a.AddFar(new Vector4(p, _lightRadius[i]), new Vector4(c, code));
             }
         }
 
@@ -183,21 +184,25 @@ namespace BimGo.Game
 
                 if (!_hidden[e])
                 {
-                    Consider(i, lights[i].Position, i);
+                    Consider(i, lights[i].Position, i, LightCodeOf(i));
                     continue;
                 }
 
                 // Hidden in the static scene: moved (follow it) or removed (dark)
                 DynamicInstance moved = Dynamics.FindOriginal(e);
                 if (moved == null || !Dynamics.IsActive(moved)) { continue; }
-                Consider(i, Vector3.Transform(lights[i].Position, moved.Model), ((long)moved.Id << 32) | (uint)i);
+                Consider(i, Vector3.Transform(lights[i].Position, moved.Model), ((long)moved.Id << 32) | (uint)i, LightCodeOf(i, moved.Model));
             }
 
             foreach (DynamicInstance instance in Dynamics.Instances)
             {
                 if (!instance.IsClone || !Dynamics.IsActive(instance)) { continue; }
-                if (!_lightOfElement.TryGetValue(instance.Element, out int i)) { continue; }
-                Consider(i, Vector3.Transform(lights[i].Position, instance.Model), ((long)instance.Id << 32) | (uint)i);
+                if (!_lightOfElement.TryGetValue(instance.Element, out int first)) { continue; }
+                // X-D1 r3: a fixture can hold several light sources (nested up / down halves): consecutive lights
+                for (int i = first; i < lights.Length && lights[i].Element == instance.Element; i++)
+                {
+                    Consider(i, Vector3.Transform(lights[i].Position, instance.Model), ((long)instance.Id << 32) | (uint)i, LightCodeOf(i, instance.Model));
+                }
             }
         }
 
@@ -207,7 +212,8 @@ namespace BimGo.Game
         /// <param name="light">Index into the scene's lights.</param>
         /// <param name="position">Where it is now.</param>
         /// <param name="key">Its identity across frames (its shadow map is cached under it).</param>
-        private void Consider(int light, Vector3 position, long key)
+        /// <param name="code">X-D1: its downward share, or its profile code (turned with a moved / cloned fixture).</param>
+        private void Consider(int light, Vector3 position, long key, float code)
         {
             float radius = _lightRadius[light];
             for (int p = 0; p < 6; p++)
@@ -218,7 +224,7 @@ namespace BimGo.Game
             _candidateCount++;
 
             float distance = Vector3.Distance(position, Camera.Position);
-            if (_collectAll) { _allCandidates.Add((light, position, distance, key)); } // X-C1
+            if (_collectAll) { _allCandidates.Add((light, position, distance, key, code)); } // X-C1
             int max = ArtificialLighting.MAX_LIGHTS;
             if (_pickCount == max && distance >= _pickDistance[max - 1]) { return; }
 
@@ -230,12 +236,14 @@ namespace BimGo.Game
                 _pickDistance[slot] = _pickDistance[slot - 1];
                 _pickPosition[slot] = _pickPosition[slot - 1];
                 _pickKey[slot] = _pickKey[slot - 1];
+                _pickCode[slot] = _pickCode[slot - 1];
                 slot--;
             }
             _pickLight[slot] = light;
             _pickDistance[slot] = distance;
             _pickPosition[slot] = position;
             _pickKey[slot] = key;
+            _pickCode[slot] = code;
             if (_pickCount < max) { _pickCount++; }
         }
 

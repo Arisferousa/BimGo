@@ -291,6 +291,9 @@ namespace BimGo.Rendering
                 // Round X-C1: the far lights block reads the shared uniform buffer's binding point
                 uint block = Gl.GetUniformBlockIndex(p.Id, "FarLights");
                 if (block != Gl.INVALID_INDEX) { Gl.UniformBlockBinding(p.Id, block, FAR_LIGHTS_BINDING); }
+                // Round X-D1: the light profile tables
+                uint profiles = Gl.GetUniformBlockIndex(p.Id, "LightProfiles");
+                if (profiles != Gl.INVALID_INDEX) { Gl.UniformBlockBinding(p.Id, profiles, LIGHT_PROFILES_BINDING); }
                 return new ArtificialUniforms
                 {
                     FarCount = p.Uniform("uFarCount"),
@@ -1259,6 +1262,7 @@ namespace BimGo.Rendering
             float emissive = on ? a.Emissive : 0f;
             int far = on ? a.FarCount : 0;
             UploadFarLights(); // X-C1 (once per change)
+            UploadLightProfiles(); // X-D1 (once per change)
             Gl.Uniform1(u.Count, count);
             Gl.Uniform1(u.FarCount, far);
             Gl.Uniform1(u.Emissive, emissive);
@@ -1273,6 +1277,36 @@ namespace BimGo.Rendering
         private const uint FAR_LIGHTS_BINDING = 1;
 
         private uint _farLightsBuffer;
+
+        /// <summary>Round X-D1: the uniform buffer binding point of the light profiles block.</summary>
+        private const uint LIGHT_PROFILES_BINDING = 2;
+
+        private uint _lightProfilesBuffer;
+
+        /// <summary>
+        /// Round X-D1: the light profile tables' block (std140: 768 uvec4 of table bytes, then 24 vec4 of scales): made once
+        /// (zeroed, full size) and bound; uploaded when the per-type choices change.
+        /// </summary>
+        private void UploadLightProfiles()
+        {
+            ArtificialLighting a = Artificial;
+            int tableBytes = a.ProfileBytes.Length, infoBytes = a.ProfileInfo.Length * 16;
+            if (_lightProfilesBuffer == 0)
+            {
+                _lightProfilesBuffer = Gl.GenBuffer();
+                Gl.BindBuffer(Gl.UNIFORM_BUFFER, _lightProfilesBuffer);
+                var zero = new byte[tableBytes + infoBytes];
+                fixed (byte* z = zero) { Gl.BufferData(Gl.UNIFORM_BUFFER, zero.Length, z, Gl.DYNAMIC_DRAW); }
+                Gl.BindBufferBase(Gl.UNIFORM_BUFFER, LIGHT_PROFILES_BINDING, _lightProfilesBuffer);
+                a.ProfilesDirty = true;
+            }
+            if (!a.ProfilesDirty) { return; }
+            a.ProfilesDirty = false;
+            Gl.BindBuffer(Gl.UNIFORM_BUFFER, _lightProfilesBuffer);
+            fixed (byte* bytes = a.ProfileBytes) { Gl.BufferSubData(Gl.UNIFORM_BUFFER, 0, tableBytes, bytes); }
+            fixed (Vector4* info = a.ProfileInfo) { Gl.BufferSubData(Gl.UNIFORM_BUFFER, tableBytes, infoBytes, info); }
+            Gl.BindBuffer(Gl.UNIFORM_BUFFER, 0);
+        }
 
         /// <summary>
         /// Round X-C1: the unshadowed ("all fixtures") lights' block: the buffer made once (zeroed, full size, so the
@@ -1531,6 +1565,7 @@ namespace BimGo.Rendering
             DisposeScreenReflections(); // Round X-C1
             DisposePlanarReflections();
             Gl.DeleteBuffer(_farLightsBuffer); // X-C1
+            Gl.DeleteBuffer(_lightProfilesBuffer); // X-D1
             _shadows.Dispose();
             _effects.Dispose();
             _lightShadows.Dispose();

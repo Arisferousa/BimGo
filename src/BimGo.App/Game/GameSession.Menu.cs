@@ -57,7 +57,7 @@ namespace BimGo.Game
         private static readonly string[] UNIT_OPTIONS = { "Metric", "Imperial" };
 
         /// <summary>The pause menu's settings tabs.</summary>
-        private static readonly string[] RIGHT_TABS = { "DISPLAY", "REFLECTIONS", "APPEARANCE" };
+        private static readonly string[] RIGHT_TABS = { "DISPLAY", "REFLECTIONS", "APPEARANCE", "LIGHTS" }; // X-D1: LIGHTS
 
         /// <summary>
         /// Height of the right column's card (unscaled): fits the Display tab, the tallest. Polish round P-A1: the card is
@@ -71,7 +71,7 @@ namespace BimGo.Game
         // The PREVIEW button's text (with its key; made once per session: CONTROLS changes show next session)
         private string _previewButtonLabel;
 
-        // Open right-column tab: 0 display, 1 reflections, 2 appearance (per session)
+        // Open right-column tab: 0 display, 1 reflections, 2 appearance, 3 lights (X-D1) (per session)
         private int _rightTab;
 
         /// <summary>Slider id of the reflection strength (unique across the menu's sliders).</summary>
@@ -523,7 +523,7 @@ namespace BimGo.Game
             bool texturesButton = HasTexturePanel;
             bool libraryButton = HasLibrary;
             bool roomsButton = Scene.Rooms.Length > 0;
-            int sessionButtons = 4 + (IsFileMode ? 3 : 1); // + CONTROLS (input round B2)
+            int sessionButtons = 4 + (IsFileMode ? 3 : 1) + (_live != null ? 2 : 0); // + CONTROLS (input round B2), + Revit views (X-E)
             int reviewButtons = 7 + (hiddenThings > 0 ? 1 : 0) + (texturesButton ? 1 : 0) + (libraryButton ? 1 : 0) + (roomsButton ? 1 : 0);
             int rows = twoStacks ? Math.Max(sessionButtons, reviewButtons) : sessionButtons + reviewButtons;
             float step = Math.Clamp((endY - S(12) - buttonsTop) / rows, S(32), S(44));
@@ -553,6 +553,15 @@ namespace BimGo.Game
             else
             {
                 if (MenuButton(f, x, y, stackW, "SAVE AS .BIMGO…", false, false, height: buttonH, compact: true)) { Save(saveAs: true); return; }
+                y += step;
+            }
+
+            // Round X-E: Revit views from here (live sessions), as Shift+F5 / Alt+F5
+            if (_live != null)
+            {
+                if (MenuButton(f, x, y, stackW, "NEW REVIT VIEW HERE", false, false, enabled: _live.Connected, height: buttonH, compact: true)) { SendRevitView(BimGo.Live.RevitViewAction.Create, sound: false); }
+                y += step;
+                if (MenuButton(f, x, y, stackW, "UPDATE REVIT VIEW", false, false, enabled: _live.Connected, height: buttonH, compact: true)) { SendRevitView(BimGo.Live.RevitViewAction.Update, sound: false); }
                 y += step;
             }
 
@@ -844,13 +853,15 @@ namespace BimGo.Game
 
             // The tab's content scrolls when the card is shorter than it (the bar sits in the card's right padding)
             float y = BeginScroll(_settingsScroll, input, x + S(1), cardTop + S(1), width - S(2), cardH - S(2), out _, wheel: _activeSlider < 0) + S(13);
+            float bottom = y - S(13) + S(RIGHT_CARD_HEIGHT) - S(2);
             switch (_rightTab)
             {
                 case 1: BuildReflectionsTab(f, input, ix, y, iw); break;
                 case 2: BuildAppearanceTab(f, input, ix, y, iw); break;
+                case 3: bottom = MathF.Max(bottom, BuildLightsTab(f, input, ix, y, iw) + S(12)); break; // X-D1: a list, so it can run long
                 default: BuildDisplayTab(f, input, ix, y, iw); break;
             }
-            EndScroll(_settingsScroll, input, y - S(13) + S(RIGHT_CARD_HEIGHT) - S(2));
+            EndScroll(_settingsScroll, input, bottom);
             return cardH;
         }
 
@@ -966,7 +977,23 @@ namespace BimGo.Game
         private int Tabs(FontAtlas f, InputState input, float x, float y, float w, string[] labels, int selected)
         {
             float h = S(28);
-            float tab = w / labels.Length;
+            // X-D1: tabs as wide as their labels (tighter letter spacing) when equal widths can't hold the longest
+            float tracking = S(1.4f), labelsW = 0f, longest = 0f;
+            foreach (string label in labels)
+            {
+                float lw = UiBatch.Measure(f.Small, label, tracking);
+                labelsW += lw;
+                longest = MathF.Max(longest, lw);
+            }
+            bool fitted = longest + S(12) > w / labels.Length;
+            float spare = 0f;
+            if (fitted)
+            {
+                tracking = S(0.5f);
+                labelsW = 0f;
+                foreach (string label in labels) { labelsW += UiBatch.Measure(f.Small, label, tracking); }
+                spare = MathF.Max(0f, (w - labelsW) / labels.Length);
+            }
             int stepped = TakePadTabStep(selected, labels.Length); // P-A2: LB / RB tapped alone
             if (stepped != selected)
             {
@@ -974,20 +1001,22 @@ namespace BimGo.Game
                 Sound.Play(SoundId.UiClick);
             }
             _ui.Rect(x, y + h - MathF.Max(1f, UiScale), w, MathF.Max(1f, UiScale), Rgba.Hex(0xFFFFFF, 0.12f));
+            float tx = x;
             for (int i = 0; i < labels.Length; i++)
             {
-                float tx = x + i * tab;
+                float tab = fitted ? UiBatch.Measure(f.Small, labels[i], tracking) + spare : w / labels.Length;
                 bool on = i == selected;
                 if (on) { RegisterFocus(tx, y, tab, h); }
                 bool hover = !on && Hover(input, tx, y, tab, h);
                 uint colour = on ? UiTheme.TEXT : hover ? UiTheme.ACCENT : UiTheme.TEXT_MUTED;
-                _ui.TextCentred(f.Small, tx + tab * 0.5f, y + S(7), labels[i], colour, S(1.4f));
+                _ui.TextCentred(f.Small, tx + tab * 0.5f, y + S(7), labels[i], colour, tracking);
                 if (on) { _ui.Rect(tx + S(6), y + h - S(2), tab - S(12), S(2), UiTheme.ACCENT); }
                 if (hover && input.LeftPressed)
                 {
                     selected = i;
                     Sound.Play(SoundId.UiClick);
                 }
+                tx += tab;
             }
             return selected;
         }

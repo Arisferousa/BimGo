@@ -113,6 +113,7 @@ namespace BimGo.Game
             hash.Add(_sun?.CloudCover ?? 0f); // sky round: probes re-bake when the cover changes (not as the clouds drift)
             hash.Add(_lightMode);
             hash.Add(_lightIntensity);
+            hash.Add(_lightProfileRevision); // X-D1: a light profile changed
             hash.Add(_realistic);
             hash.Add(_tintMode);
             hash.Add(_renderer.ProbeGrass); // polish round P-C: blades came (or went), or the field was rebuilt

@@ -772,6 +772,7 @@ namespace BimGo.Extraction
                         break;
 
                     case GeometryInstance instance:
+                        if (_fixture) { NoteNestedPlacement(instance, transform.Multiply(instance.Transform)); } // X-D1 r5
                         GeometryElement symbolGeometry = instance.GetSymbolGeometry();
                         if (symbolGeometry != null)
                         {

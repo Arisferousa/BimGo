@@ -31,6 +31,12 @@ namespace BimGo.Format
         /// <summary>Round X-B: the imported billboard pictures by file name (PNG bytes), or null.</summary>
         public Dictionary<string, byte[]> EntourageImages { get; set; }
 
+        /// <summary>Round X-D1: per fixture type light profiles and imported .ies files (light-profiles.json), or null. Optional: older readers ignore it.</summary>
+        public LightProfileDocument LightProfiles { get; set; }
+
+        /// <summary>Round Y-A: the Measure gun's saved measurements (measurements.json), or null. Optional: older readers ignore it.</summary>
+        public MeasurementDocument Measurements { get; set; }
+
         /// <summary>The sun / shadow state, or null if the file has none (defaults then come from the site).</summary>
         public SunSettings Sun { get; init; }
 

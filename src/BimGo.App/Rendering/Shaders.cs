@@ -724,7 +724,9 @@ float ambientOcclusion(vec3 world, vec3 eye)
         /// A small share of each light also fills what it can see evenly (a stand-in for light bouncing off the floor
         /// and walls), darkened by AO, so ceilings and faces turned away aren't black; a third of that fill reaches
         /// shadowed spots (under tables), about 2 % of the light through a wall.
-        /// uLightPos: xyz position, w radius. uLightColor: rgb colour × intensity, w downward share.
+        /// uLightPos: xyz position, w radius. uLightColor: rgb colour × intensity, w downward share (0–1), or (Round X-D1)
+        /// below 0 a light profile: -(code + 1), code = slot (5 bits) · aim octahedral u, v (6 bits each) · turn (7 bits),
+        /// as LightProfiles.Encode packs it; the profile tables are the LightProfiles block (binding 2).
         /// uLightShadow: x first layer (-1 = no shadow map), y fade.
         /// Keep the 32 in step with ArtificialLighting.MAX_LIGHTS and the constants with LightShadows.
         /// </summary>
@@ -744,6 +746,56 @@ layout(std140) uniform FarLights
     vec4 uFarPos[480];
     vec4 uFarColor[480];
 };
+
+// Round X-D1: light profiles (IES files and built-ins): 24 tables of 32 gamma × 16 C bytes (4 to a uint, 16 to a
+// uvec4: 32 uvec4 per table), and per table x = the scale to an even light of the same output
+layout(std140) uniform LightProfiles
+{
+    uvec4 uProfileData[768];
+    vec4 uProfileInfo[24];
+};
+
+float profileByte(int base, int index)
+{
+    uvec4 q = uProfileData[base + (index >> 4)];
+    int w = (index >> 2) & 3;
+    uint word = w == 0 ? q.x : (w == 1 ? q.y : (w == 2 ? q.z : q.w));
+    return float((word >> uint((index & 3) * 8)) & 255u);
+}
+
+vec3 profileOctDecode(vec2 o)
+{
+    vec3 n = vec3(o, 1.0 - abs(o.x) - abs(o.y));
+    if (n.z < 0.0) n.xy = (1.0 - abs(o.yx)) * vec2(o.x >= 0.0 ? 1.0 : -1.0, o.y >= 0.0 ? 1.0 : -1.0);
+    return normalize(n);
+}
+
+// How strongly a profiled light shines towards v (unit, leaving the light), relative to an even light of the same output
+float profileLobe(float encoded, vec3 v)
+{
+    int code = int(-encoded - 0.5);
+    int slot = code >> 19;
+    vec3 n = profileOctDecode(vec2(float((code >> 13) & 63), float((code >> 7) & 63)) / 63.0 * 2.0 - 1.0);
+    vec3 h = abs(n.z) < 0.99 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0);
+    vec3 x0 = normalize(h - n * dot(h, n));
+    vec3 y0 = cross(x0, n);
+    float turn = float(code & 127) * (6.2831853 / 128.0);
+    vec3 c0 = cos(turn) * x0 + sin(turn) * y0;
+    vec3 c90 = cross(c0, n);
+    float gv = acos(clamp(dot(v, n), -1.0, 1.0)) * (31.0 / 3.14159265);
+    float ch = atan(dot(v, c90), dot(v, c0)) * (16.0 / 6.2831853);
+    if (ch < 0.0) ch += 16.0;
+    int v0 = min(int(gv), 30);
+    float fv = clamp(gv - float(v0), 0.0, 1.0);
+    int h0 = int(floor(ch)) & 15;
+    int h1 = (h0 + 1) & 15;
+    float fh = fract(ch);
+    int base = slot * 32;
+    int r0 = v0 * 16, r1 = r0 + 16;
+    float top = mix(profileByte(base, r0 + h0), profileByte(base, r0 + h1), fh);
+    float bottom = mix(profileByte(base, r1 + h0), profileByte(base, r1 + h1), fh);
+    return mix(top, bottom, fv) * (1.0 / 255.0) * uProfileInfo[slot].x;
+}
 
 const float LIGHT_BOUNCE = 0.06;
 const float LIGHT_NEAR = 0.08;
@@ -799,8 +851,8 @@ vec3 artificialLight(vec3 world, vec3 n, float ao)
         vec3 l = d * inversesqrt(max(dist2, 1e-8));
         float ndl = dot(n, l);
         if (ndl <= 0.0) continue;
-        // l points from the surface to the light: l.z > 0 when the surface is below it
-        float lobe = mix(1.0, 4.0 * max(l.z, 0.0), lc.w);
+        // l points from the surface to the light: l.z > 0 when the surface is below it (X-D1: or the light's profile)
+        float lobe = lc.w >= 0.0 ? mix(1.0, 4.0 * max(l.z, 0.0), lc.w) : profileLobe(lc.w, -l);
         sum += lc.rgb * (lobe * window * ndl / (dist2 + 0.25));
     }
     // Round X-C1: the unshadowed far lights (same falloff and lobe; their fill counts as seen)
@@ -819,7 +871,7 @@ vec3 artificialLight(vec3 world, vec3 n, float ao)
         vec3 l = d * inversesqrt(max(dist2, 1e-8));
         float ndl = dot(n, l);
         if (ndl <= 0.0) continue;
-        float lobe = mix(1.0, 4.0 * max(l.z, 0.0), lc.w);
+        float lobe = lc.w >= 0.0 ? mix(1.0, 4.0 * max(l.z, 0.0), lc.w) : profileLobe(lc.w, -l);
         sum += lc.rgb * (lobe * window * ndl / (dist2 + 0.25));
     }
     return sum;

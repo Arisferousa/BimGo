@@ -318,6 +318,7 @@ namespace BimGo.Game
             InitialiseBookmarks();
             InitialisePaths(); // Round K-A: camera paths
             InitialiseEntourage(); // Round X-B: billboards
+            InitialiseLightProfiles(); // Round X-D1: IES / built-in light profiles per fixture type
             InitialiseSun();
             InitialiseVisibility();
 
@@ -326,10 +327,11 @@ namespace BimGo.Game
             _placeGun = new PlaceGun(this);
             _guns = new Gun[]
             {
-                new ScanGun(this), new MeasureGun(this), _portalGun, _commentGun,
+                new ScanGun(this), _measureGun = new MeasureGun(this), _portalGun, _commentGun,
                 new TeleportGun(this), new HammerGun(this), new GizmoGun(this), new CloneGun(this), _placeGun
             };
             RefreshGunKeys();
+            InitialiseMeasurements(); // Round Y-A: saved measurements
 
             // Re-apply the file's edits (demolitions, moves, clones) on top of the untouched geometry
             int replayFailures = ReplayJournal();
@@ -735,6 +737,8 @@ namespace BimGo.Game
             }
             if (input.Pressed(InputAction.Help)) { _showHelp = !_showHelp; }
             if (input.Pressed(InputAction.Refresh) && !captured) { RefreshFromRevit(); }
+            if (input.Pressed(InputAction.RevitViewNew) && !captured) { SendRevitView(Live.RevitViewAction.Create); } // Round X-E
+            if (input.Pressed(InputAction.RevitViewUpdate) && !captured) { SendRevitView(Live.RevitViewAction.Update); }
             if (input.Pressed(InputAction.Fullscreen)) { _window.ToggleFullscreen(); }
             if (input.Pressed(InputAction.Screenshot)) { RequestScreenshot(); }
 
