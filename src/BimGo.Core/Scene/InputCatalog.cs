@@ -82,6 +82,7 @@ namespace BimGo.Scene
         SectionBox, SectionPlane, SectionClear, ClashMode, GridsPanel, GridsCycle, ColourProfile,
         MediaPanel, // Round K-A
         PathEditMode, // Round K-B
+        FixtureProfile, // Round Y-C2: the aimed fixture's own light profile
 
         // Gun keys
         ScanSelectInRevit, ScanHide, ScanIsolate, MeasureNormal, CommentEdit, DemolishMode, GizmoSnap, GizmoDrop,
@@ -363,6 +364,7 @@ namespace BimGo.Scene
             Add(InputAction.ColourProfile, c, "Colour profile on / off (also in clash mode)", P, "Shift+C");
             Add(InputAction.MediaPanel, c, "Media panel: photo, tour, camera paths, video", P, "Shift+M"); // Round K-A
             Add(InputAction.PathEditMode, c, "Camera path editor in 3D on / off", P, "Shift+K"); // Round K-B
+            Add(InputAction.FixtureProfile, c, "Light profile of the aimed fixture (dock)", P, "Ctrl+K"); // Round Y-C2
 
             // Gun keys (while that gun is selected)
             Add(InputAction.ScanSelectInRevit, InputContext.ScanGun, "Select in Revit (live)", P, "R");
@@ -655,6 +657,7 @@ namespace BimGo.Scene
         public const string SIT_START = "Start screen";
         public const string SIT_PAUSE = "Pause menu and panels";
         public const string SIT_PATH = "Path editor (Round K)";
+        public const string SIT_FIXTURE = "Fixture light profile";
 
         /// <summary>
         /// Every state of the app and what can fire in it. Mirrors <c>GameSession.UpdateFrame</c>: change both together.
@@ -846,6 +849,14 @@ namespace BimGo.Scene
                     H("Close the grids panel", InputAction.GridsPanel),
                     click
                 }),
+
+                // Round Y-C2: the aimed fixture's light profile dock (the player stands still, like the grids panel)
+                new InputSituation(SIT_FIXTURE, Array.Empty<InputContext>(), Join(padMenu,
+                    InputAction.FixtureProfile, InputAction.Fullscreen, InputAction.Click), new[]
+                {
+                    H("Close the fixture dock", InputAction.FixtureProfile),
+                    click
+                }),
                 new InputSituation(SIT_VIDEO, Array.Empty<InputContext>(), new[] { InputAction.Fullscreen }, new[]
                 {
                     H("Stop recording", InputAction.Back),
@@ -894,10 +905,11 @@ namespace BimGo.Scene
         /// <summary>
         /// The controls defaults version (polish round P-B). 0: the defaults up to P-A2; 1: P-B's hotkey review; 2: Round
         /// K-A's media panel; 3: Round K-B's path editor; 4: Round X-B3's billboard resize (HoldScale); 5: Round X-E's
-        /// Revit views from here (RevitViewNew, RevitViewUpdate); 6: Round Y-A's saved measurements (MeasureShowAll, MeasureExport). Raise it when a default changes and add the changes to
+        /// Revit views from here (RevitViewNew, RevitViewUpdate); 6: Round Y-A's saved measurements (MeasureShowAll, MeasureExport); 7: Round Y-C2's
+        /// fixture light profile dock (FixtureProfile). Raise it when a default changes and add the changes to
         /// <see cref="DefaultsChanges"/> (ControlsTests checks the table against the defaults).
         /// </summary>
-        public const int DEFAULTS_VERSION = 6;
+        public const int DEFAULTS_VERSION = 7;
 
         /// <summary>Every default that changed, by version (oldest first). <c>Was</c>: the old binding ("none" for none).</summary>
         public static readonly DefaultsChange[] DefaultsChanges =
@@ -945,7 +957,10 @@ namespace BimGo.Scene
 
             // Version 6 (Round Y-A): the Measure gun's saved measurements: show / hide, export CSV
             new(6, InputAction.MeasureShowAll, true, null),
-            new(6, InputAction.MeasureExport, true, null)
+            new(6, InputAction.MeasureExport, true, null),
+
+            // Version 7 (Round Y-C2): Ctrl+K opens the aimed fixture's light profile dock
+            new(7, InputAction.FixtureProfile, true, null)
         };
 
         /// <summary>The changes made after a version the user saw (empty when it is current or newer).</summary>

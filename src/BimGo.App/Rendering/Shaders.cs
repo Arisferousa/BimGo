@@ -132,6 +132,7 @@ uniform mat4 uModel;
 uniform int uProfilePass;
 uniform sampler2D uProfileTex;
 out vec3 vWorld;
+invariant gl_Position; // Round Y-D2: the depth pre-pass and the scene pass must land on the same depths (EQUAL test)
 out vec3 vNormal;
 out vec4 vColor;
 out vec3 vEmissive;
@@ -803,8 +804,9 @@ const float LIGHT_PAD = 1.03;
 const vec3 FACE_F[6] = vec3[6](vec3(1.0, 0.0, 0.0), vec3(-1.0, 0.0, 0.0), vec3(0.0, 1.0, 0.0), vec3(0.0, -1.0, 0.0), vec3(0.0, 0.0, 1.0), vec3(0.0, 0.0, -1.0));
 const vec3 FACE_U[6] = vec3[6](vec3(0.0, 0.0, 1.0), vec3(0.0, 0.0, 1.0), vec3(0.0, 0.0, 1.0), vec3(0.0, 0.0, 1.0), vec3(0.0, 1.0, 0.0), vec3(0.0, 1.0, 0.0));
 
-// 1 = the light reaches this point, 0 = something is in the way (4-tap PCF on the face the point falls in)
-float lightVisibility(vec3 world, vec3 n, vec3 lp, float far, float layerBase)
+// 1 = the light reaches this point, 0 = something is in the way (4-tap PCF on the face the point falls in; Round Y-D2:
+// oneTap > 0.5 → one tap, the hardware's 2 × 2 comparison only)
+float lightVisibility(vec3 world, vec3 n, vec3 lp, float far, float layerBase, float oneTap)
 {
     if (layerBase < 0.0) return 1.0;
     vec3 d = world - lp;
@@ -819,6 +821,7 @@ float lightVisibility(vec3 world, vec3 n, vec3 lp, float far, float layerBase)
     float ndc = (far + LIGHT_NEAR) / (far - LIGHT_NEAR) - 2.0 * far * LIGHT_NEAR / ((far - LIGHT_NEAR) * zf);
     float ref = ndc * 0.5 + 0.5 - 0.0004;
     float layer = layerBase + float(face);
+    if (oneTap > 0.5) return texture(uLightShadowMap, vec4(uv, layer, ref));
     float t = uLightShadowTexel * 0.75;
     float lit = texture(uLightShadowMap, vec4(uv + vec2(-t, -t), layer, ref))
               + texture(uLightShadowMap, vec4(uv + vec2( t, -t), layer, ref))
@@ -839,7 +842,7 @@ vec3 artificialLight(vec3 world, vec3 n, float ao)
         float r2 = lp.w * lp.w;
         if (dist2 >= r2) continue;
         vec4 sh = uLightShadow[i];
-        float visible = lightVisibility(world, n, lp.xyz, lp.w, sh.x);
+        float visible = lightVisibility(world, n, lp.xyz, lp.w, sh.x, sh.z);
         float window = 1.0 - (dist2 * dist2) / (r2 * r2);
         window *= window * sh.y;
         vec4 lc = uLightColor[i];
@@ -2043,6 +2046,27 @@ void main()
     }
     writeGeometry(vWorld, vNormal);
     oGlow = vec4(vEmissive * uGlow, 1.0);
+}";
+
+        /// <summary>
+        /// Round Y-D2: the main view's depth pre-pass (vertex shader: <see cref="SCENE_VS"/>, so depths match the scene
+        /// pass exactly). Drops exactly what the scene pass's opaque draw drops: section cuts, hidden profile elements and
+        /// (pass 1) ghosted / see-through coloured ones; colour writes are masked off.
+        /// </summary>
+        public const string DEPTH_PREPASS_FS = "#version 330 core\n" + CLIP_GLSL + @"
+in vec3 vWorld;
+flat in vec4 vProfile;
+uniform int uProfilePass;
+out vec4 oColor;
+void main()
+{
+    if (sectionCut(vWorld)) discard;
+    if (uProfilePass > 0)
+    {
+        int code = int(vProfile.a * 255.0 + 0.5);
+        if (code == 1 || code == 2 || (code >= 128 && code < 255)) discard;
+    }
+    oColor = vec4(1.0);
 }";
 
         /// <summary>Geometry pre-pass for the ground plane (vertex shader: <see cref="GROUND_VS"/>).</summary>

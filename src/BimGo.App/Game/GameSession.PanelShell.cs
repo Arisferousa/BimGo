@@ -369,7 +369,7 @@ namespace BimGo.Game
             x = screenW - margin - width;
             top = margin;
             bottom = screenH - margin - S(UiTheme.SUN_ICON_SIZE) - S(10);
-            if (_showMap)
+            if (_showMap && !_photoOpen) // Y-B: the minimap hides in photo mode, so its dock starts at the top
             {
                 float under = margin + S(UiTheme.MINIMAP_HEIGHT) + S(UiTheme.COLUMN_GAP);
                 if (bottom - under >= S(UiTheme.DOCK_MIN_HEIGHT)) { top = under; }
@@ -491,18 +491,18 @@ namespace BimGo.Game
 
         /// <summary>True while one of the panels that replace the pause menu is open.</summary>
         private bool AnyBigPanelOpen => IsCommentsPanelOpen || IsBookmarksPanelOpen || IsTexturesPanelOpen || IsLibraryPanelOpen || IsRoomsPanelOpen
-            || IsClashesPanelOpen || IsColourProfilesPanelOpen || IsGeometryPanelOpen || IsControlsPanelOpen || IsPushPanelOpen || IsMediaPanelOpen || IsEntouragePanelOpen;
+            || IsClashesPanelOpen || IsColourProfilesPanelOpen || IsGeometryPanelOpen || IsControlsPanelOpen || IsPushPanelOpen || IsMediaPanelOpen || IsEntouragePanelOpen || IsMarkupOpen;
 
         /// <summary>
-        /// One level back (Esc, the gamepad's B, ← BACK): an open dropdown or confirm, then the panel's sub-view, then
-        /// the panel (to the pause menu, or to clash mode for the clash panel opened there).
+        /// One level back (Esc, the gamepad's B, ← BACK): an open dropdown or confirm, then the markup editor (Y-B: it
+        /// sits over the comment it came from), then the panel's sub-view, then the panel (to the pause menu, or to clash mode for the clash panel opened there).
         /// </summary>
         /// <returns>True when something closed (false: nothing open, so Esc resumes).</returns>
         private bool PanelBack()
         {
             if (!_paused) { return false; }
             if (AnyBigPanelOpen && CloseOverlay()) { return true; }
-            return CloseMenuPreview() || ClosePush() || CloseComments() || CloseBookmarks() || CloseTextures() || CloseLibrary() || CloseRooms()
+            return CancelMarkupPanel() || CloseMenuPreview() || ClosePush() || CloseComments() || CloseBookmarks() || CloseTextures() || CloseLibrary() || CloseRooms()
                 || CloseClashes() || CloseColourProfiles() || CloseGeometry() || CloseControls() || CloseMedia() || CloseEntourage();
         }
 

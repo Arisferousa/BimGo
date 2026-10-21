@@ -120,6 +120,10 @@ namespace BimGo.Game
         private bool _invertY;
         private bool _vsync;
         private bool _showFps;
+        private bool _showPerf; // Round Y-D1
+        private int _occlusionMode = 1; // Y-D1 r2: 0 off, 1 auto, 2 on
+        private int _lightQuality = 1;  // Y-D2: 0 low, 1 medium, 2 high
+        private bool _depthPrepass = true; // Y-D2
         private bool _showHelp; // off by default: a small "F1: Help" note in the corner
         private bool _showMap = true;
         private float _groundZ;
@@ -222,6 +226,10 @@ namespace BimGo.Game
             _vsync = settings.VSync;
             _frameLimit = LaunchSettings.NearestFrameRateLimit(settings.FrameRateLimit);
             _showFps = settings.ShowFps;
+            _showPerf = settings.ShowPerformance; // Round Y-D1
+            _occlusionMode = settings.OcclusionMode;
+            _lightQuality = settings.LightQuality; // Y-D2
+            _depthPrepass = settings.DepthPrepass;
             GizmoSnap = settings.GizmoSnap;
             SnapMoveMm = LaunchSettings.NearestStep(LaunchSettings.SNAP_MOVE_STEPS_MM, settings.SnapMoveMm);
             SnapAngleDeg = LaunchSettings.NearestStep(LaunchSettings.SNAP_ANGLE_STEPS_DEG, settings.SnapAngleDeg);
@@ -700,6 +708,13 @@ namespace BimGo.Game
                 return;
             }
 
+            // Round Y-C2: the fixture light profile dock has the cursor; the player stands still
+            if (FixtureDockHasKeys && !_paused)
+            {
+                UpdateFixtureDockKeys(input);
+                return;
+            }
+
             // Round K-B: the 3D path editor has the cursor; its own keys fly, RMB-drag looks
             if (_pathEditOn && !_paused)
             {
@@ -876,6 +891,11 @@ namespace BimGo.Game
                 OpenGridsPanel();
                 return;
             }
+            if (input.Pressed(InputAction.FixtureProfile))
+            {
+                ToggleFixtureDock(); // Round Y-C2: the aimed fixture's own light profile
+                return;
+            }
             if (input.Pressed(InputAction.GridsCycle)) { CycleGrids(); }
             if (input.Pressed(InputAction.ColourProfile)) { ToggleProfile(); } // colour round A
             if (ShadowsOn) { StepSunTimeKeys(input); }
@@ -934,7 +954,7 @@ namespace BimGo.Game
         {
             if (_tourActive) { return; } // the tour places the player itself
             _player.Controller.GroundZ = _groundZ;
-            bool frozen = IsEditingComment || _sunPanelOpen || _sunHoursOpen || GridsPanelHasKeys || !_window.IsActive || _guns[_activeGun].CapturesInput || ClashFreezesPlayer
+            bool frozen = IsEditingComment || _sunPanelOpen || _sunHoursOpen || GridsPanelHasKeys || FixtureDockHasKeys || !_window.IsActive || _guns[_activeGun].CapturesInput || ClashFreezesPlayer
                 || PathFreezesPlayer;
             if (_pathEditOn)
             {
@@ -1070,7 +1090,7 @@ namespace BimGo.Game
         /// True while a mode that works with a free cursor is on (sun panel, sun hours study, photo mode, the section box
         /// editor, clash mode): resuming must not capture the mouse then.
         /// </summary>
-        private bool CursorModeOpen => _sunPanelOpen || _sunHoursOpen || _photoOpen || _sectionOpen || _clashModeOn || _gridsPanelOpen || _pathEditOn;
+        private bool CursorModeOpen => _sunPanelOpen || _sunHoursOpen || _photoOpen || _sectionOpen || _clashModeOn || _gridsPanelOpen || _pathEditOn || _fixtureDockOpen;
 
         /// <summary>
         /// Pauses (releases the mouse) or resumes (captures it again, unless a free-cursor mode is on: C-B1 fixes, the
@@ -1298,6 +1318,10 @@ namespace BimGo.Game
             settings.VSync = _vsync;
             settings.FrameRateLimit = _frameLimit;
             settings.ShowFps = _showFps;
+            settings.ShowPerformance = _showPerf; // Round Y-D1
+            settings.OcclusionMode = _occlusionMode;
+            settings.LightQuality = _lightQuality; // Y-D2
+            settings.DepthPrepass = _depthPrepass;
             settings.GizmoSnap = GizmoSnap;
             settings.SnapMoveMm = SnapMoveMm;
             settings.SnapAngleDeg = SnapAngleDeg;

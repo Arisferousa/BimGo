@@ -49,6 +49,9 @@ namespace BimGo.Game
             public ScrollRegion Region;
             public float RegionTop;
 
+            /// <summary>Round Y-B: drawn in an open dropdown or confirm (while one shows, only these are navigated).</summary>
+            public bool Overlay;
+
             /// <summary>The visible part's left / top / right / bottom.</summary>
             public readonly float VisX0 => MathF.Max(X, ClipX0);
             public readonly float VisY0 => MathF.Max(Y, ClipY0);
@@ -76,9 +79,21 @@ namespace BimGo.Game
         // The scroll region being drawn (registrations remember it)
         private ScrollRegion _focusRegion;
 
+        // Round Y-B: an open dropdown or confirm is being drawn (registrations are overlay targets), and how many overlay
+        // targets this frame and last frame had (last frame's > 0: the ring is trapped in the overlay)
+        private bool _focusInOverlay;
+        private int _focusOverlayBuildCount, _focusOverlayLastCount;
+
+        /// <summary>Round Y-B: last frame drew an open dropdown or confirm: the D-pad stays inside it.</summary>
+        private bool FocusTrapped => _focusOverlayLastCount > 0;
+
         // The focus: shown, and the control (last frame's copy)
         private bool _padFocusOn;
         private FocusTarget _padFocus;
+
+        // Round Y-B: the control focused before an overlay trapped the ring (it gets the ring back when the overlay closes)
+        private FocusTarget _padFocusBefore;
+        private bool _padFocusRestore;
 
         // A slider step's injected click (released the next frame)
         private bool _padSliderClick;
@@ -97,6 +112,8 @@ namespace BimGo.Game
             _focusBuildCount = 0;
             _focusAreasBuildCount = 0;
             _focusRegion = null;
+            _focusInOverlay = false;
+            _focusOverlayBuildCount = 0;
         }
 
         /// <summary>
@@ -122,6 +139,9 @@ namespace BimGo.Game
             _focusAreasLastCount = _focusAreasBuildCount;
             _focusAreasBuildCount = 0;
             _focusRegion = null;
+            _focusOverlayLastCount = _focusOverlayBuildCount; // Y-B
+            _focusOverlayBuildCount = 0;
+            _focusInOverlay = false;
             _padTabStep = 0; // no tab row took it this frame
         }
 
@@ -157,6 +177,8 @@ namespace BimGo.Game
             t.Slider = slider;
             t.Region = _focusRegion;
             t.RegionTop = _focusRegion?.Top ?? 0f;
+            t.Overlay = _focusInOverlay;
+            if (_focusInOverlay) { _focusOverlayBuildCount++; }
             Vector2 centre = t.Centre;
             t.AnchorX = float.IsNaN(anchorX) ? centre.X : Math.Clamp(anchorX, t.VisX0, MathF.Max(t.VisX0, t.VisX1 - 1f));
             t.AnchorY = float.IsNaN(anchorY) ? centre.Y : Math.Clamp(anchorY, t.VisY0, MathF.Max(t.VisY0, t.VisY1 - 1f));
@@ -223,8 +245,31 @@ namespace BimGo.Game
 
             // Keep the focus on its control as lists scroll (and the cursor on it, so A presses it)
             int current = -1;
+            if (_padFocusOn && _padFocus.Overlay && !FocusTrapped && _padFocusRestore)
+            {
+                _padFocus = _padFocusBefore; // Y-B: the overlay closed: back to the control that opened it
+                _padFocusRestore = false;
+            }
             bool found = _padFocusOn && FindFocus(_focusLast, _focusLastCount, out current);
             if (_padFocusOn && !found) { _padFocusOn = false; }
+
+            // Round Y-B: a dropdown or confirm opened with the ring showing: the ring moves into it (the current choice,
+            // else the row nearest the cursor)
+            if (found && FocusTrapped && !_focusLast[current].Overlay)
+            {
+                _padFocusBefore = _focusLast[current];
+                _padFocusRestore = true;
+                int start = SelectedOverlayTarget();
+                if (start < 0) { start = NearestTarget(input.MousePosition); }
+                found = false;
+                _padFocusOn = false;
+                if (start >= 0)
+                {
+                    FocusOn(input, start);
+                    current = start;
+                    found = true;
+                }
+            }
             if (found)
             {
                 _padFocus = _focusLast[current];
@@ -315,7 +360,7 @@ namespace BimGo.Game
             for (int i = 0; i < count; i++)
             {
                 ref FocusTarget t = ref targets[i];
-                if (t.Slider != _padFocus.Slider) { continue; }
+                if (t.Slider != _padFocus.Slider || t.Overlay != _padFocus.Overlay) { continue; }
                 float dy = t.Region != null && ReferenceEquals(t.Region, _padFocus.Region)
                     ? (t.Y - t.RegionTop) - (_padFocus.Y - _padFocus.RegionTop)
                     : t.Y - _padFocus.Y;
@@ -335,9 +380,11 @@ namespace BimGo.Game
             int best = -1;
             float bestArea = float.MaxValue, bestDistance = float.MaxValue;
             bool inside = false;
+            bool trapped = FocusTrapped;
             for (int i = 0; i < _focusLastCount; i++)
             {
                 ref FocusTarget t = ref _focusLast[i];
+                if (trapped && !t.Overlay) { continue; } // Y-B: an open overlay keeps the ring
                 bool over = at.X >= t.VisX0 && at.X < t.VisX1 && at.Y >= t.VisY0 && at.Y < t.VisY1;
                 if (over)
                 {
@@ -372,10 +419,12 @@ namespace BimGo.Game
             Vector2 c = from.Centre;
             int best = -1;
             float bestScore = float.MaxValue;
+            bool trapped = FocusTrapped;
             for (int i = 0; i < _focusLastCount; i++)
             {
                 if (i == current) { continue; }
                 ref FocusTarget t = ref _focusLast[i];
+                if (trapped && !t.Overlay) { continue; } // Y-B: an open overlay keeps the ring
                 Vector2 p = t.Centre;
                 float along = dx != 0 ? (p.X - c.X) * dx : (p.Y - c.Y) * dy;
                 if (along < S(4)) { continue; }
@@ -393,6 +442,19 @@ namespace BimGo.Game
                 }
             }
             return best;
+        }
+
+        /// <summary>Round Y-B: the open dropdown's current choice among last frame's targets, or −1.</summary>
+        private int SelectedOverlayTarget()
+        {
+            if (_dropdownSelectedRect.Z <= 0f) { return -1; }
+            Vector4 r = _dropdownSelectedRect;
+            for (int i = 0; i < _focusLastCount; i++)
+            {
+                ref FocusTarget t = ref _focusLast[i];
+                if (t.Overlay && t.X == r.X && t.Y == r.Y && t.W == r.Z && t.H == r.W) { return i; }
+            }
+            return -1;
         }
 
         /// <summary>True when a point is over one of last frame's docks.</summary>

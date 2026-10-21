@@ -458,7 +458,8 @@ namespace BimGo.Format
                     Estimated = light.Estimated,
                     Ies = files.ContainsKey(light.Ies ?? string.Empty) ? light.Ies : null, // Round X-D1
                     Aim = UnitOr(light.Aim, -Vector3.UnitZ),
-                    Across = UnitOr(light.Across, Vector3.UnitX)
+                    Across = UnitOr(light.Across, Vector3.UnitX),
+                    Distribution = LightProfiles.IsGeneratedKey(light.Distribution) ? light.Distribution : null // Round Y-C1
                 });
             }
 

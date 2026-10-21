@@ -395,6 +395,24 @@ namespace BimGo.Scene
         /// <summary>Show the FPS readout.</summary>
         public bool ShowFps { get; set; } = true;
 
+        /// <summary>Round Y-D1: the performance details under the status panel (GPU time per stage, chunks, triangles).</summary>
+        public bool ShowPerformance { get; set; }
+
+        /// <summary>
+        /// Round Y-D1 (r2): occlusion culling of the main view: 0 off, 1 auto (culls while the view holds enough triangles;
+        /// the default), 2 on.
+        /// </summary>
+        public int OcclusionMode { get; set; } = 1;
+
+        /// <summary>
+        /// Round Y-D2: artificial light quality in the live view: 0 low (8 shadowed lights, 1 shadow tap), 1 medium (16, the
+        /// strongest 8 soft; the default), 2 high (32, all soft: as before). Photos and videos always use high.
+        /// </summary>
+        public int LightQuality { get; set; } = 1;
+
+        /// <summary>Round Y-D2: draw the opaque scene's depth first so each pixel is lit once (on by default).</summary>
+        public bool DepthPrepass { get; set; } = true;
+
         /// <summary>Maximum riser the player steps up without jumping (mm).</summary>
         public float MaxStepHeightMm { get; set; } = 200f;
 
@@ -860,6 +878,8 @@ namespace BimGo.Scene
             }
             PadBindings = pad;
             ControlsDefaultsVersion = Math.Max(0, ControlsDefaultsVersion);
+            OcclusionMode = Math.Clamp(OcclusionMode, 0, 2); // Y-D1 r2
+            LightQuality = Math.Clamp(LightQuality, 0, 2); // Y-D2
             var generic = new Dictionary<string, string>(StringComparer.Ordinal);
             if (GenericPadMap != null)
             {

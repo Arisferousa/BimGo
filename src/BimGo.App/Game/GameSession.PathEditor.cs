@@ -130,6 +130,7 @@ namespace BimGo.Game
             CloseSunPanel();
             CloseSunHours();
             CloseGridsPanel();
+            CloseFixtureDock(); // Round Y-C2
             if (_guns[_activeGun].CapturesInput) { _guns[_activeGun].OnCancel(); }
             if (_paused) { SetPaused(false); }
             ShowUi();

@@ -137,6 +137,7 @@ namespace BimGo.Game
         {
             if (!_clashModeOn) { return; }
             CloseGridsPanel(); // grids round A (clash mode's cursor handling follows)
+            CloseFixtureDock(); // Round Y-C2
             if (_clashBatch != null) { FinishClashBatch(cancelled: true); }
             CancelClashReport(); // C-C3
             _clashReportCardOpen = false;

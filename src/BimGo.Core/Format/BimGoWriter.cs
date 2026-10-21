@@ -275,8 +275,9 @@ namespace BimGo.Format
                     Downward = light.Downward,
                     Estimated = light.Estimated,
                     Ies = light.Ies, // Round X-D1
-                    Aim = light.Ies == null && light.Aim == -Vector3.UnitZ ? null : light.Aim,
-                    Across = light.Ies == null && light.Across == Vector3.UnitX ? null : light.Across
+                    Aim = light.Ies == null && light.Distribution == null && light.Aim == -Vector3.UnitZ ? null : light.Aim,
+                    Across = light.Ies == null && light.Distribution == null && light.Across == Vector3.UnitX ? null : light.Across,
+                    Distribution = light.Distribution // Round Y-C1
                 });
             }
             if (lighting.IesFiles.Length > 0)

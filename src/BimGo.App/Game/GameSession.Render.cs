@@ -177,6 +177,14 @@ namespace BimGo.Game
         /// <param name="photo">A photo: no probe baking, no highlights, markers or gizmos.</param>
         private void RenderScene(int width, int height, RenderTarget target, int samples, bool photo)
         {
+            // ---- Round Y-D1: GPU time per stage (Performance details; the main view only)
+            GpuTimers timers = _renderer.Timers;
+            if (!photo)
+            {
+                timers.Enabled = _showPerf;
+                timers.BeginFrame();
+            }
+
             // ---- Colour round A: the active colour profile (evaluated again only when something changed)
             UpdateProfile();
 
@@ -189,6 +197,7 @@ namespace BimGo.Game
             // ---- Sun lighting and shadow maps (only changed cascades re-render). Clash pictures (C-B2) other than the real
             // model view draw without the sun, so they leave the cascades as the main view needs them
             _renderer.Lighting = FrameLighting();
+            if (!photo) { timers.Stage(GpuTimers.SHADOWS); }
             bool clashShotUnlit = _clashShot && _clashView != CLASH_VIEW_REAL;
             string shadowError = clashShotUnlit ? null : _renderer.UpdateShadows(Camera, Scene.Bounds, ShadowSceneKey(), _groupVisible, Dynamics, _whitecard,
                 ShadowMaps.PresetFor(_shadowQuality));
@@ -214,6 +223,12 @@ namespace BimGo.Game
             bool clashView = ClashViewActive && (!photo || _clashShot);
             bool clashNoAo = clashView && _clashView != CLASH_VIEW_REAL; // the real model view keeps AO
             int ssr = ScreenReflectionQuality(clashView, photo); // Round X-C1
+
+            // ---- Round Y-D1: occlusion culling (the main view only: last frame's answers decide what the passes skip)
+            bool cull = !photo && !clashView && !_clashShot;
+            _renderer.OcclusionMode = _occlusionMode;
+            _renderer.BeginOcclusionFrame(Camera, cull);
+            if (!photo) { timers.Stage(GpuTimers.EFFECTS); }
             if (_clashShot)
             {
                 _renderer.SkipScreenEffects();
@@ -225,6 +240,7 @@ namespace BimGo.Game
             }
 
             // ---- Reflection probes: a couple of faces per frame until baked, re-baked a moment after things change
+            if (!photo) { timers.Stage(GpuTimers.REFLECTIONS); }
             if (!photo) { UpdateReflectionProbes(); }
 
             var p = new SceneDrawParams
@@ -268,6 +284,8 @@ namespace BimGo.Game
                 }
             }
             p.Planar = !clashView && !_clashShot && _renderer.PlanarCount > 0;
+            p.Occlusion = cull; // Y-D1: after the planar views (they draw everything)
+            if (!photo) { timers.Stage(GpuTimers.OPAQUE); }
 
             // ---- 3D scene into the (optionally multisampled) target
             target.Ensure(width, height, samples);
@@ -290,8 +308,11 @@ namespace BimGo.Game
             }
             else
             {
+                // Round Y-D2: depth first, so the lit opaque draws shade each pixel once
+                if (_depthPrepass) { _renderer.BeginDepthPrepass(p, _groupVisible, Dynamics); }
                 _renderer.DrawStatic(p, _groupVisible, transparent: false);
                 _renderer.DrawDynamic(p, Dynamics, transparent: false);
+                _renderer.EndDepthPrepass();
                 if (_sectionCount > 0)
                 {
                     // Fill the cut solids (stencil caps) before the ground
@@ -299,6 +320,14 @@ namespace BimGo.Game
                     _renderer.DrawSectionCaps(Camera.ViewProjection, Camera.Planes, Camera.Position, _groupVisible, Dynamics, _capColour, extent);
                 }
                 _renderer.DrawGround(Camera, _groundZ);
+
+                // Round Y-D1: query the chunks' boxes against the depth so far (answers decide next frame)
+                if (cull)
+                {
+                    if (!photo) { timers.Stage(GpuTimers.OCCLUSION); }
+                    _renderer.QueryOcclusion(Camera.ViewProjection, Camera.Planes, Camera.Position, _groupVisible);
+                }
+                if (!photo) { timers.Stage(GpuTimers.REST); }
                 DrawGrass(p); // grass round: blades over the grass materials (Realistic)
                 _renderer.DrawBillboards(p); // Round X-B: entourage (trees, people, cars…)
 
@@ -307,6 +336,7 @@ namespace BimGo.Game
                 _highlights.Clear();
                 // Hidden UI: no tints either, unless a gun is in the middle of something (Gizmo / Clone holding an element)
                 if (!_unarmed && !photo && !_photoOpen && !_paused && !_tourActive && (!_uiHidden || active.CapturesInput)) { active.CollectHighlights(_highlights); }
+                if (!photo && !_photoOpen && !_tourActive) { AddFixtureHighlight(_highlights); } // Round Y-C2: the fixture dock's fixture
                 if (_highlights.Count > 0)
                 {
                     Gl.Enable(Gl.BLEND);
@@ -368,6 +398,7 @@ namespace BimGo.Game
 
             // Section box frame and handles (editor only)
             if (!photo) { DrawSectionGizmo(); }
+            if (!photo) { timers.EndFrame(); } // Y-D1
         }
 
         /// <summary>
@@ -571,7 +602,7 @@ namespace BimGo.Game
             _ui.Rect(cx + gap, cy - t1 * 0.5f, arm, t1, UiTheme.TEXT);
             _ui.Circle(cx, cy, S(1.8f), active.Colour, 10);
 
-            if (!_window.IsCaptured && !IsEditingComment && !_sunPanelOpen && !_sunHoursOpen && !_gridsPanelOpen)
+            if (!_window.IsCaptured && !IsEditingComment && !_sunPanelOpen && !_sunHoursOpen && !_gridsPanelOpen && !_fixtureDockOpen)
             {
                 const string hint = "Click to look around";
                 float hintWidth = UiBatch.Measure(f.Body, hint) + S(24);
@@ -595,6 +626,7 @@ namespace BimGo.Game
             if (_sunPanelOpen) { BuildSunPanel(f, _window.Input); }
             if (_sunHoursOpen) { BuildSunHoursPanel(f, _window.Input); }
             BuildGridsPanel(f, _window.Input); // grids round A
+            BuildFixtureDock(f, _window.Input); // Round Y-C2
             BuildSectionPanel(f, _window.Input);
 
             // P-A2: the left-hand column (information): status, coordinates, the legends and the F1 sheet
@@ -696,7 +728,7 @@ namespace BimGo.Game
         }
 
         /// <summary>True while one of the docks (sun, study, section box, grids) is open.</summary>
-        private bool AnyDockOpen => _sunPanelOpen || _sunHoursOpen || _sectionOpen || _gridsPanelOpen;
+        private bool AnyDockOpen => _sunPanelOpen || _sunHoursOpen || _sectionOpen || _gridsPanelOpen || _fixtureDockOpen;
 
         /// <summary>
         /// Polish round P-A2: the left-hand column (information), stacked from the top: the status panel and the
@@ -718,6 +750,8 @@ namespace BimGo.Game
                 BuildCoordinatePanel(f, x, top);
                 top += S(UiTheme.COORDS_HEIGHT) + gap;
             }
+            float perf = BuildPerformancePanel(f, x, top); // Round Y-D1
+            if (perf > 0f) { top += perf + gap; }
             if (!sunLegend && !profileLegend && !help) { return; }
 
             float bottom = height - S(UiTheme.COLUMN_MARGIN);

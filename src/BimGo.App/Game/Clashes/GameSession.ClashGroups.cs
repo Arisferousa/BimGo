@@ -95,6 +95,24 @@ namespace BimGo.Game
             "AUTO: BY GRID", "AUTO: BY GRID + LEVEL",
             "REMOVE AUTOMATIC GROUPS"
         };
+        // Round Y-B: TOOLS ▾ as shown (PICK POINTS with its key), rebuilt when the bindings change
+        private string[] _clashToolLabels;
+        private string _clashToolLabelsKey;
+
+        /// <summary>
+        /// Round Y-B: the TOOLS ▾ choices with the pick points key beside PICK POINTS ("PICK POINTS (K)"; left off when
+        /// it is unbound). The dropdown copies them when it opens.
+        /// </summary>
+        private string[] ClashToolActionLabels()
+        {
+            string key = Key(InputAction.ClashPickPoints);
+            if (_clashToolLabels != null && key == _clashToolLabelsKey) { return _clashToolLabels; }
+            _clashToolLabelsKey = key;
+            _clashToolLabels = (string[])CLASH_TOOL_ACTIONS.Clone();
+            if (!string.IsNullOrEmpty(key) && key != "unbound") { _clashToolLabels[TOOL_PICK] = $"{CLASH_TOOL_ACTIONS[TOOL_PICK]} ({key.ToUpperInvariant()})"; }
+            return _clashToolLabels;
+        }
+
         private const int TOOL_BOX = 0, TOOL_PICK = 1, TOOL_CLUSTER = 2, TOOL_AUTO_ELEMENT = 3, TOOL_AUTO_LEVEL = 4,
             TOOL_AUTO_CATEGORY = 5, TOOL_AUTO_LEVEL_CATEGORY = 6, TOOL_AUTO_GRID = 7, TOOL_AUTO_GRID_LEVEL = 8, TOOL_REMOVE_AUTO = 9;
 

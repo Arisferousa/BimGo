@@ -132,6 +132,7 @@ namespace BimGo.Game
                 CloseSunHours();
                 CloseSectionEditor();
                 ClosePhotoMode();
+                CloseFixtureDock(); // Round Y-C2
                 _window.SetCaptured(false);
                 _window.Input.ReleaseAll();
             }

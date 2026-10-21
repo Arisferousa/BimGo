@@ -859,7 +859,7 @@ namespace BimGo.Game
                 case 1: BuildReflectionsTab(f, input, ix, y, iw); break;
                 case 2: BuildAppearanceTab(f, input, ix, y, iw); break;
                 case 3: bottom = MathF.Max(bottom, BuildLightsTab(f, input, ix, y, iw) + S(12)); break; // X-D1: a list, so it can run long
-                default: BuildDisplayTab(f, input, ix, y, iw); break;
+                default: bottom = MathF.Max(bottom, BuildDisplayTab(f, input, ix, y, iw) + S(12)); break; // Y-D1: it can run long
             }
             EndScroll(_settingsScroll, input, bottom);
             return cardH;
@@ -902,10 +902,14 @@ namespace BimGo.Game
             _roomMatchesDirty = true;
         }
 
+        private static readonly string[] OCCLUSION_OPTIONS = { "Off", "Auto", "On" }; // Y-D1 r2
+        private static readonly string[] LIGHT_QUALITY_OPTIONS = { "Low", "Medium", "High" }; // Y-D2
+
         /// <summary>
         /// Display tab: ground plane, colour, anti-aliasing, FOV, sensitivity and toggles.
         /// </summary>
-        private void BuildDisplayTab(FontAtlas f, InputState input, float ix, float y, float iw)
+        /// <returns>The bottom of the content.</returns>
+        private float BuildDisplayTab(FontAtlas f, InputState input, float ix, float y, float iw)
         {
             // Ground plane (relative to the default, shown absolute)
             Text.Clear().AppendLength(_groundZ, 3);
@@ -961,7 +965,39 @@ namespace BimGo.Game
             y += S(28);
             _showFps = Checkbox(f, input, ix, y, iw, "Show FPS", _showFps);
             y += S(28);
+            _showPerf = Checkbox(f, input, ix, y, iw, "Performance details", _showPerf); // Round Y-D1
+            y += S(28);
             _ambientOcclusion = Checkbox(f, input, ix, y, iw, "Ambient occlusion", _ambientOcclusion);
+            y += S(28);
+
+            // Round Y-D1 (r2: off / auto / on): occlusion culling
+            _ui.Text(f.Body, ix, y + S(4), "Occlusion culling", UiTheme.TEXT);
+            y += S(24);
+            _occlusionMode = Segmented(f, input, ix, y, iw, OCCLUSION_OPTIONS, _occlusionMode);
+            y += S(40);
+            if (_renderer.OcclusionFailed)
+            {
+                y += _ui.TextWrapped(f.Small, ix, y, iw, "Not available on this GPU (see the log): everything in view is drawn.", UiTheme.MEASURE_LABEL, maxLines: 2);
+            }
+            else
+            {
+                y += _ui.TextWrapped(f.Small, ix, y, iw,
+                    "Skips what's hidden behind walls and floors. Auto: only while the view holds over 250,000 triangles. Off if parts of the model show late.",
+                    UiTheme.TEXT_FAINT, maxLines: 3);
+            }
+            y += S(10);
+
+            // Round Y-D2: artificial light quality (live view; photos and videos always High) and the depth pre-pass
+            _ui.Text(f.Body, ix, y + S(4), "Light quality", UiTheme.TEXT);
+            y += S(24);
+            _lightQuality = Segmented(f, input, ix, y, iw, LIGHT_QUALITY_OPTIONS, _lightQuality);
+            y += S(40);
+            y += _ui.TextWrapped(f.Small, ix, y, iw,
+                "Shadowed lights: Low 8, Medium 16 (the 8 strongest soft), High 32, all soft. The rest light without shadows. Photos and videos always use High.",
+                UiTheme.TEXT_FAINT, maxLines: 3) + S(8);
+            _depthPrepass = Checkbox(f, input, ix, y, iw, "Depth pre-pass (light each pixel once)", _depthPrepass);
+            y += S(28);
+            return y;
         }
 
         /// <summary>

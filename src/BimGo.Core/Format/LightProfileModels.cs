@@ -7,12 +7,16 @@ namespace BimGo.Format
     /// <summary>
     /// Round X-D1: the model's light profile choices (<c>light-profiles.json</c> in a .bimgo or the live model folder):
     /// per fixture type ("Family : Type") which distribution its lights use, and the .ies files imported in the app.
-    /// A type without a choice uses the file its Revit family names, else BimGo's own lobe.
+    /// A type without a choice uses the file its Revit family names, else BimGo's own lobe. Round Y-C2: single fixtures
+    /// can have a choice of their own (<see cref="Instances"/>), which wins over their type's.
     /// </summary>
     public sealed class LightProfileDocument
     {
         /// <summary>Most imported files kept.</summary>
         public const int MAX_IMPORTS = 32;
+
+        /// <summary>Round Y-C2: most per-fixture choices kept.</summary>
+        public const int MAX_INSTANCES = 20000;
 
         /// <summary>Layout version.</summary>
         public int Version { get; set; } = 1;
@@ -26,9 +30,18 @@ namespace BimGo.Format
         /// <summary>The imported files (text kept here: .ies files are a few KB).</summary>
         public List<LightProfileImport> Imports { get; set; } = new();
 
+        /// <summary>
+        /// Round Y-C2: the per-fixture choices, keyed by <see cref="InstanceKeyOf"/> (stable across Go / F5 / Export).
+        /// Kept for fixtures that aren't in this snapshot (a hidden link or phase may bring them back).
+        /// </summary>
+        public List<LightProfileInstanceChoice> Instances { get; set; } = new();
+
         /// <summary>True when there is nothing to save.</summary>
         [JsonIgnore]
-        public bool IsEmpty => (Types == null || Types.Count == 0) && (Imports == null || Imports.Count == 0);
+        public bool IsEmpty => (Types == null || Types.Count == 0) && (Imports == null || Imports.Count == 0) && (Instances == null || Instances.Count == 0);
+
+        // Round Y-C2: Instances by key (built on first look-up, dropped on every change)
+        private Dictionary<string, LightProfileInstanceChoice> _instanceIndex;
 
         /// <summary>
         /// The choice for a type: <see cref="LightProfiles.REVIT"/>, <see cref="LightProfiles.LOBE"/>, a built-in key or
@@ -49,6 +62,72 @@ namespace BimGo.Format
             Types.RemoveAll(c => string.Equals(c.FamilyType, familyType, StringComparison.Ordinal));
             if (profile != null) { Types.Add(new LightProfileChoice { FamilyType = familyType, Profile = profile }); }
         }
+
+        #region Per fixture (Round Y-C2)
+
+        /// <summary>
+        /// A fixture's key: its UniqueId (or "id:" + ElementId), after its link instance's UniqueId and a "/" when it comes
+        /// from a link (the pattern of <see cref="EntourageSlot.InstanceKey"/>); null for an element without an
+        /// identity (a family library template).
+        /// </summary>
+        public static string InstanceKeyOf(SceneData scene, int element)
+        {
+            if (scene?.Elements == null || element < 0 || element >= scene.Elements.Length) { return null; }
+            ElementRecord e = scene.Elements[element];
+            if (e.IsLibraryTemplate) { return null; }
+            string id = !string.IsNullOrEmpty(e.UniqueId) ? e.UniqueId : e.ElementId > 0 ? "id:" + e.ElementId.ToString(System.Globalization.CultureInfo.InvariantCulture) : null;
+            if (id == null) { return null; }
+            if (!e.IsLinked) { return id; }
+            LinkInfo link = scene.LinkOf(e);
+            string linkKey = link != null && !string.IsNullOrEmpty(link.InstanceUniqueId) ? link.InstanceUniqueId : "link:" + e.Link.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            return linkKey + "/" + id;
+        }
+
+        /// <summary>A fixture's own choice (same values as a type's), or null when it follows its type.</summary>
+        public string InstanceChoiceFor(string instanceKey)
+        {
+            if (instanceKey == null || Instances == null || Instances.Count == 0) { return null; }
+            if (_instanceIndex == null)
+            {
+                _instanceIndex = new Dictionary<string, LightProfileInstanceChoice>(StringComparer.Ordinal);
+                foreach (LightProfileInstanceChoice c in Instances) { if (c?.Key != null) { _instanceIndex[c.Key] = c; } }
+            }
+            return _instanceIndex.TryGetValue(instanceKey, out LightProfileInstanceChoice choice) ? choice.Profile : null;
+        }
+
+        /// <summary>Sets (or with null clears) a fixture's own choice; <paramref name="familyType"/> is kept for RESET ALL.</summary>
+        public void SetInstanceChoice(string instanceKey, string familyType, string profile)
+        {
+            if (instanceKey == null) { return; }
+            Instances ??= new List<LightProfileInstanceChoice>();
+            Instances.RemoveAll(c => c == null || string.Equals(c.Key, instanceKey, StringComparison.Ordinal));
+            if (profile != null) { Instances.Add(new LightProfileInstanceChoice { Key = instanceKey, FamilyType = familyType ?? string.Empty, Profile = profile }); }
+            _instanceIndex = null;
+        }
+
+        /// <summary>Clears every fixture choice of a type (RESET ALL); returns how many went.</summary>
+        public int ClearInstances(string familyType)
+        {
+            if (Instances == null) { return 0; }
+            int removed = Instances.RemoveAll(c => c == null || string.Equals(c.FamilyType, familyType, StringComparison.Ordinal));
+            _instanceIndex = null;
+            return removed;
+        }
+
+        /// <summary>
+        /// The choice that decides a fixture: its own, else its type's, else null (the default: Revit's, else the lobe).
+        /// </summary>
+        public string ResolveChoice(string instanceKey, string familyType) => InstanceChoiceFor(instanceKey) ?? ChoiceFor(familyType ?? string.Empty);
+
+        /// <summary>
+        /// The profile key a choice means: no choice or <see cref="LightProfiles.REVIT"/> → <paramref name="revitKey"/>
+        /// (the fixture's Revit file or distribution, null when it has none), <see cref="LightProfiles.LOBE"/> → null
+        /// (the lobe), else the choice itself.
+        /// </summary>
+        public static string KeyFor(string choice, string revitKey) =>
+            choice == null || choice == LightProfiles.REVIT ? revitKey : choice == LightProfiles.LOBE ? null : choice;
+
+        #endregion
 
         /// <summary>The imported file with a hash, or null.</summary>
         public LightProfileImport FindImport(string hash)
@@ -78,6 +157,21 @@ namespace BimGo.Format
             Imports.RemoveAll(i => i == null || !LightProfiles.IsSafeHash(i.Hash) || string.IsNullOrEmpty(i.Text)
                 || i.Text.Length > LightProfile.MAX_IES_BYTES || !hashes.Add(i.Hash));
             if (Imports.Count > MAX_IMPORTS) { Imports.RemoveRange(MAX_IMPORTS, Imports.Count - MAX_IMPORTS); }
+
+            // Round Y-C2: fixture choices (the last per key wins; unknown ids are kept, see Instances)
+            Instances ??= new List<LightProfileInstanceChoice>();
+            var keys = new HashSet<string>(StringComparer.Ordinal);
+            var instances = new List<LightProfileInstanceChoice>();
+            for (int i = Instances.Count - 1; i >= 0; i--)
+            {
+                LightProfileInstanceChoice c = Instances[i];
+                if (c == null || string.IsNullOrWhiteSpace(c.Key) || c.Key.Length > 256 || !IsKnownValue(c.Profile) || !keys.Add(c.Key)) { continue; }
+                c.FamilyType ??= string.Empty;
+                instances.Insert(0, c);
+            }
+            if (instances.Count > MAX_INSTANCES) { instances.RemoveRange(0, instances.Count - MAX_INSTANCES); }
+            Instances = instances;
+            _instanceIndex = null;
             return this;
         }
 
@@ -96,6 +190,21 @@ namespace BimGo.Format
         public string FamilyType { get; set; }
 
         /// <summary><c>revit</c>, <c>lobe</c>, <c>builtin:…</c> or <c>ies:&lt;hash&gt;</c>.</summary>
+        public string Profile { get; set; }
+    }
+
+    /// <summary>
+    /// Round Y-C2: one fixture's own choice.
+    /// </summary>
+    public sealed class LightProfileInstanceChoice
+    {
+        /// <summary>The fixture (<see cref="LightProfileDocument.InstanceKeyOf"/>).</summary>
+        public string Key { get; set; }
+
+        /// <summary>Its "Family : Type" when set (RESET ALL clears a type's, including fixtures not in this snapshot).</summary>
+        public string FamilyType { get; set; }
+
+        /// <summary>As <see cref="LightProfileChoice.Profile"/>.</summary>
         public string Profile { get; set; }
     }
 

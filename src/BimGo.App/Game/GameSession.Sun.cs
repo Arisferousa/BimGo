@@ -368,6 +368,7 @@ namespace BimGo.Game
             if (_sunPanelOpen) { return; }
             CloseSunHours(); // one panel at a time
             CloseGridsPanel();
+            CloseFixtureDock(); // Round Y-C2
             CloseSectionEditor();
             ClosePhotoMode();
             ShowUi(); // the panel is UI: Shift+O while hidden brings everything back

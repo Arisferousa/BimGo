@@ -58,6 +58,7 @@ namespace BimGo.Extraction
         // Round X-D1: the fixture's photometric file (hash) and orientation (scene axes; null when it isn't a family instance)
         private string _fixtureIes;
         private float _fixtureIesLumens;
+        private string _fixtureShape; // Round Y-C1: a spot / hemispherical light's generated profile key
 
         // X-D1 r3: the fixture's transform (scene axes incl. a link's), its nested light sources (non-shared nested
         // lighting families, read from the family once), and whether shared nested lights stand in for it
@@ -84,8 +85,9 @@ namespace BimGo.Extraction
 
         // Round X-D1: photometric files by content hash, each type's (per document), where each file name was found
         private readonly Dictionary<string, LightIesFile> _iesFiles = new(StringComparer.Ordinal);
-        private readonly Dictionary<(Document Doc, long Type), (string Hash, double Tilt, float Lumens)> _iesOfType = new();
+        private readonly Dictionary<(Document Doc, long Type), (string Hash, double Tilt, float Lumens, string Shape)> _iesOfType = new();
         private readonly Dictionary<string, string> _iesPathOfName = new(StringComparer.OrdinalIgnoreCase);
+        private int _shapeLights; // Round Y-C1: lights with a spot / hemispherical distribution
         private int _iesLights, _lensOverrules, _nestedLights, _nestedByTransform, _nestedByDrawTransform, _drawDiffers;
         private readonly Dictionary<(Document Doc, long Type), bool> _ownLightOfType = new();
         private readonly Dictionary<(Document Doc, long Family), NestedLight[]> _nestedOfFamily = new();
@@ -100,7 +102,8 @@ namespace BimGo.Extraction
         /// <param name="IesLumens">The file's output, or 0.</param>
         /// <param name="Lumens">Its own lumens parameter, or null.</param>
         /// <param name="Kelvin">Its own colour temperature, or null.</param>
-        private readonly record struct NestedLight(string Name, Transform Local, string Hash, double Tilt, float IesLumens, float? Lumens, float? Kelvin);
+        /// <param name="Shape">Round Y-C1: its spot / hemispherical distribution's generated profile key, or null.</param>
+        private readonly record struct NestedLight(string Name, Transform Local, string Hash, double Tilt, float IesLumens, float? Lumens, float? Kelvin, string Shape);
 
         #endregion
 
@@ -126,6 +129,7 @@ namespace BimGo.Extraction
             _fixtureGuessedLens = false;
             _fixtureIes = null;
             _fixtureIesLumens = 0f;
+            _fixtureShape = null;
             _fixtureAim = _fixtureAcross = null;
             _fixtureTransform = null;
             _fixtureNested = Array.Empty<NestedLight>();
@@ -302,10 +306,12 @@ namespace BimGo.Extraction
                 Estimated = estimated,
                 Ies = _fixtureIes,
                 Aim = aim,
-                Across = across
+                Across = across,
+                Distribution = _fixtureIes == null ? _fixtureShape : null // Round Y-C1
             });
             if (estimated) { _estimatedLights++; }
             if (_fixtureIes != null) { _iesLights++; }
+            else if (_fixtureShape != null) { _shapeLights++; }
         }
 
         /// <summary>
@@ -331,7 +337,7 @@ namespace BimGo.Extraction
         /// </summary>
         private LightingData BuildLighting()
         {
-            Utilities.Log_Utils.Write($"Lighting: {_lights.Count} fixture lights ({_estimatedLights} estimated, {_iesLights} with a photometric file, {_lensOverrules} without a light source aimed by their lens, {_nestedLights} from nested light sources ({_nestedLights - _nestedByTransform - _nestedByDrawTransform} by nested geometry, {_nestedByDrawTransform} by the drawn host, {_nestedByTransform} by the instance transform; {_drawDiffers} hosts drawn unlike their instance transform; placed {_mirrorChoices[3]} by their hand / facing flips, overruled by the drawn bounds: {_mirrorChoices[0]} as is, {_mirrorChoices[1]} across YZ, {_mirrorChoices[2]} across XZ; {_flippedHosts} hosts flipped), {_outsideLights} pulled inside their fixture), " +
+            Utilities.Log_Utils.Write($"Lighting: {_lights.Count} fixture lights ({_estimatedLights} estimated, {_iesLights} with a photometric file, {_shapeLights} spot / hemispherical, {_lensOverrules} without a light source aimed by their lens, {_nestedLights} from nested light sources ({_nestedLights - _nestedByTransform - _nestedByDrawTransform} by nested geometry, {_nestedByDrawTransform} by the drawn host, {_nestedByTransform} by the instance transform; {_drawDiffers} hosts drawn unlike their instance transform; placed {_mirrorChoices[3]} by their hand / facing flips, overruled by the drawn bounds: {_mirrorChoices[0]} as is, {_mirrorChoices[1]} across YZ, {_mirrorChoices[2]} across XZ; {_flippedHosts} hosts flipped), {_outsideLights} pulled inside their fixture), " +
                 $"{_emissiveRuns.Count} glowing vertex runs, {_selfIlluminatedMaterials} self-illuminated materials, {_guessedLenses} guessed lenses, {_iesFiles.Count} .ies files.");
             return _emissiveRuns.Count == 0 && _lights.Count == 0
                 ? LightingData.Empty
@@ -470,13 +476,14 @@ namespace BimGo.Extraction
             if (type != null)
             {
                 var key = (_src.Doc, type.Id.Value);
-                if (!_iesOfType.TryGetValue(key, out (string Hash, double Tilt, float Lumens) found))
+                if (!_iesOfType.TryGetValue(key, out (string Hash, double Tilt, float Lumens, string Shape) found))
                 {
                     found = ReadTypeIes(_src.Doc, element, type, FamilyTypeOf(element));
                     _iesOfType[key] = found;
                 }
                 _fixtureIes = found.Hash;
                 _fixtureIesLumens = found.Lumens;
+                _fixtureShape = found.Shape;
                 tilt = found.Tilt;
             }
 
@@ -578,8 +585,8 @@ namespace BimGo.Extraction
                     try { hasLight = Autodesk.Revit.DB.Lighting.LightType.GetLightTypeFromInstance(familyDoc, nested.Id) != null; }
                     catch (Exception) { hasLight = false; }
                     if (!hasLight) { continue; }
-                    (string hash, double tilt, float iesLumens) = ReadTypeIes(familyDoc, nested, nestedType, $"{label} › {FamilyTypeOf(nested)}");
-                    lights.Add(new NestedLight(FamilyTypeOf(nested), nested.GetTotalTransform(), hash, tilt, iesLumens, ReadLumens(nested, nestedType), ReadKelvin(nested, nestedType)));
+                    (string hash, double tilt, float iesLumens, string shape) = ReadTypeIes(familyDoc, nested, nestedType, $"{label} › {FamilyTypeOf(nested)}");
+                    lights.Add(new NestedLight(FamilyTypeOf(nested), nested.GetTotalTransform(), hash, tilt, iesLumens, ReadLumens(nested, nestedType), ReadKelvin(nested, nestedType), shape));
                 }
                 if (lights.Count > 0) { Utilities.Log_Utils.Write($"{_src.Describe()}: “{label}” holds {lights.Count} nested light source(s)."); }
                 return lights.ToArray();
@@ -654,10 +661,12 @@ namespace BimGo.Extraction
                     Estimated = estimated,
                     Ies = n.Hash,
                     Aim = orient.Aim,
-                    Across = orient.Across
+                    Across = orient.Across,
+                    Distribution = n.Hash == null ? n.Shape : null // Round Y-C1
                 });
                 if (estimated) { _estimatedLights++; }
                 if (n.Hash != null) { _iesLights++; }
+                else if (n.Shape != null) { _shapeLights++; }
                 _nestedLights++;
             }
         }
@@ -721,19 +730,36 @@ namespace BimGo.Extraction
         }
 
         /// <summary>
-        /// A fixture type's photometric web file (hash into <see cref="_iesFiles"/>, or null) and tilt (radians).
+        /// A fixture type's photometric web file (hash into <see cref="_iesFiles"/>, or null) and tilt (radians). Round
+        /// Y-C1: a spot light's beam / field angles (and tilt) or a hemispherical light as a generated profile key
+        /// (<c>Shape</c>; spherical lights stay on BimGo's lobe).
         /// </summary>
-        private (string Hash, double Tilt, float Lumens) ReadTypeIes(Document doc, Element element, Element type, string label)
+        private (string Hash, double Tilt, float Lumens, string Shape) ReadTypeIes(Document doc, Element element, Element type, string label)
         {
             string file = null;
             double tilt = double.NaN;
+            string shape = null;
             try
             {
                 Autodesk.Revit.DB.Lighting.LightType light = Autodesk.Revit.DB.Lighting.LightType.GetLightTypeFromInstance(doc, element.Id);
-                if (light?.GetLightDistribution() is Autodesk.Revit.DB.Lighting.PhotometricWebLightDistribution web)
+                Autodesk.Revit.DB.Lighting.LightDistribution distribution = light?.GetLightDistribution();
+                if (distribution is Autodesk.Revit.DB.Lighting.PhotometricWebLightDistribution web)
                 {
                     file = web.PhotometricWebFile;
                     tilt = web.TiltAngle;
+                }
+                else if (distribution is Autodesk.Revit.DB.Lighting.SpotLightDistribution spot)
+                {
+                    // Round Y-C1: Revit's angles are radians, full cone angles; the tilt as a web's (90° = down)
+                    tilt = spot.TiltAngle;
+                    shape = LightProfiles.SpotKey(spot.SpotBeamAngle * 180.0 / Math.PI, spot.SpotFieldAngle * 180.0 / Math.PI);
+                    Utilities.Log_Utils.Write($"{_src.Describe()}: “{label}” is a spot light: beam {spot.SpotBeamAngle * 180.0 / Math.PI:0.#}°, field " +
+                        $"{spot.SpotFieldAngle * 180.0 / Math.PI:0.#}°, tilt {tilt * 180.0 / Math.PI:0.#}° (90° = down) → {shape ?? "lobe (angles unusable)"}.");
+                }
+                else if (distribution is Autodesk.Revit.DB.Lighting.HemisphericalLightDistribution)
+                {
+                    shape = LightProfiles.HEMISPHERICAL;
+                    Utilities.Log_Utils.Write($"{_src.Describe()}: “{label}” is a hemispherical light → {shape}.");
                 }
             }
             catch (Exception ex)
@@ -746,23 +772,23 @@ namespace BimGo.Extraction
                 Parameter parameter = type.LookupParameter("Photometric Web File") ?? element.LookupParameter("Photometric Web File");
                 if (parameter != null && parameter.StorageType == StorageType.String) { file = parameter.AsString(); }
             }
-            if (string.IsNullOrWhiteSpace(file)) { return (null, tilt, 0f); }
+            if (string.IsNullOrWhiteSpace(file)) { return (null, tilt, 0f, shape); }
 
             string path = FindIes(file.Trim());
             if (path == null)
             {
                 Utilities.Log_Utils.Write($"{_src.Describe()}: “{label}” names photometric file “{file}”, not found (its fixtures keep BimGo's lobe).");
-                return (null, tilt, 0f);
+                return (null, tilt, 0f, null);
             }
             try
             {
-                if (new FileInfo(path).Length > LightProfile.MAX_IES_BYTES) { return (null, tilt, 0f); }
+                if (new FileInfo(path).Length > LightProfile.MAX_IES_BYTES) { return (null, tilt, 0f, null); }
                 string text = File.ReadAllText(path, System.Text.Encoding.Latin1);
                 IesData data = IesData.Parse(text, out string error);
                 if (data == null)
                 {
                     Utilities.Log_Utils.Write($"{_src.Describe()}: photometric file {path} not usable: {error}");
-                    return (null, tilt, 0f);
+                    return (null, tilt, 0f, null);
                 }
                 string hash = LightProfiles.HashOf(LightProfiles.KeyOf(text));
                 if (!_iesFiles.ContainsKey(hash))
@@ -772,12 +798,12 @@ namespace BimGo.Extraction
                 }
                 Utilities.Log_Utils.Write($"{_src.Describe()}: “{label}” uses {Path.GetFileName(path)}, tilt " +
                     (double.IsFinite(tilt) ? $"{tilt * 180.0 / Math.PI:0.#}° (90° = down)" : "unknown (aimed down the family's −Z)") + ".");
-                return (hash, tilt, data.TotalLumens());
+                return (hash, tilt, data.TotalLumens(), null);
             }
             catch (Exception ex)
             {
                 Utilities.Log_Utils.Write($"{_src.Describe()}: photometric file {path} unreadable: {ex.Message}");
-                return (null, tilt, 0f);
+                return (null, tilt, 0f, null);
             }
         }
 

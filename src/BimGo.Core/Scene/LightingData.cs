@@ -135,6 +135,13 @@ namespace BimGo.Scene
 
         /// <summary>Round X-D1: the fixture's IES C 0° axis (across the aim; scene axes). World X by default.</summary>
         public Vector3 Across { get; init; } = Vector3.UnitX;
+
+        /// <summary>
+        /// Round Y-C1: a Revit spot or hemispherical light's own distribution as a generated profile key
+        /// (<see cref="LightProfiles.SpotKey"/>, <see cref="LightProfiles.HEMISPHERICAL"/>), or null (a photometric web
+        /// (<see cref="Ies"/>), a spherical light, or unknown: BimGo's lobe).
+        /// </summary>
+        public string Distribution { get; init; }
     }
 
     /// <summary>

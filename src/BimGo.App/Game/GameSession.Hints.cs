@@ -57,6 +57,7 @@ namespace BimGo.Game
         private static readonly KeyHint HINT_PHOTO_TAKE = new(() => $"TAKE PHOTO ({KeyUpper(InputAction.PhotoTake)})");
         private static readonly KeyHint HINT_PHOTO_CLOSE = new(() => $"CLOSE ({KeyUpper(InputAction.PhotoMode)} / ESC)");
 
+        private static readonly KeyHint HINT_FIXTURE_FOOT = new(() => $"{Key(InputAction.FixtureProfile)} / Esc closes"); // Round Y-C2: the fixture dock
         private static readonly KeyHint HINT_STUDY_FOOT = new(() => $"{Key(InputAction.SunStudy)} / Esc · results stay");
 
         private static readonly KeyHint HINT_SECTION_DRAG = new(() => $"Drag a handle along its arrow ({Key(InputAction.SectionFreeDrag)}: no snap) · RMB-drag to look");

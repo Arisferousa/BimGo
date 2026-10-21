@@ -66,6 +66,36 @@ namespace BimGo.Scene
         /// <summary>True for files from Revit or imported (not a built-in).</summary>
         public bool IsFile => Key != null && Key.StartsWith(LightProfiles.FILE_PREFIX, StringComparison.Ordinal);
 
+        /// <summary>Round Y-C1: true for a profile generated from a Revit spot / hemispherical light's settings.</summary>
+        public bool IsGenerated => Key != null && Key.StartsWith(LightProfiles.GENERATED_PREFIX, StringComparison.Ordinal);
+
+        /// <summary>
+        /// Round Y-C1: a file's TILT=INCLUDE data: lamp tilt angles (degrees, increasing) and the output factor at each,
+        /// or null (TILT=NONE, or a built-in). See <see cref="TiltFactor"/>.
+        /// </summary>
+        public float[] TiltAngles { get; init; }
+
+        /// <summary>Round Y-C1: the factors matching <see cref="TiltAngles"/>.</summary>
+        public float[] TiltFactors { get; init; }
+
+        /// <summary>
+        /// Round Y-C1: the file's output factor for a lamp tilted this far from how it was measured (degrees: for a
+        /// fixture, how far its aim is turned from straight down). Linear between the file's angles, held at its ends;
+        /// 1 without tilt data. LM-63 applies it to every candela value, so it scales the output, not the shape.
+        /// </summary>
+        public float TiltFactor(float degrees)
+        {
+            float[] a = TiltAngles, f = TiltFactors;
+            if (a == null || f == null || a.Length == 0 || a.Length != f.Length) { return 1f; }
+            if (!float.IsFinite(degrees)) { return 1f; }
+            if (degrees <= a[0]) { return f[0]; }
+            if (degrees >= a[^1]) { return f[^1]; }
+            int i = 0;
+            while (i < a.Length - 2 && a[i + 1] < degrees) { i++; }
+            float t = (degrees - a[i]) / MathF.Max(a[i + 1] - a[i], 1e-6f);
+            return f[i] + (f[i + 1] - f[i]) * Math.Clamp(t, 0f, 1f);
+        }
+
         #endregion
 
         #region Sampling
@@ -101,7 +131,8 @@ namespace BimGo.Scene
         /// <summary>
         /// A profile from a function of (gamma, C) in degrees (any scale: normalised to peak 1 here).
         /// </summary>
-        public static LightProfile FromFunction(string key, string name, Func<float, float, float> intensity, float lumens = 0f)
+        public static LightProfile FromFunction(string key, string name, Func<float, float, float> intensity, float lumens = 0f,
+            float[] tiltAngles = null, float[] tiltFactors = null)
         {
             var raw = new float[TABLE_SIZE];
             float peak = 0f;
@@ -133,7 +164,9 @@ namespace BimGo.Scene
                 Table = table,
                 Scale = integral > 1e-4f ? 4f * MathF.PI / integral : 1f,
                 Lumens = lumens,
-                BeamAngle = BeamOf(table)
+                BeamAngle = BeamOf(table),
+                TiltAngles = tiltAngles,
+                TiltFactors = tiltFactors
             };
         }
 
@@ -145,7 +178,7 @@ namespace BimGo.Scene
         {
             IesData data = IesData.Parse(text, out error);
             if (data == null) { return null; }
-            return FromFunction(key, name, data.Candela, data.TotalLumens());
+            return FromFunction(key, name, data.Candela, data.TotalLumens(), data.TiltAngles, data.TiltFactors);
         }
 
         /// <summary>
@@ -199,8 +232,9 @@ namespace BimGo.Scene
 
     /// <summary>
     /// Round X-D1: an IESNA LM-63 photometric file, parsed. Type C only (types A / B, used for floodlights and road
-    /// lights, are refused); TILT=INCLUDE data is skipped (tilt is ignored); the symmetric layouts (one C plane, 0–90,
-    /// 0–180, 90–270) and full 0–360 files are expanded by <see cref="Candela"/>.
+    /// lights, are refused); the symmetric layouts (one C plane, 0–90, 0–180, 90–270) and full 0–360 files are expanded by
+    /// <see cref="Candela"/>. Round Y-C1: TILT=INCLUDE data is kept (<see cref="TiltAngles"/> / <see cref="TiltFactors"/>);
+    /// TILT=&lt;file name&gt; (tilt data in a separate file) is read as no tilt (<see cref="TiltFileIgnored"/>).
     /// </summary>
     public sealed class IesData
     {
@@ -224,6 +258,18 @@ namespace BimGo.Scene
 
         /// <summary>Candela, [horizontal][vertical], multiplier applied.</summary>
         public float[][] Values { get; private set; }
+
+        /// <summary>Round Y-C1: TILT=INCLUDE lamp-to-luminaire geometry (1 vertical lamp, 2 / 3 horizontal), or 0.</summary>
+        public int TiltGeometry { get; private set; }
+
+        /// <summary>Round Y-C1: TILT=INCLUDE angles (degrees, increasing), or null.</summary>
+        public float[] TiltAngles { get; private set; }
+
+        /// <summary>Round Y-C1: TILT=INCLUDE output factors (one per angle), or null.</summary>
+        public float[] TiltFactors { get; private set; }
+
+        /// <summary>Round Y-C1: the file named a separate tilt file (TILT=&lt;name&gt;): not read, so no tilt.</summary>
+        public bool TiltFileIgnored { get; private set; }
 
         /// <summary>The keywords ([TEST], [MANUFAC], [LUMINAIRE]…), first value of each.</summary>
         public Dictionary<string, string> Keywords { get; } = new(StringComparer.OrdinalIgnoreCase);
@@ -297,17 +343,40 @@ namespace BimGo.Scene
             int at = 0;
             double Next() => at < numbers.Count ? numbers[at++] : double.NaN;
 
-            // TILT=INCLUDE: lamp-to-luminaire geometry, angle count, angles, factors (skipped: tilt is ignored)
+            // TILT=INCLUDE: lamp-to-luminaire geometry, angle count, angles, factors (Round Y-C1: kept)
             if (string.Equals(tilt, "INCLUDE", StringComparison.OrdinalIgnoreCase))
             {
-                Next();
+                double geometry = Next();
                 double count = Next();
-                if (!(count >= 0 && count < 1000))
+                if (!(count >= 0 && count < 1000) || numbers.Count - at < 2 * (int)count)
                 {
                     error = "Damaged TILT data.";
                     return null;
                 }
-                at += 2 * (int)count;
+                int n = (int)count;
+                var angles = new float[n];
+                var factors = new float[n];
+                bool usable = n > 0;
+                for (int i = 0; i < n; i++) { angles[i] = (float)Next(); }
+                for (int i = 0; i < n; i++)
+                {
+                    double factor = Next();
+                    factors[i] = double.IsFinite(factor) && factor >= 0 ? (float)Math.Min(factor, 10.0) : 1f;
+                }
+                for (int i = 0; i < n; i++)
+                {
+                    if (!float.IsFinite(angles[i]) || (i > 0 && !(angles[i] > angles[i - 1]))) { usable = false; }
+                }
+                if (usable)
+                {
+                    data.TiltGeometry = double.IsFinite(geometry) ? (int)geometry : 0;
+                    data.TiltAngles = angles;
+                    data.TiltFactors = factors;
+                }
+            }
+            else if (!string.IsNullOrEmpty(tilt) && !string.Equals(tilt, "NONE", StringComparison.OrdinalIgnoreCase))
+            {
+                data.TiltFileIgnored = true;
             }
 
             double lamps = Next(), lumens = Next(), multiplier = Next(), nv = Next(), nh = Next(), type = Next();
@@ -471,6 +540,12 @@ namespace BimGo.Scene
         public const string LOBE = "lobe";
 
         /// <summary>
+        /// Round Y-C1: key prefix of a profile generated from a Revit light's own distribution (<see cref="SpotKey"/>,
+        /// <see cref="HEMISPHERICAL"/>).
+        /// </summary>
+        public const string GENERATED_PREFIX = "gen:";
+
+        /// <summary>
         /// A file's key: <c>ies:</c> + the first 16 hex characters of the SHA-256 of its text (line endings normalised),
         /// so one file reached by two paths (or imported twice) is one profile.
         /// </summary>
@@ -547,6 +622,72 @@ namespace BimGo.Scene
         {
             foreach (LightProfile p in BuiltIns) { if (p.Key == key) { return p; } }
             return null;
+        }
+
+        #endregion
+
+        #region Generated (Round Y-C1)
+
+        /// <summary>Key of Revit's hemispherical distribution: an even (Lambertian, cosine) half sphere out of the fixture.</summary>
+        public const string HEMISPHERICAL = GENERATED_PREFIX + "hemi";
+
+        private const string SPOT_PREFIX = GENERATED_PREFIX + "spot:";
+
+        /// <summary>
+        /// The key of a Revit spot light's distribution: <c>gen:spot:&lt;beam&gt;:&lt;field&gt;</c>, whole degrees (full
+        /// angles; the beam at least 1°, the field at least the beam, both at most 179°), so equal spots share a profile.
+        /// </summary>
+        /// <param name="beamDegrees">Revit's Spot Beam Angle: full intensity inside it.</param>
+        /// <param name="fieldDegrees">Revit's Spot Field Angle: no light outside it.</param>
+        /// <returns>The key, or null when the angles aren't usable.</returns>
+        public static string SpotKey(double beamDegrees, double fieldDegrees)
+        {
+            if (!double.IsFinite(beamDegrees) || !double.IsFinite(fieldDegrees) || fieldDegrees <= 0) { return null; }
+            int field = (int)Math.Clamp(Math.Round(fieldDegrees), 1, 179);
+            int beam = (int)Math.Clamp(Math.Round(beamDegrees), 1, field);
+            return string.Create(CultureInfo.InvariantCulture, $"{SPOT_PREFIX}{beam}:{field}");
+        }
+
+        /// <summary>True when a key is a generated profile this version can make.</summary>
+        public static bool IsGeneratedKey(string key) => key == HEMISPHERICAL || TryParseSpot(key, out _, out _);
+
+        private static bool TryParseSpot(string key, out int beam, out int field)
+        {
+            beam = field = 0;
+            if (key == null || !key.StartsWith(SPOT_PREFIX, StringComparison.Ordinal)) { return false; }
+            string[] parts = key[SPOT_PREFIX.Length..].Split(':');
+            return parts.Length == 2
+                && int.TryParse(parts[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out beam)
+                && int.TryParse(parts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out field)
+                && beam >= 1 && field >= beam && field <= 179;
+        }
+
+        /// <summary>
+        /// A generated profile from its key (made each call: cache it), or null when the key isn't one:
+        /// <list type="bullet">
+        /// <item>Spot: full intensity inside half the beam angle, a smooth fall to nothing at half the field angle (at
+        /// least a 2° fall, so a beam equal to its field still has a soft edge), nothing beyond.</item>
+        /// <item>Hemispherical: cos γ out of the fixture, nothing behind it.</item>
+        /// </list>
+        /// </summary>
+        public static LightProfile FromGeneratedKey(string key)
+        {
+            if (key == HEMISPHERICAL)
+            {
+                return LightProfile.FromFunction(key, "Revit hemispherical", (g, c) => g < 90f ? MathF.Cos(Rad(g)) : 0f);
+            }
+            if (!TryParseSpot(key, out int beam, out int field)) { return null; }
+            float inner = beam * 0.5f, outer = MathF.Max(field * 0.5f, inner + 2f);
+            string name = beam == field
+                ? string.Create(CultureInfo.InvariantCulture, $"Revit spot ({beam}°)")
+                : string.Create(CultureInfo.InvariantCulture, $"Revit spot ({beam}° beam, {field}° field)");
+            return LightProfile.FromFunction(key, name, (g, c) =>
+            {
+                if (g <= inner) { return 1f; }
+                if (g >= outer) { return 0f; }
+                float t = (outer - g) / (outer - inner);
+                return t * t * (3f - 2f * t);
+            });
         }
 
         private static float Rad(float degrees) => degrees * MathF.PI / 180f;

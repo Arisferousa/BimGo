@@ -388,7 +388,7 @@ namespace BimGo.Game
             if (DropdownButton(f, input, toolsX, cy, toolsW, S(28), "TOOLS", IsDropdownOpen(_clashList, DROP_DOCK_AUTO)))
             {
                 float menuW = MathF.Min(S(300), iw);
-                OpenDropdown(_clashList, DROP_DOCK_AUTO, ix + iw - menuW, cy, menuW, S(28), CLASH_TOOL_ACTIONS, -1, RunClashToolAction);
+                OpenDropdown(_clashList, DROP_DOCK_AUTO, ix + iw - menuW, cy, menuW, S(28), ClashToolActionLabels(), -1, RunClashToolAction);
             }
             cy += S(36);
 

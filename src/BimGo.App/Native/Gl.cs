@@ -74,6 +74,10 @@ namespace BimGo.Native
         // Photo mode (large off-screen targets, exposure blend)
         public const uint MAX_RENDERBUFFER_SIZE = 0x84E8, DST_COLOR = 0x0306;
 
+        // Round Y-D1: occlusion queries and GPU timers (GL 3.3 core)
+        public const uint ANY_SAMPLES_PASSED = 0x8C2F, TIME_ELAPSED = 0x88BF;
+        public const uint QUERY_RESULT = 0x8866, QUERY_RESULT_AVAILABLE = 0x8867;
+
         #endregion
 
         #region Loading
@@ -111,6 +115,9 @@ namespace BimGo.Native
             "glGenFramebuffers", "glDeleteFramebuffers", "glBindFramebuffer", "glFramebufferRenderbuffer",
             "glCheckFramebufferStatus", "glGenRenderbuffers", "glDeleteRenderbuffers", "glBindRenderbuffer",
             "glRenderbufferStorageMultisample", "glBlitFramebuffer", "glFramebufferTextureLayer", "glFramebufferTexture2D", "glDrawBuffers",
+
+            // Queries (Round Y-D1: occlusion culling, GPU timers)
+            "glGenQueries", "glDeleteQueries", "glBeginQuery", "glEndQuery", "glGetQueryObjectuiv",
         };
 
         [DllImport("opengl32.dll", CharSet = CharSet.Ansi, BestFitMapping = false)]
@@ -292,6 +299,35 @@ namespace BimGo.Native
 
         public static void DrawElementsInstanced(uint mode, int count, uint type, nint byteOffset, int instances)
             => _gl.DrawElementsInstanced((GLEnum)mode, (uint)count, (GLEnum)type, (void*)byteOffset, (uint)instances);
+
+        #endregion
+
+        #region Wrappers: queries (Round Y-D1)
+
+        /// <summary>Fills an array with new query objects.</summary>
+        public static void GenQueries(uint[] ids)
+        {
+            if (ids.Length == 0) { return; }
+            fixed (uint* p = ids) { _gl.GenQueries((uint)ids.Length, p); }
+        }
+
+        /// <summary>Deletes an array's query objects (zeros are skipped by GL).</summary>
+        public static void DeleteQueries(uint[] ids)
+        {
+            if (ids == null || ids.Length == 0) { return; }
+            fixed (uint* p = ids) { _gl.DeleteQueries((uint)ids.Length, p); }
+        }
+
+        public static void BeginQuery(uint target, uint id) => _gl.BeginQuery((GLEnum)target, id);
+        public static void EndQuery(uint target) => _gl.EndQuery((GLEnum)target);
+
+        /// <summary>A query's result or availability (glGetQueryObjectuiv).</summary>
+        public static uint GetQueryObject(uint id, uint name)
+        {
+            uint value = 0;
+            _gl.GetQueryObject(id, (GLEnum)name, &value);
+            return value;
+        }
 
         #endregion
 

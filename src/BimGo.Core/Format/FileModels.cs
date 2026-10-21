@@ -367,6 +367,9 @@ namespace BimGo.Format
 
         /// <summary>Round X-D1: the fixture's C 0° axis, or null = world X.</summary>
         public Vector3? Across { get; set; }
+
+        /// <summary>Round Y-C1: a Revit spot / hemispherical light's generated profile key, or null.</summary>
+        public string Distribution { get; set; }
     }
 
     #endregion

@@ -18,6 +18,9 @@ namespace BimGo.Rendering
         /// <summary>Frustum planes for chunk culling.</summary>
         public Vector4[] Planes;
 
+        /// <summary>Round Y-D1: the main view: skip the chunks the occlusion queries hid (see <see cref="SceneRenderer.BeginOcclusionFrame"/>).</summary>
+        public bool Occlusion;
+
         /// <summary>Eye position (fog, lighting).</summary>
         public Vector3 Eye;
 
@@ -975,7 +978,7 @@ namespace BimGo.Rendering
             Gl.Uniform1(_geometryGlow, glow ? 1f : 0f);
             ApplyClip(_geometryUniforms.ClipCount, _geometryUniforms.ClipPlanes, true);
             Gl.Uniform1(_geometryUniforms.ProfilePass, BindProfile(true) ? 1 : 0); // colour round A: ghosts don't occlude
-            DrawBatches(camera.Planes, groupVisible, transparent: false, countStats: false);
+            DrawBatches(camera.Planes, groupVisible, transparent: false, countStats: false, skip: OcclusionMask); // Y-D1: the main view's culling
             if (dynamics != null && dynamics.Instances.Count > 0) { DrawDynamicInstances(dynamics, camera.Planes, transparent: false, _geometryUniforms.Model); }
 
             _groundGeometryProgram.Use();
@@ -1417,17 +1420,18 @@ namespace BimGo.Rendering
         /// <param name="transparent">Which pass.</param>
         public void DrawStatic(in SceneDrawParams p, bool[] groupVisible, bool transparent)
         {
-            if (!transparent) { ChunksDrawn = 0; }
+            if (!transparent && !p.Plan) { ResetDrawStats(); } // Y-D1: the minimap (plan) doesn't count
 
             _sceneProgram.Use();
             ApplyUniforms(_sceneUniforms, p, Vector4.Zero, transmit: !transparent);
-            DrawBatches(p.Planes, groupVisible, transparent, countStats: true);
+            DrawBatches(p.Planes, groupVisible, transparent, countStats: !p.Plan, skip: p.Occlusion ? OcclusionMask : null);
         }
 
         /// <summary>
         /// Multi-draws the visible chunks of every batch of one pass with the current program.
         /// </summary>
-        private void DrawBatches(Vector4[] planes, bool[] groupVisible, bool transparent, bool countStats)
+        /// <param name="skip">Round Y-D1: per chunk, leave it out (the main view's occlusion culling), or null.</param>
+        private void DrawBatches(Vector4[] planes, bool[] groupVisible, bool transparent, bool countStats, bool[] skip = null)
         {
             Gl.BindVertexArray(_vao);
 
@@ -1447,15 +1451,30 @@ namespace BimGo.Rendering
                     for (int c = batch.ChunkStart; c < end; c++)
                     {
                         if (!FpsCamera.IsVisible(planes, chunks[c].Bounds)) { continue; }
+                        if (countStats)
+                        {
+                            ChunksInView++;
+                            TrianglesInView += chunks[c].IndexCount / 3; // Y-D1 r2: Auto decides on it
+                        }
+                        if (skip != null && skip[c])
+                        {
+                            if (countStats) { ChunksOccluded++; }
+                            continue;
+                        }
                         counts[drawCount] = chunks[c].IndexCount;
                         offsets[drawCount] = (nint)chunks[c].IndexStart * sizeof(uint);
+                        if (countStats) { TrianglesDrawn += chunks[c].IndexCount / 3; }
                         drawCount++;
                     }
 
                     if (drawCount > 0)
                     {
                         Gl.MultiDrawElements(Gl.TRIANGLES, counts, Gl.UNSIGNED_INT, (void**)offsets, drawCount);
-                        if (countStats) { ChunksDrawn += drawCount; }
+                        if (countStats)
+                        {
+                            ChunksDrawn += drawCount;
+                            DrawCalls++;
+                        }
                     }
                 }
             }
@@ -1564,6 +1583,9 @@ namespace BimGo.Rendering
             DisposeProfile();
             DisposeScreenReflections(); // Round X-C1
             DisposePlanarReflections();
+            DisposeOcclusion(); // Round Y-D1
+            DisposePrepass(); // Round Y-D2
+            Timers.Dispose();
             Gl.DeleteBuffer(_farLightsBuffer); // X-C1
             Gl.DeleteBuffer(_lightProfilesBuffer); // X-D1
             _shadows.Dispose();
