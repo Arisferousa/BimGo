@@ -24,6 +24,9 @@ namespace BimGo.Game
         private int _savedJournalRevision;
         private int _savedCommentRevision;
         private int _savedBookmarkRevision;
+        private int _savedPathRevision; // Round K-A
+        private int _savedEntourageRevision; // Round X-B
+        private int _savedLightProfileRevision; // Round X-D1
         private float _noticeTimer;
         private string _lastTitle;
 
@@ -43,7 +46,9 @@ namespace BimGo.Game
         /// <summary>True if a standalone file has edits, comments or bookmarks that are not saved yet.</summary>
         public bool IsDirty => IsFileMode && Comments != null && Bookmarks != null &&
             (_journal.Revision != _savedJournalRevision || Comments.Revision != _savedCommentRevision || Bookmarks.Revision != _savedBookmarkRevision || SunDirty || VisibilityDirty
-             || _materialsRevision != _savedMaterialsRevision || ClashesDirty);
+             || _materialsRevision != _savedMaterialsRevision || ClashesDirty || (CameraPaths != null && CameraPaths.Revision != _savedPathRevision)
+             || (Entourage != null && Entourage.Revision != _savedEntourageRevision) || _lightProfileRevision != _savedLightProfileRevision
+             || MeasurementsDirty);
 
         /// <summary>The document's display name (file name, or the Revit model title).</summary>
         public string DocumentName => IsFileMode && !string.IsNullOrEmpty(DocumentPath) ? Path.GetFileName(DocumentPath) : Scene.ModelTitle;
@@ -57,6 +62,10 @@ namespace BimGo.Game
             _savedMaterialsRevision = _materialsRevision;
             _savedCommentRevision = Comments?.Revision ?? 0;
             _savedBookmarkRevision = Bookmarks?.Revision ?? 0;
+            _savedPathRevision = CameraPaths?.Revision ?? 0;
+            _savedEntourageRevision = Entourage?.Revision ?? 0;
+            _savedLightProfileRevision = _lightProfileRevision;
+            _savedMeasurementRevision = _measurementRevision; // Round Y-A
             _savedSunRevision = _sunRevision;
             _savedVisibilityRevision = _visibilityRevision;
             _savedClashRevision = _clashRevision;
@@ -413,6 +422,11 @@ namespace BimGo.Game
                 Comments = Comments.ToDocument(),
                 Journal = _journal,
                 Bookmarks = Bookmarks.ToDocument(),
+                Paths = CameraPaths?.ToDocument(), // Round K-A
+                Entourage = Entourage?.ToDocument(), // Round X-B
+                EntourageImages = Entourage?.ImagesForSave(),
+                LightProfiles = LightProfilesForSave(), // Round X-D1
+                Measurements = MeasurementsForSave(), // Round Y-A
                 Sun = _sun?.Copy(),
                 Visibility = ToVisibilitySettings(),
                 Materials = MaterialsChanged ? CurrentMaterials : null, // Textures panel: picked images are embedded
@@ -492,12 +506,7 @@ namespace BimGo.Game
             return Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
         }
 
-        private static string SafeFileName(string name)
-        {
-            if (string.IsNullOrWhiteSpace(name)) { return "Model"; }
-            foreach (char c in Path.GetInvalidFileNameChars()) { name = name.Replace(c, '_'); }
-            return name;
-        }
+        private static string SafeFileName(string name) => Utilities.FileNames.Safe(name);
 
         #endregion
 
@@ -509,6 +518,8 @@ namespace BimGo.Game
         private void PollHost(float dt)
         {
             UpdateLive();
+            UpdateRevitViews(); // Round X-E: views Revit's ribbon asked for
+            UpdateCommentMarkers(); // Round Z-B: comments → Revit markers
             UpdatePush(dt);
             UpdateSun(dt);
             UpdateScreenshot();
@@ -517,6 +528,7 @@ namespace BimGo.Game
 
             while (_window.TryTakeDroppedFile(out string dropped))
             {
+                if (_kiosk) { continue; } // Round Z-C: kiosk visitors can't open files (drops are dropped)
                 if (_options.OnOpenRequest != null)
                 {
                     string message = _options.OnOpenRequest(dropped);
@@ -529,7 +541,8 @@ namespace BimGo.Game
             }
 
             _noticeTimer += dt;
-            if (_noticeTimer < 1f || _options.PollNotices == null) { return; }
+            // Round Z-C: kiosk mode leaves other launches' requests in the inbox (they open after leaving kiosk mode)
+            if (_noticeTimer < 1f || _options.PollNotices == null || _kiosk) { return; }
             _noticeTimer = 0f;
             string notice = _options.PollNotices();
             if (notice != null) { Toast(notice, 4f); }

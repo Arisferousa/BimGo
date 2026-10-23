@@ -268,6 +268,7 @@ namespace BimGo.Extraction
                 Elements = _elements.ToArray(),
                 Levels = levels,
                 Grids = grids,
+                EntourageSlots = CollectEntourageSlots(sources, view), // Round X-B2
                 Rooms = rooms.ToArray(),
                 Links = _links.ToArray(),
                 PhaseId = phase?.Id.Value ?? -1,
@@ -771,6 +772,7 @@ namespace BimGo.Extraction
                         break;
 
                     case GeometryInstance instance:
+                        if (_fixture) { NoteNestedPlacement(instance, transform.Multiply(instance.Transform)); } // X-D1 r5
                         GeometryElement symbolGeometry = instance.GetSymbolGeometry();
                         if (symbolGeometry != null)
                         {
@@ -1510,7 +1512,12 @@ namespace BimGo.Extraction
                 Max = max,
                 BottomZ = bottom,
                 TopZ = top,
-                Link = _src.Link
+                Link = _src.Link,
+                UniqueId = room.UniqueId, // Round Z-A: identity, level, Revit's area and every parameter for the room overlay
+                ElementId = room.Id.Value,
+                LevelName = room.Level?.Name,
+                Area = (float)(room.Area * FT * FT),
+                Parameters = ReadRoomParameters(room)
             };
         }
 

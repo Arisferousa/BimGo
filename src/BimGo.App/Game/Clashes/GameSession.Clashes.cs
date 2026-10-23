@@ -30,9 +30,6 @@ namespace BimGo.Game
 
         #region State
 
-        /// <summary>True once clash detection has been switched on in this session.</summary>
-        private bool ClashesActive => _clashDocument != null;
-
         /// <summary>True when clash changes wait for a save (files only).</summary>
         private bool ClashesDirty => _clashRevision != _savedClashRevision;
 
@@ -101,10 +98,6 @@ namespace BimGo.Game
             last = count > 0 ? _journal.Entries[count - 1].Utc : default;
         }
 
-        /// <summary>True when the model as walked differs from the one a test last ran on.</summary>
-        private bool ClashModelChangedSince(ClashTest test) =>
-            test?.LastRunUtc != null && !string.Equals(test.LastRunModel, ClashModelState(), StringComparison.Ordinal);
-
         #endregion
 
         #region Items and sets
@@ -170,6 +163,7 @@ namespace BimGo.Game
                 CategoryName = template.CategoryName,
                 FamilyType = template.FamilyType,
                 LevelName = template.LevelName,
+                Phase = template.Phase,
                 Link = template.Link
             };
             return SearchSets.Matches(set, Scene, standIn);

@@ -211,6 +211,36 @@ namespace BimGo.Platform
             if (any || left.LengthSquared() > 0.25f || right.LengthSquared() > 0.25f) { LastInputWasPad = true; }
         }
 
+        /// <summary>A gamepad code is held (polish round P-A2: menu navigation reads the D-pad and shoulders raw).</summary>
+        public bool PadDown(ushort code) => KeyCodes.IsPad(code) && _padDown[code - KeyCodes.GAMEPAD_FIRST];
+
+        /// <summary>A gamepad code went down this frame or auto-repeated.</summary>
+        public bool PadPressedOrRepeated(ushort code) =>
+            KeyCodes.IsPad(code) && (_padPressed[code - KeyCodes.GAMEPAD_FIRST] || _padRepeated[code - KeyCodes.GAMEPAD_FIRST]);
+
+        /// <summary>Any gamepad code other than these two went down this frame (a shoulder used as a chord modifier).</summary>
+        public bool AnyPadPressedExcept(ushort a, ushort b)
+        {
+            for (int i = 0; i < KeyCodes.PAD_COUNT; i++)
+            {
+                if (!_padPressed[i]) { continue; }
+                int code = i + KeyCodes.GAMEPAD_FIRST;
+                if (code != a && code != b) { return true; }
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// Consumes a gamepad code's press and repeat this frame (menu navigation took the D-pad, so the actions
+        /// bound to it don't also fire). Held state is kept.
+        /// </summary>
+        public void ConsumePad(ushort code)
+        {
+            if (!KeyCodes.IsPad(code)) { return; }
+            _padPressed[code - KeyCodes.GAMEPAD_FIRST] = false;
+            _padRepeated[code - KeyCodes.GAMEPAD_FIRST] = false;
+        }
+
         /// <summary>The gamepad's click (A in menus) as the left button, without counting as mouse use.</summary>
         public void InjectLeft(bool down)
         {
@@ -227,6 +257,25 @@ namespace BimGo.Platform
         }
 
         #endregion
+
+        /// <summary>
+        /// Round Z-C (kiosk idle timer): anything a person did this frame: a key or mouse button down or pressed, the mouse
+        /// moving (raw look input), the wheel, or the gamepad (a button down, a stick or trigger off centre). The caller
+        /// adds cursor moves (<see cref="MousePosition"/>) itself.
+        /// </summary>
+        public bool AnyActivity()
+        {
+            if (MathF.Abs(MouseDeltaX) + MathF.Abs(MouseDeltaY) > 2f || Wheel != 0 || CharCount > 0) { return true; }
+            for (int i = 1; i < 256; i++)
+            {
+                if (_down[i] || _pressed[i]) { return true; }
+            }
+            for (int i = 0; i < KeyCodes.PAD_COUNT; i++)
+            {
+                if (_padDown[i] || _padPressed[i]) { return true; }
+            }
+            return PadLeftStick.LengthSquared() > 0.04f || PadRightStick.LengthSquared() > 0.04f;
+        }
 
         /// <summary>
         /// Clears per-frame edges and deltas.

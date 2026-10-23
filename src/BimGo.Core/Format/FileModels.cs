@@ -196,6 +196,37 @@ namespace BimGo.Format
 
         /// <summary>Boundary loops in plan, each flattened as [x0, y0, x1, y1, ...] (scene-local metres).</summary>
         public List<float[]> Loops { get; set; } = new();
+
+        /// <summary>Round Z-A: the room's Revit UniqueId (absent in older files).</summary>
+        public string UniqueId { get; set; }
+
+        /// <summary>Round Z-A: the room's Revit ElementId value (absent in older files).</summary>
+        public long? Id { get; set; }
+
+        /// <summary>Round Z-A: the room's level name (absent in older files).</summary>
+        public string Level { get; set; }
+
+        /// <summary>Round Z-A: Revit's computed area in m² (absent in older files).</summary>
+        public float? Area { get; set; }
+    }
+
+    /// <summary>
+    /// Round Z-A: <c>rooms.json</c> in a .bimgo (optional; written when rooms have parameters): every room's parameters,
+    /// pooled like parameters.json. Older readers ignore it.
+    /// </summary>
+    public sealed class RoomDataDto
+    {
+        /// <summary>Pooled parameter names.</summary>
+        public string[] Names { get; set; } = Array.Empty<string>();
+
+        /// <summary>Pooled display values.</summary>
+        public string[] Values { get; set; } = Array.Empty<string>();
+
+        /// <summary>Aligned with <see cref="Values"/>: the value as a number in display units, or null when it isn't numeric.</summary>
+        public double?[] Numbers { get; set; } = Array.Empty<double?>();
+
+        /// <summary>Aligned with model.json's rooms: [name0, value0, name1, value1, ...] indices, or null.</summary>
+        public int[][] Rows { get; set; } = Array.Empty<int[]>();
     }
 
     public sealed class CategoryDto
@@ -312,6 +343,28 @@ namespace BimGo.Format
 
         /// <summary>The lights.</summary>
         public List<LightDto> Lights { get; set; } = new();
+
+        /// <summary>
+        /// Round X-D1: the photometric files the fixtures name (hash + original name; the text is the entry
+        /// <c>ies/&lt;hash&gt;.ies</c>). Null when there are none.
+        /// </summary>
+        public List<LightIesDto> Ies { get; set; }
+
+        /// <summary>Round X-D1: the files' text by hash, read from / written to the <c>ies/</c> entries (not in the JSON).</summary>
+        [System.Text.Json.Serialization.JsonIgnore]
+        public Dictionary<string, string> IesTexts { get; set; }
+    }
+
+    /// <summary>
+    /// Round X-D1: one photometric file in lighting.json.
+    /// </summary>
+    public sealed class LightIesDto
+    {
+        /// <summary>16 hex characters: the content hash (its entry is <c>ies/&lt;hash&gt;.ies</c>).</summary>
+        public string Hash { get; set; }
+
+        /// <summary>The file name in Revit.</summary>
+        public string Name { get; set; }
     }
 
     /// <summary>
@@ -336,6 +389,18 @@ namespace BimGo.Format
 
         /// <summary>True when guessed.</summary>
         public bool Estimated { get; set; }
+
+        /// <summary>Round X-D1: the hash of the fixture type's photometric file, or null.</summary>
+        public string Ies { get; set; }
+
+        /// <summary>Round X-D1: which way the fixture points (gamma 0), or null = straight down.</summary>
+        public Vector3? Aim { get; set; }
+
+        /// <summary>Round X-D1: the fixture's C 0° axis, or null = world X.</summary>
+        public Vector3? Across { get; set; }
+
+        /// <summary>Round Y-C1: a Revit spot / hemispherical light's generated profile key, or null.</summary>
+        public string Distribution { get; set; }
     }
 
     #endregion

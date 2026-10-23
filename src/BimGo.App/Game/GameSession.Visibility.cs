@@ -32,9 +32,6 @@ namespace BimGo.Game
         /// <summary>True if the visibility changed since the file was saved (file mode).</summary>
         private bool VisibilityDirty => _visibilityRevision != _savedVisibilityRevision;
 
-        /// <summary>True if an element is hidden in the walkthrough only (Scan gun, I).</summary>
-        public bool IsUserHidden(int element) => element >= 0 && _userHidden[element];
-
         /// <summary>
         /// How many things are hidden: elements, loaded categories that are off, and links that are off (the pause
         /// menu offers SHOW ALL when this is above zero).
@@ -74,6 +71,8 @@ namespace BimGo.Game
                 if (error != null) { Utilities.Log_Utils.Write(error); }
             }
             RestoreGrids(saved?.Grids); // grids round A (before the early return: grids alone make a saved state)
+            RestoreAppearance(saved?.Appearance); // colour round A (likewise)
+            RestoreRoomOverlay(saved?.Rooms); // Round Z-A (likewise)
             if (saved == null || saved.IsEmpty) { return; }
 
             // The ground plane as it was left (relative to the default, so it survives a re-extraction)
@@ -162,6 +161,8 @@ namespace BimGo.Game
             VisibilitySettings settings = ToVisibilitySettings();
             settings.GroundOffset = null;
             settings.Section = null;
+            settings.Appearance = null; // colour round A: profiles belong to the model, not to a bookmark
+            settings.Rooms = null; // Round Z-A: so does the room overlay
             return settings;
         }
 
@@ -189,7 +190,9 @@ namespace BimGo.Game
             {
                 GroundOffset = MathF.Abs(groundOffset) > 0.001f ? MathF.Round(groundOffset * 1000f) / 1000f : null,
                 Section = _section.IsActive ? _section.Clone() : null,
-                Grids = GridsForSave() // grids round A
+                Grids = GridsForSave(), // grids round A
+                Appearance = AppearanceForSave(), // colour round A
+                Rooms = RoomOverlayForSave() // Round Z-A
             };
             foreach (CategoryDef def in CategoryCatalog.All)
             {
@@ -259,9 +262,9 @@ namespace BimGo.Game
             _userHidden[element] = hidden;
             _userHiddenCount += hidden ? 1 : -1;
             _sceneRevision++;
-            _renderer.SetElementHidden(element, hidden || _hidden[element]);
+            _renderer.SetElementHidden(element, hidden || _hidden[element] || ProfileHides(element));
 
-            bool visible = !hidden && !_hidden[element] && _groupVisible[Rendering.SceneBatches.GroupOf(Scene.Elements[element])];
+            bool visible = !hidden && !_hidden[element] && !ProfileHides(element) && _groupVisible[Rendering.SceneBatches.GroupOf(Scene.Elements[element])];
             _pickMask[element] = visible;
             _collisionMask[element] = visible && Scene.Elements[element].CategoryIndex != _doorCategory;
         }

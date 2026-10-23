@@ -39,8 +39,6 @@ namespace BimGo.Format
     /// <item>The key, most stable first: the cloud model GUID, else the workshared central path, else the local path
     /// (the Revit side builds it; <see cref="NormaliseKey"/> makes paths case- and slash-insensitive). Two local
     /// copies of one model get two folders.</item>
-    /// <item>Migration: sidecars beside the model (or in the old <c>Comments</c> folder, or an RvtGo
-    /// <c>.rvtgo.json</c>) are copied in once when the folder has none; the originals are left as a backup.</item>
     /// <item>Sharing (optional, off by default): writes are mirrored beside the model, and at each Go a newer file
     /// there replaces the folder's copy, so colleagues on a shared drive see each other's comments.</item>
     /// </list>
@@ -65,6 +63,18 @@ namespace BimGo.Format
         /// <summary>Clash detection's sets, tests and results (Round C).</summary>
         public const string CLASHES_FILE = "clashes.json";
 
+        /// <summary>Round K: keyframed camera paths in a model folder.</summary>
+        public const string PATHS_FILE = "paths.json";
+
+        /// <summary>Round X-B: billboards in a model folder (their pictures in <c>entourage-images</c> beside it).</summary>
+        public const string ENTOURAGE_FILE = "entourage.json";
+
+        /// <summary>Round X-D1: light profile choices and imported .ies files in a model folder.</summary>
+        public const string LIGHT_PROFILES_FILE = "light-profiles.json";
+
+        /// <summary>Round Y-A: the Measure gun's saved measurements in a model folder.</summary>
+        public const string MEASUREMENTS_FILE = "measurements.json";
+
         /// <summary>Texture choices in a model folder (machine-specific image paths: never shared).</summary>
         public const string TEXTURE_OVERRIDES_FILE = "texture-overrides.json";
 
@@ -74,14 +84,18 @@ namespace BimGo.Format
         /// <summary>Longest title part of a folder name.</summary>
         private const int MAX_TITLE = 60;
 
-        // The sidecars that move into the folder: folder file name and beside-model suffix (comments first)
+        // The files shared beside the model: folder file name and beside-model suffix (comments first)
         private static readonly (string File, string Suffix)[] SIDECARS =
         {
             (COMMENTS_FILE, BimGoFormat.SIDECAR_SUFFIX),
             (BOOKMARKS_FILE, BimGoFormat.BOOKMARK_SIDECAR_SUFFIX),
             (SUN_FILE, BimGoFormat.SUN_SIDECAR_SUFFIX),
             (VISIBILITY_FILE, BimGoFormat.VISIBILITY_SIDECAR_SUFFIX),
-            (CLASHES_FILE, BimGoFormat.CLASH_SIDECAR_SUFFIX)
+            (CLASHES_FILE, BimGoFormat.CLASH_SIDECAR_SUFFIX),
+            (PATHS_FILE, BimGoFormat.PATHS_SIDECAR_SUFFIX), // Round K
+            (ENTOURAGE_FILE, BimGoFormat.ENTOURAGE_SIDECAR_SUFFIX), // Round X-B
+            (LIGHT_PROFILES_FILE, BimGoFormat.LIGHT_PROFILES_SIDECAR_SUFFIX), // Round X-D1
+            (MEASUREMENTS_FILE, BimGoFormat.MEASUREMENTS_SIDECAR_SUFFIX) // Round Y-A
         };
 
         #endregion
@@ -188,19 +202,16 @@ namespace BimGo.Format
 
         #endregion
 
-        #region Prepare and migrate
+        #region Prepare
 
         /// <summary>
-        /// Creates the folder if needed, records <c>model.json</c>, copies old sidecars in where the folder has none,
-        /// and (sharing on) takes newer copies from beside the model.
+        /// Creates the folder if needed, records <c>model.json</c> and (sharing on) takes newer copies from beside the
+        /// model.
         /// </summary>
         /// <param name="folder">The model folder.</param>
         /// <param name="info">The model description (title, path, key, sharing and the beside-model comments path).</param>
-        /// <param name="legacyCommentsPaths">Old comments sidecars to migrate from, most relevant first (beside the model,
-        /// then the old Comments folder); null entries are ignored. Each one's bookmarks / sun / visibility sidecars
-        /// are found next to it.</param>
         /// <returns>The comments path in the folder (<c>…\comments.json</c>), or null if the folder can't be created.</returns>
-        public static string Prepare(string folder, ModelFolderInfo info, IEnumerable<string> legacyCommentsPaths)
+        public static string Prepare(string folder, ModelFolderInfo info)
         {
             if (string.IsNullOrWhiteSpace(folder)) { return null; }
             info ??= new ModelFolderInfo();
@@ -217,43 +228,9 @@ namespace BimGo.Format
             info.Updated = DateTime.UtcNow.ToString("o", System.Globalization.CultureInfo.InvariantCulture);
             WriteInfo(folder, info);
 
-            List<string> candidates = (legacyCommentsPaths ?? Enumerable.Empty<string>())
-                .Where(p => !string.IsNullOrWhiteSpace(p))
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToList();
-            int migrated = MigrateInto(folder, candidates);
             int pulled = info.ShareBesideModel ? PullNewer(folder, info.BesideCommentsPath) : 0;
-            if (migrated > 0 || pulled > 0)
-            {
-                Utilities.Log_Utils.Write($"Model folder {folder}: {migrated} sidecar(s) copied in from older locations, {pulled} newer shared file(s) taken from beside the model.");
-            }
+            if (pulled > 0) { Utilities.Log_Utils.Write($"Model folder {folder}: {pulled} newer shared file(s) taken from beside the model."); }
             return System.IO.Path.Combine(folder, COMMENTS_FILE);
-        }
-
-        /// <summary>
-        /// Copies each sidecar the folder lacks from the first candidate that has it (comments also from an RvtGo
-        /// <c>.rvtgo.json</c>). The originals are left untouched.
-        /// </summary>
-        /// <returns>How many files were copied.</returns>
-        public static int MigrateInto(string folder, IReadOnlyList<string> legacyCommentsPaths)
-        {
-            int copied = 0;
-            foreach ((string file, string suffix) in SIDECARS)
-            {
-                string target = System.IO.Path.Combine(folder, file);
-                if (File.Exists(target)) { continue; }
-                foreach (string comments in legacyCommentsPaths)
-                {
-                    string source = suffix == BimGoFormat.SIDECAR_SUFFIX ? comments : SidecarJson.BesideComments(comments, suffix);
-                    if (suffix == BimGoFormat.SIDECAR_SUFFIX && !File.Exists(source)) { source = CommentFiles.LegacyPathFor(comments); }
-                    if (TryCopy(source, target, overwrite: false))
-                    {
-                        copied++;
-                        break;
-                    }
-                }
-            }
-            return copied;
         }
 
         /// <summary>
@@ -279,6 +256,47 @@ namespace BimGo.Format
                     continue;
                 }
                 if (TryCopy(source, target, overwrite: true)) { copied++; }
+            }
+
+            // Round Y-A: comment pictures shared beside the model (newer or missing ones)
+            copied += SyncPictures(SharedPicturesFolderFor(besideCommentsPath), System.IO.Path.Combine(folder, CommentSnapshots.FOLDER.TrimEnd('/')));
+            return copied;
+        }
+
+        /// <summary>
+        /// Round Y-A: the folder beside a Revit model that shared comment pictures go in (&lt;model&gt;.bimgo-comment-pictures),
+        /// or null.
+        /// </summary>
+        public static string SharedPicturesFolderFor(string besideCommentsPath)
+        {
+            if (string.IsNullOrWhiteSpace(besideCommentsPath)) { return null; }
+            string basePath = besideCommentsPath.EndsWith(BimGoFormat.SIDECAR_SUFFIX, StringComparison.OrdinalIgnoreCase)
+                ? besideCommentsPath[..^BimGoFormat.SIDECAR_SUFFIX.Length]
+                : System.IO.Path.Combine(System.IO.Path.GetDirectoryName(besideCommentsPath) ?? string.Empty, System.IO.Path.GetFileNameWithoutExtension(besideCommentsPath));
+            return basePath + BimGoFormat.COMMENT_PICTURES_SIDECAR_SUFFIX;
+        }
+
+        /// <summary>
+        /// Round Y-A: copies the comment pictures (.jpg) from one folder to another when the target lacks them or has an
+        /// older copy. Nothing is deleted (a stale picture is harmless; a colleague's may still be needed). Never throws.
+        /// </summary>
+        /// <returns>How many pictures were copied.</returns>
+        public static int SyncPictures(string sourceFolder, string targetFolder)
+        {
+            int copied = 0;
+            try
+            {
+                if (string.IsNullOrWhiteSpace(sourceFolder) || string.IsNullOrWhiteSpace(targetFolder) || !Directory.Exists(sourceFolder)) { return 0; }
+                foreach (string source in Directory.EnumerateFiles(sourceFolder, "*.jpg"))
+                {
+                    string target = System.IO.Path.Combine(targetFolder, System.IO.Path.GetFileName(source));
+                    if (File.Exists(target) && File.GetLastWriteTimeUtc(source) <= File.GetLastWriteTimeUtc(target)) { continue; }
+                    if (TryCopy(source, target, overwrite: true)) { copied++; }
+                }
+            }
+            catch (Exception ex)
+            {
+                Utilities.Log_Utils.Write($"Comment pictures not synced ({sourceFolder} -> {targetFolder}): {ex.Message}");
             }
             return copied;
         }
@@ -308,6 +326,12 @@ namespace BimGo.Format
                 string target = suffix == BimGoFormat.SIDECAR_SUFFIX ? info.BesideCommentsPath : SidecarJson.BesideComments(info.BesideCommentsPath, suffix);
                 if (!Directory.Exists(System.IO.Path.GetDirectoryName(target))) { return; }
                 TryCopy(writtenPath, target, overwrite: true);
+
+                // Round Y-A: the comments' pictures go with them (newer or missing ones; the comments folder beside comments.json)
+                if (suffix == BimGoFormat.SIDECAR_SUFFIX)
+                {
+                    SyncPictures(System.IO.Path.Combine(folder, CommentSnapshots.FOLDER.TrimEnd('/')), SharedPicturesFolderFor(info.BesideCommentsPath));
+                }
             }
             catch (Exception ex)
             {

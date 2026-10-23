@@ -298,16 +298,16 @@ namespace BimGo.Tests
             SearchSet services = SearchSets.SetOfCatalog("Services", new[] { "ducts", "pipes" });
             CollectionAssert.AreEqual(new[] { 0, 1 }, SearchSets.ElementsIn(services, scene));
 
-            services.Rules.Add(new SetRule { Field = RuleField.LEVEL, Value = "Level 2", Exclude = true });
+            services.Rules.Add(new SetRule { Field = RuleField.LEVEL, Op = RuleOp.IS_NOT, Values = { "Level 2" } });
             CollectionAssert.AreEqual(new[] { 0 }, SearchSets.ElementsIn(services, scene));
 
-            var all = new SearchSet { MatchAll = true, Rules = { new SetRule { Field = RuleField.LEVEL, Value = "level 2" }, new SetRule { Field = RuleField.LINK, Value = "Structure" } } };
+            var all = new SearchSet { MatchAll = true, Rules = { new SetRule { Field = RuleField.LEVEL, Values = { "level 2" } }, new SetRule { Field = RuleField.LINK, Values = { "Structure" } } } };
             CollectionAssert.AreEqual(new[] { 2 }, SearchSets.ElementsIn(all, scene));
 
-            var family = new SearchSet { Rules = { new SetRule { Field = RuleField.FAMILY, Value = "Rectangular Duct" }, new SetRule { Field = RuleField.TYPE, Value = "310UB", Contains = true } } };
+            var family = new SearchSet { Rules = { new SetRule { Field = RuleField.FAMILY, Values = { "Rectangular Duct" } }, new SetRule { Field = RuleField.TYPE, Op = RuleOp.CONTAINS, Values = { "310UB" } } } };
             CollectionAssert.AreEqual(new[] { 0, 2 }, SearchSets.ElementsIn(family, scene));
 
-            var host = new SearchSet { Rules = { new SetRule { Field = RuleField.LINK, Value = string.Empty } } };
+            var host = new SearchSet { Rules = { new SetRule { Field = RuleField.LINK, Values = { string.Empty } } } };
             CollectionAssert.AreEqual(new[] { 0, 1 }, SearchSets.ElementsIn(host, scene));
 
             Assert.AreEqual(3, SearchSets.ElementsIn(new SearchSet(), scene).Count, "no include rules: everything");
@@ -372,7 +372,7 @@ namespace BimGo.Tests
             SetRule list = Rule(RuleField.CATALOG, RuleOp.IS_ONE_OF, "ducts", "pipes");
             list.SetOperator(RuleOp.IS_NOT_ANY_OF);
             Assert.AreEqual(2, list.Values.Count);
-            Assert.IsTrue(list.Exclude && !list.Contains && list.Value == "ducts", "earlier fields kept in step");
+            Assert.IsTrue(RuleOp.IsNegative(list.Operator) && list.ValueAt(0) == "ducts");
             list.SetOperator(RuleOp.IS);
             CollectionAssert.AreEqual(new[] { "ducts" }, list.Values);
             list.SetOperator(RuleOp.IS_ONE_OF);
@@ -478,34 +478,31 @@ namespace BimGo.Tests
         }
 
         [TestMethod]
-        public void Sets_OlderRulesReadAsOperators()
+        public void Sets_RulesRoundTripAsOperators()
         {
-            // A C-B1 file: include / exclude switches, one value each
-            string json = "{\"format\":\"bimgo-clashes\",\"version\":1,\"sets\":[{\"id\":\"s1\",\"name\":\"Old\",\"rules\":[" +
-                "{\"field\":\"catalog\",\"value\":\"ducts\"}," +
-                "{\"field\":\"level\",\"value\":\"Level 2\",\"exclude\":true}," +
-                "{\"field\":\"type\",\"value\":\"600\",\"contains\":true}," +
-                "{\"field\":\"type\",\"value\":\"x\",\"contains\":true,\"exclude\":true}," +
-                "{\"field\":\"link\",\"value\":\"\"}]}],\"tests\":[],\"clashes\":[],\"runs\":[]}";
-            ClashDocument document = ClashFiles.Parse(System.Text.Encoding.UTF8.GetBytes(json), out string error);
-            Assert.IsNotNull(document, error);
-            List<SetRule> rules = document.Sets[0].Rules;
-            CollectionAssert.AreEqual(new[] { RuleOp.IS, RuleOp.IS_NOT, RuleOp.CONTAINS, RuleOp.NOT_CONTAINS, RuleOp.IS }, rules.Select(r => r.Op).ToArray());
-            CollectionAssert.AreEqual(new[] { "ducts" }, rules[0].Values);
-            CollectionAssert.AreEqual(new[] { string.Empty }, rules[4].Values, "the host model is the empty value, not 'none'");
-            Assert.IsTrue(rules[4].IsComplete);
+            var document = new ClashDocument();
+            document.Sets.Add(new SearchSet
+            {
+                Id = "s1",
+                Name = "Rules",
+                Rules =
+                {
+                    new SetRule { Field = RuleField.CATALOG, Op = RuleOp.IS, Values = { "ducts" } },
+                    new SetRule { Field = RuleField.LEVEL, Op = RuleOp.IS_NOT, Values = { "Level 2" } },
+                    new SetRule { Field = RuleField.LINK, Values = { string.Empty } }
+                }
+            });
+            document.Sets[0].Rules[0].SetOperator(RuleOp.IS_ONE_OF);
+            document.Sets[0].Rules[0].ToggleValue("pipes");
 
-            // Written back: the operator and values, plus the earlier fields for older builds; read again unchanged
-            rules[0].SetOperator(RuleOp.IS_ONE_OF);
-            rules[0].ToggleValue("pipes");
-            ClashDocument again = ClashFiles.Parse(ClashFiles.Serialize(document), out error);
+            ClashDocument again = ClashFiles.Parse(ClashFiles.Serialize(document), out string error);
             Assert.IsNotNull(again, error);
-            CollectionAssert.AreEqual(new[] { "ducts", "pipes" }, again.Sets[0].Rules[0].Values);
-            Assert.AreEqual(RuleOp.IS_ONE_OF, again.Sets[0].Rules[0].Op);
-            Assert.AreEqual("ducts", again.Sets[0].Rules[0].Value);
-            Assert.IsTrue(again.Sets[0].Rules[1].Exclude);
+            List<SetRule> rules = again.Sets[0].Rules;
+            CollectionAssert.AreEqual(new[] { RuleOp.IS_ONE_OF, RuleOp.IS_NOT, RuleOp.IS }, rules.Select(r => r.Op).ToArray(), "a missing operator reads as is");
+            CollectionAssert.AreEqual(new[] { "ducts", "pipes" }, rules[0].Values);
+            CollectionAssert.AreEqual(new[] { string.Empty }, rules[2].Values, "the host model is the empty value, not 'none'");
+            Assert.IsTrue(rules[2].IsComplete);
         }
-
         [TestMethod]
         public void Tests_SetsAAndBStayAsPicked()
         {
@@ -670,11 +667,11 @@ namespace BimGo.Tests
             Assert.AreEqual(2, links.Single(v => v.Value.Length == 0).Count);
             Assert.AreEqual("Structure", links.Single(v => v.Value == "link-uid").Label);
 
-            Assert.AreEqual("Level is not Level 2", SearchSets.Describe(new SetRule { Field = RuleField.LEVEL, Value = "Level 2", Exclude = true }, scene));
+            Assert.AreEqual("Level is not Level 2", SearchSets.Describe(new SetRule { Field = RuleField.LEVEL, Op = RuleOp.IS_NOT, Values = { "Level 2" } }, scene));
             Assert.AreEqual("BimGo category is one of " + CategoryCatalog.Find("ducts").Label + ", " + CategoryCatalog.Find("pipes").Label,
                 SearchSets.Describe(new SetRule { Field = RuleField.CATALOG, Op = RuleOp.IS_ONE_OF, Values = { "ducts", "pipes" } }, scene));
             Assert.AreEqual("Type does not contain 600", SearchSets.Describe(new SetRule { Field = RuleField.TYPE, Op = RuleOp.NOT_CONTAINS, Values = { "600" } }, scene));
-            Assert.AreEqual("Model is Structure", SearchSets.Describe(new SetRule { Field = RuleField.LINK, Value = "link-uid" }, scene));
+            Assert.AreEqual("Model is Structure", SearchSets.Describe(new SetRule { Field = RuleField.LINK, Values = { "link-uid" } }, scene));
 
             // The app finds clash elements again by the same key the records store
             ClashItem[] items = Items(scene);
@@ -843,5 +840,75 @@ namespace BimGo.Tests
         }
 
         #endregion
+
+        [TestMethod]
+        public void Sets_Groups_NestAnyDepth()
+        {
+            // Polish round P-C: groups inside groups (0 ducts L1, 1 pipes L2, 2 framing L3, 3 walls L2)
+            SceneData scene = Scene(
+                new BoxSpec(Vector3.Zero, Vector3.One, "ducts", FamilyType: "Rectangular Duct: 600x300", Level: "Level 1"),
+                new BoxSpec(Vector3.Zero, Vector3.One, "pipes", FamilyType: "Pipe Types: Copper", Level: "Level 2"),
+                new BoxSpec(Vector3.Zero, Vector3.One, "framing", FamilyType: "310UB40", Level: "Level 3"),
+                new BoxSpec(Vector3.Zero, Vector3.One, "walls", FamilyType: "Generic - 200mm", Level: "Level 2"));
+            SetRule Rule(string field, string op, params string[] values) => new SetRule { Field = field, Op = op, Values = values.ToList() };
+
+            // Level 2 AND (pipes OR (walls AND type contains 200))
+            var inner = new RuleGroup { MatchAll = true, Rules = { Rule(RuleField.CATALOG, RuleOp.IS, "walls"), Rule(RuleField.TYPE, RuleOp.CONTAINS, "200") } };
+            var middle = new RuleGroup { MatchAll = false, Rules = { Rule(RuleField.CATALOG, RuleOp.IS, "pipes") }, Groups = new List<RuleGroup> { inner } };
+            var set = new SearchSet
+            {
+                MatchAll = true,
+                Rules = { Rule(RuleField.LEVEL, RuleOp.IS, "Level 2") },
+                Groups = new List<RuleGroup> { middle }
+            };
+            CollectionAssert.AreEqual(new[] { 1, 3 }, SearchSets.ElementsIn(set, scene));
+            inner.Rules[1] = Rule(RuleField.TYPE, RuleOp.CONTAINS, "300");
+            CollectionAssert.AreEqual(new[] { 1 }, SearchSets.ElementsIn(set, scene), "the inner group no longer matches the walls");
+
+            // A group whose only condition sits deeper still counts; an empty inner group is no condition
+            var deepOnly = new SearchSet { Groups = new List<RuleGroup> { new RuleGroup { Groups = new List<RuleGroup> { new RuleGroup { Rules = { Rule(RuleField.CATALOG, RuleOp.IS, "framing") } } } } } };
+            Assert.IsTrue(deepOnly.Groups[0].HasConditions);
+            CollectionAssert.AreEqual(new[] { 2 }, SearchSets.ElementsIn(deepOnly, scene));
+            var emptyInner = new RuleGroup { Groups = new List<RuleGroup> { new RuleGroup() } };
+            Assert.IsFalse(emptyInner.HasConditions);
+
+            // Copy, AllRules and Normalise go all the way down; depth beyond the cap is dropped
+            SearchSet copy = set.Copy(newId: true);
+            copy.Groups[0].Groups[0].Rules[0].SetOperator(RuleOp.IS_NOT);
+            Assert.AreEqual(RuleOp.IS, inner.Rules[0].Op, "the copy is deep");
+            Assert.AreEqual(4, set.AllRules().Count());
+            Assert.AreEqual(3, middle.RuleCount);
+            var tower = new RuleGroup();
+            RuleGroup top = tower;
+            for (int i = 0; i < RuleGroup.MAX_DEPTH + 4; i++)
+            {
+                var next = new RuleGroup { Rules = { Rule(RuleField.CATALOG, RuleOp.IS, "ducts") } };
+                top.Groups = new List<RuleGroup> { next };
+                top = next;
+            }
+            tower.Normalise();
+            int depth = 0;
+            for (RuleGroup g = tower; g.Groups != null; g = g.Groups[0]) { depth++; }
+            Assert.IsTrue(depth < RuleGroup.MAX_DEPTH, $"depth {depth}");
+
+            // clashes.json: nested groups round-trip; a group without inner groups writes none
+            ClashDocument document = SearchSets.Seeded();
+            document.Sets[0].Groups = new List<RuleGroup> { middle.Copy() };
+            ClashDocument again = ClashFiles.Parse(ClashFiles.Serialize(document), out string error);
+            Assert.IsNotNull(again, error);
+            RuleGroup readInner = again.Sets[0].Groups[0].Groups[0];
+            Assert.IsTrue(readInner.MatchAll);
+            Assert.AreEqual("300", readInner.Rules[1].ValueAt(0));
+            Assert.IsNull(readInner.Groups);
+            string json = System.Text.Encoding.UTF8.GetString(ClashFiles.Serialize(again));
+            Assert.AreEqual(2, CountOf(json, "\"groups\""), "the set's groups and the middle group's: none for the innermost or the other set");
+        }
+
+        private static int CountOf(string text, string part)
+        {
+            int count = 0;
+            for (int i = text.IndexOf(part, StringComparison.Ordinal); i >= 0; i = text.IndexOf(part, i + part.Length, StringComparison.Ordinal)) { count++; }
+            return count;
+        }
     }
 }

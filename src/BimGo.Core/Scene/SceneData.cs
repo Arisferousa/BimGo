@@ -235,6 +235,40 @@ namespace BimGo.Scene
         /// <summary>0 for a host room, n for a room from <c>SceneData.Links[n - 1]</c> (host rooms win in the readout).</summary>
         public int Link { get; init; }
 
+        /// <summary>Round Z-A: the room's Revit UniqueId (in its own model; links: the link's model), or null (older files).</summary>
+        public string UniqueId { get; init; }
+
+        /// <summary>Round Z-A: the room's Revit ElementId value, or -1 (older files).</summary>
+        public long ElementId { get; init; } = -1;
+
+        /// <summary>Round Z-A: the room's level name as Revit has it, or null (older files: use the level under it).</summary>
+        public string LevelName { get; init; }
+
+        /// <summary>Round Z-A: Revit's computed area in m² (NaN for older files: use the plan area of the loops).</summary>
+        public float Area { get; init; } = float.NaN;
+
+        /// <summary>
+        /// Round Z-A: every non-empty instance parameter of the room (display text as Revit shows it, and a number in the
+        /// project's display units where the value is numeric). Never null.
+        /// </summary>
+        public RoomParameter[] Parameters { get; init; } = Array.Empty<RoomParameter>();
+
+        /// <summary>Round Z-A: a parameter by name (case ignored), or false. No allocation.</summary>
+        public bool TryGetParameter(string name, out RoomParameter parameter)
+        {
+            parameter = default;
+            if (string.IsNullOrEmpty(name) || Parameters == null) { return false; }
+            foreach (RoomParameter p in Parameters)
+            {
+                if (string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase))
+                {
+                    parameter = p;
+                    return true;
+                }
+            }
+            return false;
+        }
+
         /// <summary>
         /// True when a plan point is inside the room (even-odd over all its loops, so islands are holes).
         /// </summary>
@@ -324,6 +358,12 @@ namespace BimGo.Scene
 
         /// <summary>Grids round A: the host's grids and the extracted links' grids (may be empty; never null).</summary>
         public GridLine[] Grids { get; init; } = Array.Empty<GridLine>();
+
+        /// <summary>
+        /// Round X-B2: every Revit Planting / Entourage instance in the extraction's scope (recorded even when its
+        /// category's geometry isn't extracted), for swapping with billboards. May be empty; never null.
+        /// </summary>
+        public EntourageSlot[] EntourageSlots { get; init; } = Array.Empty<EntourageSlot>();
 
         /// <summary>Placed, bounded rooms of the current phase (may be empty).</summary>
         public RoomInfo[] Rooms { get; init; } = Array.Empty<RoomInfo>();

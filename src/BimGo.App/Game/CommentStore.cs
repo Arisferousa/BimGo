@@ -54,12 +54,11 @@ namespace BimGo.Game
         }
 
         /// <summary>
-        /// Loads the sidecar (migrating a legacy RvtGo sidecar first). No-op for embedded stores.
+        /// Loads the comments file. No-op for embedded stores.
         /// </summary>
         public void Load()
         {
             if (IsEmbedded) { return; }
-            CommentFiles.MigrateLegacy(_path);
             CommentDocument document = CommentFiles.Read(_path, out string error);
             LastError = error;
             if (document != null) { LoadFrom(document); }
@@ -180,6 +179,7 @@ namespace BimGo.Game
             if (record == null) { return; }
             record.View = new CommentView
             {
+                EyeHeight = CurrentEye?.Invoke(), // P-C: the eye-height preset the view was seen with
                 X = Math.Round(localFeet.X + (double)_origin.X, 4),
                 Y = Math.Round(localFeet.Y + (double)_origin.Y, 4),
                 Z = Math.Round(localFeet.Z + (double)_origin.Z, 4),
@@ -190,6 +190,9 @@ namespace BimGo.Game
             };
             if (save && Comments.Contains(record)) { Save(); }
         }
+
+        /// <summary>Polish round P-C: the player's standing eye height now (set by the session), stored with each view.</summary>
+        public Func<float> CurrentEye { get; set; }
 
         /// <summary>The scene-local feet of a comment's saved view (false when it has none).</summary>
         public bool TryGetView(CommentRecord record, out Vector3 localFeet)

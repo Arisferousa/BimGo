@@ -1,4 +1,5 @@
 using System.IO.Compression;
+using System.Numerics;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using BimGo.Edits;
@@ -75,6 +76,29 @@ namespace BimGo.Format
                     {
                         WriteJson(zip, BimGoFormat.ENTRY_BOOKMARKS, document.Bookmarks, BimGoFormat.JSON_INDENTED);
                     }
+                    if (document.Paths != null && !document.Paths.IsEmpty) // Round K
+                    {
+                        WriteJson(zip, BimGoFormat.ENTRY_PATHS, document.Paths, BimGoFormat.JSON_INDENTED);
+                    }
+                    if (document.Entourage != null && !document.Entourage.IsEmpty) // Round X-B
+                    {
+                        WriteJson(zip, BimGoFormat.ENTRY_ENTOURAGE, document.Entourage, BimGoFormat.JSON_INDENTED);
+                        foreach (EntourageType type in document.Entourage.Types)
+                        {
+                            if (document.EntourageImages == null || !document.EntourageImages.TryGetValue(type.Image ?? string.Empty, out byte[] png) || png == null) { continue; }
+                            ZipArchiveEntry picture = zip.CreateEntry(BimGoFormat.ENTOURAGE_FOLDER + type.Image, CompressionLevel.NoCompression);
+                            using Stream pictureStream = picture.Open();
+                            pictureStream.Write(png);
+                        }
+                    }
+                    if (document.Measurements != null && !document.Measurements.IsEmpty) // Round Y-A
+                    {
+                        WriteJson(zip, BimGoFormat.ENTRY_MEASUREMENTS, document.Measurements, BimGoFormat.JSON_INDENTED);
+                    }
+                    if (document.LightProfiles != null && !document.LightProfiles.IsEmpty) // Round X-D1
+                    {
+                        WriteJson(zip, BimGoFormat.ENTRY_LIGHT_PROFILES, document.LightProfiles, BimGoFormat.JSON_INDENTED);
+                    }
                     if (document.Visibility != null && !document.Visibility.IsEmpty)
                     {
                         WriteJson(zip, BimGoFormat.ENTRY_VISIBILITY, document.Visibility, BimGoFormat.JSON_INDENTED);
@@ -93,13 +117,24 @@ namespace BimGo.Format
                     if (scene.Lighting != null && !scene.Lighting.IsEmpty)
                     {
                         WriteJson(zip, BimGoFormat.ENTRY_LIGHTING, BuildLighting(scene.Lighting), BimGoFormat.JSON_COMPACT);
+                        foreach (LightIesFile ies in scene.Lighting.IesFiles) // Round X-D1
+                        {
+                            if (!LightProfiles.IsSafeHash(ies.Hash) || string.IsNullOrEmpty(ies.Text)) { continue; }
+                            ZipArchiveEntry iesEntry = zip.CreateEntry(BimGoFormat.IES_FOLDER + ies.Hash + ".ies", CompressionLevel.Optimal);
+                            using Stream iesStream = iesEntry.Open();
+                            iesStream.Write(System.Text.Encoding.UTF8.GetBytes(ies.Text));
+                        }
                     }
                     if (scene.Library != null && !scene.Library.IsEmpty)
                     {
                         WriteLibrary(zip, scene);
                     }
+                    RoomDataDto rooms = RoomDataFiles.ToDto(scene.Rooms); // Round Z-A (optional)
+                    if (rooms != null) { WriteJson(zip, BimGoFormat.ENTRY_ROOMS, rooms, BimGoFormat.JSON_COMPACT); }
                     GridsDto grids = GridFiles.ToDto(scene.Grids); // grids round A (optional)
                     if (grids != null) { WriteJson(zip, BimGoFormat.ENTRY_GRIDS, grids, BimGoFormat.JSON_COMPACT); }
+                    EntourageSlotsDto slots = EntourageSlots.ToDto(scene.EntourageSlots); // Round X-B2 (optional)
+                    if (slots != null) { WriteJson(zip, BimGoFormat.ENTRY_ENTOURAGE_SLOTS, slots, BimGoFormat.JSON_COMPACT); }
                     MaterialData materials = document.Materials ?? scene.Materials;
                     if (materials != null && !materials.IsEmpty && materials.VertexMaterial.Length == scene.Vertices.Length)
                     {
@@ -197,7 +232,14 @@ namespace BimGo.Format
 
             foreach (RoomInfo room in scene.Rooms)
             {
-                var dto = new RoomDto { Number = room.Number, Name = room.Name, BottomZ = room.BottomZ, TopZ = room.TopZ, Link = room.Link > 0 ? room.Link : null };
+                var dto = new RoomDto
+                {
+                    Number = room.Number, Name = room.Name, BottomZ = room.BottomZ, TopZ = room.TopZ, Link = room.Link > 0 ? room.Link : null,
+                    UniqueId = string.IsNullOrEmpty(room.UniqueId) ? null : room.UniqueId, // Round Z-A
+                    Id = room.ElementId >= 0 ? room.ElementId : null,
+                    Level = string.IsNullOrEmpty(room.LevelName) ? null : room.LevelName,
+                    Area = float.IsFinite(room.Area) ? MathF.Round(room.Area * 1000f) / 1000f : null
+                };
                 foreach (System.Numerics.Vector2[] loop in room.Loops)
                 {
                     float[] flat = new float[loop.Length * 2];
@@ -240,8 +282,17 @@ namespace BimGo.Format
                     Lumens = light.Lumens,
                     Kelvin = light.Kelvin,
                     Downward = light.Downward,
-                    Estimated = light.Estimated
+                    Estimated = light.Estimated,
+                    Ies = light.Ies, // Round X-D1
+                    Aim = light.Ies == null && light.Distribution == null && light.Aim == -Vector3.UnitZ ? null : light.Aim,
+                    Across = light.Ies == null && light.Distribution == null && light.Across == Vector3.UnitX ? null : light.Across,
+                    Distribution = light.Distribution // Round Y-C1
                 });
+            }
+            if (lighting.IesFiles.Length > 0)
+            {
+                dto.Ies = new List<LightIesDto>();
+                foreach (LightIesFile ies in lighting.IesFiles) { dto.Ies.Add(new LightIesDto { Hash = ies.Hash, Name = ies.Name }); }
             }
             return dto;
         }

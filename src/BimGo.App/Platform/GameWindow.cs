@@ -60,6 +60,12 @@ namespace BimGo.Platform
         /// <summary>Set when the user (or Revit) asked the window to close.</summary>
         public bool CloseRequested { get; private set; }
 
+        /// <summary>
+        /// Round Z-C (kiosk mode): close requests (Alt+F4, the title bar's X, the taskbar) are ignored while set, so the only
+        /// way out is the kiosk exit key. Windows shutting down or signing out still ends the app.
+        /// </summary>
+        public bool BlockClose { get; set; }
+
         /// <summary>True when the mouse is captured for look.</summary>
         public bool IsCaptured => _captured;
 
@@ -285,20 +291,41 @@ namespace BimGo.Platform
             UpdateClientSize();
         }
 
+        /// <summary>True in borderless fullscreen.</summary>
+        public bool IsFullscreen => _fullscreen;
+
+        /// <summary>
+        /// Polish round P-A1 (layout check): resizes the window so its client area is this size (leaving fullscreen or
+        /// a maximised state first), centred on its monitor's work area and kept inside it.
+        /// </summary>
+        /// <param name="width">Client width in pixels.</param>
+        /// <param name="height">Client height in pixels.</param>
+        /// <returns>False when the size was clamped to fit the monitor.</returns>
+        public bool SetClientSize(int width, int height)
+        {
+            if (_fullscreen) { ToggleFullscreen(); }
+            Win32.ShowWindow(Handle, Win32.SW_RESTORE);
+
+            // The frame around the client area (title bar and borders)
+            Win32.GetWindowRect(Handle, out Win32.RECT outer);
+            Win32.GetClientRect(Handle, out Win32.RECT inner);
+            int frameW = (outer.Right - outer.Left) - (inner.Right - inner.Left);
+            int frameH = (outer.Bottom - outer.Top) - (inner.Bottom - inner.Top);
+
+            var info = new Win32.MONITORINFO { cbSize = (uint)sizeof(Win32.MONITORINFO) };
+            Win32.GetMonitorInfoW(Win32.MonitorFromWindow(Handle, Win32.MONITOR_DEFAULTTONEAREST), ref info);
+            int workW = info.rcWork.Right - info.rcWork.Left, workH = info.rcWork.Bottom - info.rcWork.Top;
+            int w = Math.Min(width + frameW, workW), h = Math.Min(height + frameH, workH);
+            int x = info.rcWork.Left + (workW - w) / 2, y = info.rcWork.Top + (workH - h) / 2;
+            Win32.SetWindowPos(Handle, 0, x, y, w, h, Win32.SWP_NOZORDER | Win32.SWP_NOOWNERZORDER);
+            UpdateClientSize();
+            return w == width + frameW && h == height + frameH;
+        }
+
         /// <summary>
         /// Sets the window title.
         /// </summary>
         public void SetTitle(string title) => Win32.SetWindowTextW(Handle, title);
-
-        /// <summary>
-        /// Thread-safe: asks the window to come to the front (callable from any thread).
-        /// </summary>
-        public void RequestFocus()
-        {
-            if (Handle == 0) { return; }
-            Win32.PostMessageW(Handle, WM_APP_FOCUS, 0, 0);
-            Win32.SetForegroundWindow(Handle);
-        }
 
         /// <summary>
         /// Withdraws a close request (the user cancelled at an unsaved-changes prompt).
@@ -309,14 +336,6 @@ namespace BimGo.Platform
         /// Takes the next file dropped onto the window, if any (game thread).
         /// </summary>
         public bool TryTakeDroppedFile(out string path) => _droppedFiles.TryDequeue(out path);
-
-        /// <summary>
-        /// Thread-safe: asks the window to close (callable from any thread).
-        /// </summary>
-        public void RequestClose()
-        {
-            if (Handle != 0) { Win32.PostMessageW(Handle, Win32.WM_CLOSE, 0, 0); }
-        }
 
         #endregion
 
@@ -401,6 +420,9 @@ namespace BimGo.Platform
             switch (msg)
             {
                 case Win32.WM_CLOSE:
+                    // Round Z-C: kiosk mode ignores it (handled: DefWindowProc would destroy the window)
+                    if (BlockClose) { return true; }
+
                     // The session loop sees this, releases GL resources, then disposes the window
                     SetCaptured(false);
                     CloseRequested = true;

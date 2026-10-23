@@ -19,6 +19,34 @@ namespace BimGo.Commands.Cmds_BimGo
         public static WriterInfo Writer => new($"BimGo for Revit {Globals.REVIT_VERSION_STR}", Globals.ADDIN_VERSION);
 
         /// <summary>
+        /// Round X-E: NEW VIEW / UPDATE VIEW. Asks the app attached to the active model's session for its camera (the
+        /// view is made when the answer arrives, on the live event).
+        /// </summary>
+        public static Result RequestView(UIApplication uiApp, Live.RevitViewAction action)
+        {
+            UIDocument uiDoc = uiApp.ActiveUIDocument;
+            if (!CheckDocument(uiDoc, out string reason)) { return FormCallers.Cancelled(reason); }
+            try
+            {
+                Live.SessionHost host = Live.LiveDispatcher.Find(uiDoc.Document);
+                if (host == null || !host.AppAttached)
+                {
+                    return FormCallers.Cancelled(host == null
+                        ? "No live session for this model: press Go to walk it in BimGo, then make views from where you stand."
+                        : "BimGo isn't connected to this model's session yet.");
+                }
+                Live.LiveDispatcher.EnsureEvent(uiApp);
+                Live.LiveDispatcher.RequestView(host, action);
+                return Result.Succeeded;
+            }
+            catch (Exception ex)
+            {
+                Utilities.Log_Utils.Write($"View request failed: {ex}");
+                return FormCallers.Error($"BimGo couldn't ask for its view:\n{ex.Message}");
+            }
+        }
+
+        /// <summary>
         /// Shows the Options dialog for the active document and saves the choices.
         /// </summary>
         /// <param name="uiApp">The UIApplication.</param>
@@ -123,9 +151,20 @@ namespace BimGo.Commands.Cmds_BimGo
             UIDocument uiDoc = uiApp.ActiveUIDocument;
             if (!CommandSteps.CheckDocument(uiDoc, out string reason)) { return FormCallers.Cancelled(reason); }
 
-            if (Utilities.App_Utils.FindExe() == null)
+            string exe = Utilities.App_Utils.FindExe();
+            if (exe == null)
             {
                 return FormCallers.Error($"The BimGo app was not found.\n\nInstall it (or build it) to:\n{Utilities.App_Utils.InstalledExePath}");
+            }
+
+            // Round Z-E: the add-in and the app are one release; say so plainly when they aren't (Go still works)
+            string appVersion = Utilities.App_Utils.ExeVersion(exe);
+            if (!Live.VersionCheck.SameRelease(Globals.ADDIN_VERSION, appVersion))
+            {
+                Utilities.Log_Utils.Write($"Version mismatch at Go: add-in {Globals.ADDIN_VERSION}, app {appVersion} ({exe}).");
+                var answer = FormCallers.Message("BimGo versions differ",
+                    Live.VersionCheck.Mismatch(Globals.ADDIN_VERSION, appVersion) + "\n\nGo anyway?", yesNo: true);
+                if (!answer.Valid) { return Result.Cancelled; }
             }
 
             try
@@ -257,6 +296,160 @@ namespace BimGo.Commands.Cmds_BimGo
     }
 
     /// <summary>
+    /// Round X-E, NEW VIEW: asks BimGo (attached to the active model's live session) for its camera and makes a new
+    /// perspective 3D view there ("BimGo 01", "BimGo 02"…), made active. One undo entry.
+    /// </summary>
+    [Transaction(TransactionMode.ReadOnly)]
+    public class Cmd_NewView : IExternalCommand
+    {
+        /// <summary>
+        /// Execute the command.
+        /// </summary>
+        /// <param name="commandData">Command related data.</param>
+        /// <param name="message">Command related message.</param>
+        /// <param name="elements">Command related elements.</param>
+        /// <returns>A Result.</returns>
+        public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements) =>
+            CommandSteps.RequestView(commandData.Application, Live.RevitViewAction.Create);
+    }
+
+    /// <summary>
+    /// Round X-E, UPDATE VIEW: asks BimGo for its camera and puts it on the active perspective 3D view (with BimGo's
+    /// field of view on its crop). One undo entry.
+    /// </summary>
+    [Transaction(TransactionMode.ReadOnly)]
+    public class Cmd_UpdateView : IExternalCommand
+    {
+        /// <summary>
+        /// Execute the command.
+        /// </summary>
+        /// <param name="commandData">Command related data.</param>
+        /// <param name="message">Command related message.</param>
+        /// <param name="elements">Command related elements.</param>
+        /// <returns>A Result.</returns>
+        public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
+        {
+            UIDocument uiDoc = commandData.Application.ActiveUIDocument;
+            if (uiDoc?.ActiveView is not View3D view || view.IsTemplate || !view.IsPerspective)
+            {
+                return FormCallers.Cancelled("Open the perspective 3D view to update first (Update view puts BimGo's camera on the active perspective view).");
+            }
+            return CommandSteps.RequestView(commandData.Application, Live.RevitViewAction.Update);
+        }
+    }
+
+    /// <summary>
+    /// Round Z-B, COMMENT MARKERS: places BimGo's comments in the model as markers, from this model's BimGo folder (the
+    /// live sessions' comments) or from a .bimgo file (add / update only: a colleague's file doesn't remove anything).
+    /// "Put back deleted markers" re-places ones deleted in Revit. One undo entry ("BimGo: comment markers").
+    /// </summary>
+    [Transaction(TransactionMode.Manual)]
+    public class Cmd_Markers : IExternalCommand
+    {
+        /// <summary>
+        /// Execute the command.
+        /// </summary>
+        /// <param name="commandData">Command related data.</param>
+        /// <param name="message">Command related message.</param>
+        /// <param name="elements">Command related elements.</param>
+        /// <returns>A Result.</returns>
+        public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
+        {
+            UIDocument uiDoc = commandData.Application.ActiveUIDocument;
+            if (!CommandSteps.CheckDocument(uiDoc, out string reason)) { return FormCallers.Cancelled(reason); }
+            Document doc = uiDoc.Document;
+
+            try
+            {
+                // This model's BimGo comments (what live sessions write)
+                string folder = ModelFolderResolver.FolderOf(doc);
+                string commentsPath = string.IsNullOrEmpty(folder) ? null : Path.Combine(folder, ModelFolders.COMMENTS_FILE);
+                CommentDocument own = CommentFiles.Read(commentsPath, out string readError);
+                int ownCount = own?.Comments?.Count ?? 0;
+
+                var dialog = new UI.TaskDialog("BimGo")
+                {
+                    MainInstruction = "Comment markers",
+                    MainContent = "Places a “" + Live.MarkerFamily.FAMILY_NAME + "” for each BimGo comment, with its text, status and author in the marker's parameters. "
+                        + "Markers already there are updated or moved; one undo entry.",
+                    VerificationText = "Also put back markers deleted in Revit",
+                    CommonButtons = UI.TaskDialogCommonButtons.Cancel
+                };
+                if (ownCount > 0)
+                {
+                    dialog.AddCommandLink(UI.TaskDialogCommandLinkId.CommandLink1, $"From this model's BimGo comments ({ownCount})",
+                        "What walkthroughs of this model wrote. Markers of comments deleted since are removed.");
+                }
+                dialog.AddCommandLink(UI.TaskDialogCommandLinkId.CommandLink2, "From a .bimgo file…",
+                    "A saved or exported walkthrough (e.g. a colleague's). Adds and updates markers; removes nothing.");
+                if (ownCount == 0)
+                {
+                    dialog.FooterText = readError ?? "No BimGo comments for this model yet (walk it with Go, or use a .bimgo file).";
+                }
+
+                UI.TaskDialogResult choice = dialog.Show();
+                bool replaceAll = dialog.WasVerificationChecked();
+                Live.MarkersSyncPayload payload;
+                string source;
+                if (choice == UI.TaskDialogResult.CommandLink1)
+                {
+                    string pictures = Path.GetDirectoryName(commentsPath);
+                    payload = Live.CommentMarkers.Payload(own.Comments, c => PictureBeside(pictures, c), full: true);
+                    source = "this model's BimGo comments";
+                }
+                else if (choice == UI.TaskDialogResult.CommandLink2)
+                {
+                    var open = new WinForms.OpenFileDialog
+                    {
+                        Title = "Comments from a .bimgo file",
+                        Filter = "BimGo files (*.bimgo)|*.bimgo",
+                        CheckFileExists = true
+                    };
+                    if (open.ShowDialog() != WinForms.DialogResult.OK) { return Result.Cancelled; }
+                    CommentDocument file = BimGoReader.ReadComments(open.FileName, out string fileError);
+                    if (file == null) { return FormCallers.Error($"The file's comments couldn't be read:\n{fileError}"); }
+                    payload = Live.CommentMarkers.Payload(file.Comments, null, full: false);
+                    source = Path.GetFileName(open.FileName);
+                }
+                else
+                {
+                    return Result.Cancelled;
+                }
+                payload.ReplaceAll = replaceAll;
+
+                Live.MarkersResultPayload result = Bridge.MarkerSync.Sync(doc, payload, LaunchSettings.LoadOrDefault());
+                new UI.TaskDialog("BimGo")
+                {
+                    MainInstruction = result.Success ? "Comment markers" : "No comment markers",
+                    MainContent = $"{result.Message}\n\nFrom {source}: {payload.Markers.Count} comment{(payload.Markers.Count == 1 ? string.Empty : "s")}.",
+                    CommonButtons = UI.TaskDialogCommonButtons.Close
+                }.Show();
+                return result.Success ? Result.Succeeded : Result.Failed;
+            }
+            catch (Exception ex)
+            {
+                Utilities.Log_Utils.Write($"Comment markers failed: {ex}");
+                return FormCallers.Error($"BimGo couldn't place the comment markers:\n{ex.Message}");
+            }
+        }
+
+        /// <summary>A comment's picture in the model folder, or null.</summary>
+        private static string PictureBeside(string folder, CommentRecord comment)
+        {
+            if (string.IsNullOrEmpty(folder) || string.IsNullOrEmpty(comment.Snapshot)) { return null; }
+            try
+            {
+                string path = Path.GetFullPath(Path.Combine(folder, comment.Snapshot));
+                return File.Exists(path) ? path : null;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+    }
+
+    /// <summary>
     /// Export .bimgo: opens the options, asks where to save, extracts the model and writes a standalone .bimgo
     /// (geometry, rooms, levels, metadata, picked parameters and the model's comments) for the BimGo app.
     /// Offers to open the file in BimGo afterwards.
@@ -299,11 +492,10 @@ namespace BimGo.Commands.Cmds_BimGo
                         : "Nothing to export: the ticked categories have no geometry in this model.");
                 }
 
-                // The model's comments travel with the file (from its BimGo folder, migrated there from older sidecars)
+                // The model's comments travel with the file (from its BimGo folder)
                 CommentDocument comments = null;
                 if (settings.LoadComments && !string.IsNullOrEmpty(scene.CommentsPath))
                 {
-                    CommentFiles.MigrateLegacy(scene.CommentsPath);
                     comments = CommentFiles.Read(scene.CommentsPath, out _);
                 }
 
@@ -312,11 +504,28 @@ namespace BimGo.Commands.Cmds_BimGo
                     ? null
                     : BookmarkFiles.Read(BookmarkFiles.SidecarFor(scene.CommentsPath), out _);
 
+                // Round X-B: and the billboards with their pictures (entourage.json and its images in the model folder)
+                string entouragePath = EntourageFiles.SidecarFor(scene.CommentsPath);
+                EntourageDocument entourage = entouragePath == null ? null : EntourageFiles.Read(entouragePath, out _);
+                Dictionary<string, byte[]> entourageImages = entourage == null ? null : EntourageFiles.ReadImages(EntourageFiles.ImagesFolderFor(entouragePath), entourage);
+
+                // Round X-D1: and the light profile choices with their imported .ies files (light-profiles.json)
+                string lightProfilesPath = LightProfileFiles.SidecarFor(scene.CommentsPath);
+                LightProfileDocument lightProfiles = lightProfilesPath == null ? null : LightProfileFiles.Read(lightProfilesPath, out _);
+
+                // Round Y-A: and the saved measurements (measurements.json)
+                string measurementsPath = MeasurementFiles.SidecarFor(scene.CommentsPath);
+                MeasurementDocument measurements = measurementsPath == null ? null : MeasurementFiles.Read(measurementsPath, out _);
+
                 var document = new BimGoDocument
                 {
                     Scene = scene,
                     Bookmarks = bookmarks ?? new BookmarkDocument { Model = scene.ModelTitle },
                     Comments = comments ?? new CommentDocument { Model = scene.ModelTitle },
+                    Entourage = entourage,
+                    EntourageImages = entourageImages,
+                    LightProfiles = lightProfiles,
+                    Measurements = measurements,
                     Journal = new EditJournal(),
                     CreatedUtc = scene.Provenance.ExtractedUtc,
                     Kind = FileKinds.EXPORT,
@@ -365,8 +574,7 @@ namespace BimGo.Commands.Cmds_BimGo
                 // Documents
             }
 
-            string name = doc.Title ?? "Model";
-            foreach (char c in Path.GetInvalidFileNameChars()) { name = name.Replace(c, '_'); }
+            string name = Utilities.FileNames.Safe(doc.Title);
 
             using var dialog = new WinForms.SaveFileDialog
             {
