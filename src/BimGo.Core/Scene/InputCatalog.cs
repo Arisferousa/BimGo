@@ -2,7 +2,7 @@
 namespace BimGo.Scene
 {
     /// <summary>
-    /// Groups of actions (input round B2): a heading in the CONTROLS panel, F1 help and README §3. Which groups are
+    /// Groups of actions (input round B2): a heading in the CONTROLS panel, F1 help and docs/controls.md. Which groups are
     /// live at the same time is decided by <see cref="InputCatalog.Situations"/>, not by the group alone.
     /// </summary>
     public enum InputContext : byte
@@ -29,11 +29,11 @@ namespace BimGo.Scene
         /// <summary>Sky round: the pause menu's own keys (the options preview).</summary>
         PauseMenu,
 
-        /// <summary>
-        /// Polish round P-B: Round K's flythrough path editor. Reserved now (the keys are in the clash test and CONTROLS);
-        /// K-A / K-B wire them.
-        /// </summary>
+        /// <summary>The 3D camera path editor (flythroughs).</summary>
         PathEditor,
+
+        /// <summary>Round Z-C: kiosk mode (opened from a kiosk shortcut): visitors walk, fly and look; this leaves it.</summary>
+        Kiosk,
 
         /// <summary>Keys that can't be rebound (Esc, menus and panels' mouse, Alt+F4). Listed for reference and clash checks.</summary>
         Fixed
@@ -83,6 +83,7 @@ namespace BimGo.Scene
         MediaPanel, // Round K-A
         PathEditMode, // Round K-B
         FixtureProfile, // Round Y-C2: the aimed fixture's own light profile
+        RoomTags, // Round Z-A: floating room tags on / off
 
         // Gun keys
         ScanSelectInRevit, ScanHide, ScanIsolate, MeasureNormal, CommentEdit, DemolishMode, GizmoSnap, GizmoDrop,
@@ -108,9 +109,12 @@ namespace BimGo.Scene
         // Pause menu (sky round)
         MenuPreview,
 
-        // Path editor (polish round P-B: reserved for Round K's flythrough)
+        // Path editor
         PathAddKey, PathDeleteKey, PathPreview, PathPreviousKey, PathNextKey,
         PathSetKey, PathMoveForward, PathMoveBack, PathMoveLeft, PathMoveRight, PathFlyUp, PathFlyDown, PathFlyFast, PathUndo, // Round K-B
+
+        // Kiosk mode (Round Z-C)
+        KioskExit,
 
         // Fixed (not rebindable)
         Back, CloseWindow, Click, DragLook, FineAdjust, PhotoZoom, OpenFile, PadClick, PadMenuBack
@@ -141,7 +145,7 @@ namespace BimGo.Scene
         /// <summary>Its group.</summary>
         public InputContext Context { get; }
 
-        /// <summary>What it does, as the CONTROLS panel, help and README show it.</summary>
+        /// <summary>What it does, as the CONTROLS panel, help and docs/controls.md show it.</summary>
         public string Label { get; }
 
         /// <summary>How it reads its keys.</summary>
@@ -240,7 +244,7 @@ namespace BimGo.Scene
 
     /// <summary>
     /// The catalogue of actions and their default keys (input round B2): the single source for the action map, the
-    /// CONTROLS panel, F1 help, README §3 and the default-clash tests. Polish round P-B's hotkey review changed a few
+    /// CONTROLS panel, F1 help, docs/controls.md and the default-clash tests. Polish round P-B's hotkey review changed a few
     /// defaults (<see cref="DefaultsChanges"/>, <see cref="DEFAULTS_VERSION"/>) and gave each situation its F1 rows.
     /// </summary>
     public static class InputCatalog
@@ -365,6 +369,7 @@ namespace BimGo.Scene
             Add(InputAction.MediaPanel, c, "Media panel: photo, tour, camera paths, video", P, "Shift+M"); // Round K-A
             Add(InputAction.PathEditMode, c, "Camera path editor in 3D on / off", P, "Shift+K"); // Round K-B
             Add(InputAction.FixtureProfile, c, "Light profile of the aimed fixture (dock)", P, "Ctrl+K"); // Round Y-C2
+            Add(InputAction.RoomTags, c, "Room tags on / off (options: Find room → ROOM DATA)", P, "Shift+N"); // Round Z-A (N is the Measure gun's normal)
 
             // Gun keys (while that gun is selected)
             Add(InputAction.ScanSelectInRevit, InputContext.ScanGun, "Select in Revit (live)", P, "R");
@@ -431,7 +436,7 @@ namespace BimGo.Scene
             Add(InputAction.ClashPickPoints, c, "Pick points: click dots or rows to pick, then group them (again or Esc leaves)", P, "K"); // P-B
             Add(InputAction.ClashStatusCycle, c, "Status: next (new → active → reviewed → approved → resolved)", P); // P-B: gamepad LB+A
 
-            // Path editor (polish round P-B: reserved for Round K; Round K-B: the 3D editor reads them)
+            // Path editor (the 3D editor reads them)
             c = InputContext.PathEditor;
             Add(InputAction.PathAddKey, c, "Add a key at this view (on the path: inserted there)", P, "K");
             Add(InputAction.PathDeleteKey, c, "Delete the selected key", P, "Delete");
@@ -447,6 +452,9 @@ namespace BimGo.Scene
             Add(InputAction.PathFlyDown, c, "Fly down (hold)", H, "Q");
             Add(InputAction.PathFlyFast, c, "Fly faster · drag a handle without snapping (hold)", H, "Shift");
             Add(InputAction.PathUndo, c, "Undo the last path change", P, "Ctrl+Z");
+
+            // Kiosk mode (Round Z-C): held, so a visitor mashing keys doesn't fall out of it
+            Add(InputAction.KioskExit, InputContext.Kiosk, "Leave kiosk mode (hold " + KIOSK_EXIT_HOLD_SECONDS.ToString("0", System.Globalization.CultureInfo.InvariantCulture) + " s)", ActionKind.Hold, "Ctrl+Shift+Q");
 
             // Pause menu (sky round)
             Add(InputAction.MenuPreview, InputContext.PauseMenu, "Options preview: the scene with the graphics settings only (again or Esc returns)", P, "Tab");
@@ -588,7 +596,7 @@ namespace BimGo.Scene
             InputContext.General, InputContext.Movement, InputContext.Guns, InputContext.Tools,
             InputContext.ScanGun, InputContext.MeasureGun, InputContext.CommentGun, InputContext.DemolishGun, InputContext.GizmoGuns,
             InputContext.Holding, InputContext.Markup, InputContext.SectionEditor, InputContext.PhotoMode, InputContext.SunPanel,
-            InputContext.Tour, InputContext.Clashes, InputContext.PauseMenu, InputContext.PathEditor, InputContext.Fixed
+            InputContext.Tour, InputContext.Clashes, InputContext.PauseMenu, InputContext.PathEditor, InputContext.Kiosk, InputContext.Fixed
         };
 
         /// <summary>A group's heading.</summary>
@@ -611,7 +619,8 @@ namespace BimGo.Scene
             InputContext.Tour => "Bookmark tour and camera paths",
             InputContext.Clashes => "Clash mode",
             InputContext.PauseMenu => "Pause menu",
-            InputContext.PathEditor => "Path editor (Round K)",
+            InputContext.PathEditor => "Path editor",
+            InputContext.Kiosk => "Kiosk mode",
             _ => "Fixed (not rebindable)"
         };
 
@@ -628,6 +637,7 @@ namespace BimGo.Scene
             InputContext.Tour => "While a bookmark tour or a camera path plays (Esc stops it).",
             InputContext.Clashes => "Clash detection's docked list (the clash mode key or Esc leaves): the move keys fly, run speeds up, RMB-drag looks, the wheel scrolls the list.",
             InputContext.PauseMenu => "While the pause menu shows (not in its panels).",
+            InputContext.Kiosk => "A file opened from a kiosk shortcut: visitors walk, fly and look only (no menus, guns, panels or saving); after two minutes without input the bookmark tour plays. Leaving it goes to the normal walkthrough.",
             InputContext.PathEditor => "The 3D camera path editor (the path editor key, or MEDIA → PATHS → EDIT IN 3D; Esc leaves): free cursor, RMB-drag looks, click a key or a handle, drag the handles; the scrubber at the bottom drives the camera.",
             InputContext.Fixed => "Text boxes also keep Enter, Tab, Backspace, ↑ / ↓, Ctrl+V and Esc. Gamepad in menus and editors: the look stick moves the cursor, the move stick scrolls (menus) or looks (editors); over menus and docks the D-pad moves the focus ring and LB / RB tapped alone switch tabs; A with LB / RB held is a chord, not a click.",
             _ => null
@@ -656,8 +666,12 @@ namespace BimGo.Scene
         public const string SIT_VIDEO = "Recording a video";
         public const string SIT_START = "Start screen";
         public const string SIT_PAUSE = "Pause menu and panels";
-        public const string SIT_PATH = "Path editor (Round K)";
+        public const string SIT_PATH = "Path editor";
         public const string SIT_FIXTURE = "Fixture light profile";
+        public const string SIT_KIOSK = "Kiosk mode";
+
+        /// <summary>Round Z-C: how long the kiosk exit key is held to leave kiosk mode (seconds).</summary>
+        public const float KIOSK_EXIT_HOLD_SECONDS = 2f;
 
         /// <summary>
         /// Every state of the app and what can fire in it. Mirrors <c>GameSession.UpdateFrame</c>: change both together.
@@ -715,7 +729,7 @@ namespace BimGo.Scene
                     sunTimeRow,
                     H("Section box · photo · media · paths", InputAction.SectionBox, InputAction.PhotoMode, InputAction.MediaPanel, InputAction.PathEditMode),
                     H("Clash mode", InputAction.ClashMode),
-                    H("Grids · colour profile", InputAction.GridsCycle, InputAction.ColourProfile),
+                    H("Grids · colour profile · room tags", InputAction.GridsCycle, InputAction.ColourProfile, InputAction.RoomTags),
                     H("Minimap · hide the UI", InputAction.Minimap, InputAction.HideUi),
                     look,
                     H("Go home · go to bookmark", InputAction.GoHome, InputAction.Bookmark1, InputAction.Bookmark2, InputAction.Bookmark3,
@@ -857,6 +871,21 @@ namespace BimGo.Scene
                     H("Close the fixture dock", InputAction.FixtureProfile),
                     click
                 }),
+                // Round Z-C: kiosk mode (walk, fly and look; GameSession.UpdateKiosk). The idle tour inside it plays without keys
+                // (any input hands control back), so it isn't a situation of its own
+                new InputSituation(SIT_KIOSK, new[] { InputContext.Kiosk }, new[]
+                {
+                    InputAction.MoveForward, InputAction.MoveBack, InputAction.MoveLeft, InputAction.MoveRight, InputAction.Jump, InputAction.Run,
+                    InputAction.Crouch, InputAction.Fly, InputAction.LookUp, InputAction.LookDown, InputAction.LookLeft, InputAction.LookRight
+                }, new[]
+                {
+                    move,
+                    look,
+                    H("Fly / walk", InputAction.Fly),
+                    H("Jump · crouch", InputAction.Jump, InputAction.Crouch),
+                    H("Run", InputAction.Run),
+                    H("Leave kiosk mode (hold)", InputAction.KioskExit)
+                }),
                 new InputSituation(SIT_VIDEO, Array.Empty<InputContext>(), new[] { InputAction.Fullscreen }, new[]
                 {
                     H("Stop recording", InputAction.Back),
@@ -906,10 +935,10 @@ namespace BimGo.Scene
         /// The controls defaults version (polish round P-B). 0: the defaults up to P-A2; 1: P-B's hotkey review; 2: Round
         /// K-A's media panel; 3: Round K-B's path editor; 4: Round X-B3's billboard resize (HoldScale); 5: Round X-E's
         /// Revit views from here (RevitViewNew, RevitViewUpdate); 6: Round Y-A's saved measurements (MeasureShowAll, MeasureExport); 7: Round Y-C2's
-        /// fixture light profile dock (FixtureProfile). Raise it when a default changes and add the changes to
+        /// fixture light profile dock (FixtureProfile); 8: Round Z-A's room tags (RoomTags); 9: Round Z-C's kiosk exit (KioskExit). Raise it when a default changes and add the changes to
         /// <see cref="DefaultsChanges"/> (ControlsTests checks the table against the defaults).
         /// </summary>
-        public const int DEFAULTS_VERSION = 7;
+        public const int DEFAULTS_VERSION = 9;
 
         /// <summary>Every default that changed, by version (oldest first). <c>Was</c>: the old binding ("none" for none).</summary>
         public static readonly DefaultsChange[] DefaultsChanges =
@@ -960,7 +989,13 @@ namespace BimGo.Scene
             new(6, InputAction.MeasureExport, true, null),
 
             // Version 7 (Round Y-C2): Ctrl+K opens the aimed fixture's light profile dock
-            new(7, InputAction.FixtureProfile, true, null)
+            new(7, InputAction.FixtureProfile, true, null),
+
+            // Version 8 (Round Z-A): Shift+N shows / hides the floating room tags
+            new(8, InputAction.RoomTags, true, null),
+
+            // Version 9 (Round Z-C): Ctrl+Shift+Q held leaves kiosk mode
+            new(9, InputAction.KioskExit, true, null)
         };
 
         /// <summary>The changes made after a version the user saw (empty when it is current or newer).</summary>

@@ -506,12 +506,7 @@ namespace BimGo.Game
             return Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
         }
 
-        private static string SafeFileName(string name)
-        {
-            if (string.IsNullOrWhiteSpace(name)) { return "Model"; }
-            foreach (char c in Path.GetInvalidFileNameChars()) { name = name.Replace(c, '_'); }
-            return name;
-        }
+        private static string SafeFileName(string name) => Utilities.FileNames.Safe(name);
 
         #endregion
 
@@ -524,6 +519,7 @@ namespace BimGo.Game
         {
             UpdateLive();
             UpdateRevitViews(); // Round X-E: views Revit's ribbon asked for
+            UpdateCommentMarkers(); // Round Z-B: comments → Revit markers
             UpdatePush(dt);
             UpdateSun(dt);
             UpdateScreenshot();
@@ -532,6 +528,7 @@ namespace BimGo.Game
 
             while (_window.TryTakeDroppedFile(out string dropped))
             {
+                if (_kiosk) { continue; } // Round Z-C: kiosk visitors can't open files (drops are dropped)
                 if (_options.OnOpenRequest != null)
                 {
                     string message = _options.OnOpenRequest(dropped);
@@ -544,7 +541,8 @@ namespace BimGo.Game
             }
 
             _noticeTimer += dt;
-            if (_noticeTimer < 1f || _options.PollNotices == null) { return; }
+            // Round Z-C: kiosk mode leaves other launches' requests in the inbox (they open after leaving kiosk mode)
+            if (_noticeTimer < 1f || _options.PollNotices == null || _kiosk) { return; }
             _noticeTimer = 0f;
             string notice = _options.PollNotices();
             if (notice != null) { Toast(notice, 4f); }

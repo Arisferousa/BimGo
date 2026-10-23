@@ -1,0 +1,54 @@
+# BimGo .gitignore (Visual Studio / .NET)
+
+# Build output
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+artifacts/
+
+# Visual Studio and Rider
+.vs/
+.idea/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.rsuser
+*.DotSettings.user
+launchSettings.json
+
+# Test results and coverage
+[Tt]est[Rr]esults/
+*.trx
+*.coverage
+*.coveragexml
+coverage*.json
+coverage*.xml
+
+# NuGet
+*.nupkg
+*.snupkg
+packages/
+project.lock.json
+project.fragment.lock.json
+
+# Inno Setup / publish leftovers
+*.iss.bak
+Output/
+
+# Python helpers in tools/ and ai/
+__pycache__/
+*.pyc
+
+# Revit backups (e.g. the marker family's BimGo_Comment_Marker.0001.rfa)
+*.0???.rfa
+*.0???.rvt
+
+# Windows and editors
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.swp
+*~

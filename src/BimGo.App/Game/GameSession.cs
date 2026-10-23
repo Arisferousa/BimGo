@@ -74,9 +74,6 @@ namespace BimGo.Game
         /// <summary>Back-buffer width.</summary>
         public int ScreenWidth => _window.Width;
 
-        /// <summary>Back-buffer height.</summary>
-        public int ScreenHeight => _window.Height;
-
         #endregion
 
         #region Runtime settings and state
@@ -287,6 +284,7 @@ namespace BimGo.Game
                 Toast("Realistic needs textures: this snapshot shows material colours. Tick “Extract materials and textures” at Go.", 6f);
             }
             _overlay.Initialise();
+            _roomTintOverlay.Initialise(); // Round Z-A
             _gridOverlay.Initialise(); // grids round A
             _gridNodeOverlay.Initialise(); // grids round B: the intersections
             _target.Ensure(_window.Width, _window.Height, _msaa);
@@ -322,6 +320,7 @@ namespace BimGo.Game
                 if (Scene.Settings.LoadComments) { Comments.Load(); }
             }
             Comments.Changed += UpdateTitle;
+            InitialiseCommentMarkers(); // Round Z-B
             Comments.CurrentEye = () => CurrentStandingEye; // P-C: views keep the eye-height preset
             InitialiseBookmarks();
             InitialisePaths(); // Round K-A: camera paths
@@ -353,7 +352,7 @@ namespace BimGo.Game
             else if (Bookmarks.LastError != null) { Toast(Bookmarks.LastError); }
             else if (!string.IsNullOrEmpty(Scene.PhaseNote)) { Toast(Scene.PhaseNote, 6f); }
             else if (replayFailures > 0) { Toast($"{replayFailures} saved edit{(replayFailures == 1 ? " refers" : "s refer")} to elements not in this file and {(replayFailures == 1 ? "was" : "were")} skipped.", 5f); }
-            else if (ShowControlsDefaultsNotice()) { /* polish round P-B: once after an update that changed default keys */ }
+            else if (!_options.Kiosk && ShowControlsDefaultsNotice()) { /* polish round P-B: once after an update that changed default keys (not to kiosk visitors) */ }
             else
             {
                 string edits = _journal.Count > 0 ? $" · {_journal.Count} edit{(_journal.Count == 1 ? string.Empty : "s")}" : string.Empty;
@@ -361,6 +360,14 @@ namespace BimGo.Game
                 string start = _startedAtSavedHome ? $" Starting at your saved home ({Key(InputAction.SetHome)} sets it)." : string.Empty;
                 Toast($"{Scene.Elements.Length:N0} elements · {Scene.TriangleCount:N0} triangles{links}{edits}.{start} Click to look around.", _startedAtSavedHome ? 4f : 2.6f);
             }
+
+            // Round Z-E: a safe start or an add-in from another release says so (important: shown whatever else is up)
+            if (LaunchSettings.SafeStart) { Toast("Safe start: default settings for this run, nothing is saved (start BimGo without Shift for your own)", 8f, important: true); }
+            else if (!string.IsNullOrEmpty(_options.StartNotice)) { Toast(_options.StartNotice, 10f, important: true); }
+
+            // Round Z-C: a kiosk shortcut's launch (files only)
+            if (_options.Kiosk && IsFileMode) { EnterKiosk(); }
+            else if (!LaunchSettings.SafeStart && !Scene.Settings.WelcomeShown) { OpenWelcome(); } // Round Z-E: first walkthrough
         }
 
         /// <summary>
@@ -497,6 +504,7 @@ namespace BimGo.Game
         private void RefreshMasks()
         {
             _sceneRevision++;
+            _renderer?.ResetOcclusion(); // chunks hidden behind what was just hidden show at once (Y-D1)
             UpdateGroupVisibility();
             ElementRecord[] elements = Scene.Elements;
             for (int e = 0; e < elements.Length; e++)
@@ -555,8 +563,9 @@ namespace BimGo.Game
                     AbortVideo();
                     if (_tourActive) { StopTour(finished: false); }
 
-                    // The window still exists (close was only requested): unsaved changes may cancel it
-                    if (_window.Handle != 0 && !ConfirmDiscardOrSave())
+                    // The window still exists (close was only requested): unsaved changes may cancel it (Round Z-C: never
+                    // in kiosk mode, which makes no changes and has nobody to answer)
+                    if (_window.Handle != 0 && !_kiosk && !ConfirmDiscardOrSave())
                     {
                         _endRequested = false;
                         _endReason = SessionEndReason.EndedByUser;
@@ -628,6 +637,21 @@ namespace BimGo.Game
 
             // The gamepad's cursor (menus, editors) follows what is open (build B; used from the next frame's poll)
             _window.PadCursor = CurrentPadCursorMode();
+
+            // Round Z-C: kiosk mode has the keys: walk, fly and look only (its idle tour too; any input hands control back)
+            if (_kiosk)
+            {
+                UpdateKiosk(input, dt);
+                return;
+            }
+
+            // Round Z-E: the welcome card (first walkthrough) has the cursor until it closes
+            if (_welcomeOpen)
+            {
+                UpdateWelcome(input);
+                return;
+            }
+
             UpdatePadFocus(input); // polish round P-A2: the D-pad's focus ring and LB / RB tabs (before the keys below)
             if (_paused || _tourActive) { CloseGunWheel(pick: false); }
 
@@ -898,6 +922,7 @@ namespace BimGo.Game
             }
             if (input.Pressed(InputAction.GridsCycle)) { CycleGrids(); }
             if (input.Pressed(InputAction.ColourProfile)) { ToggleProfile(); } // colour round A
+            if (input.Pressed(InputAction.RoomTags)) { ToggleRoomTags(); } // Round Z-A
             if (ShadowsOn) { StepSunTimeKeys(input); }
             if (input.Pressed(InputAction.Jump) && !_player.Flying) { _player.QueueJump(); }
 
@@ -954,7 +979,7 @@ namespace BimGo.Game
         {
             if (_tourActive) { return; } // the tour places the player itself
             _player.Controller.GroundZ = _groundZ;
-            bool frozen = IsEditingComment || _sunPanelOpen || _sunHoursOpen || GridsPanelHasKeys || FixtureDockHasKeys || !_window.IsActive || _guns[_activeGun].CapturesInput || ClashFreezesPlayer
+            bool frozen = _welcomeOpen || IsEditingComment || _sunPanelOpen || _sunHoursOpen || GridsPanelHasKeys || FixtureDockHasKeys || !_window.IsActive || _guns[_activeGun].CapturesInput || ClashFreezesPlayer
                 || PathFreezesPlayer;
             if (_pathEditOn)
             {
@@ -1186,9 +1211,6 @@ namespace BimGo.Game
             _toastImportant = important;
         }
 
-        /// <summary>True while hide-UI mode is on (U).</summary>
-        public bool IsUiHidden => _uiHidden;
-
         /// <summary>
         /// U: hides or shows the UI. Entering says how to get it back.
         /// </summary>
@@ -1359,6 +1381,7 @@ namespace BimGo.Game
             _weatherSound.Dispose(); // Round W-C
             _renderer?.Dispose();
             _overlay.Dispose();
+            _roomTintOverlay.Dispose(); // Round Z-A
             _gridOverlay.Dispose();
             _gridNodeOverlay.Dispose();
             _sunOverlay?.Dispose();
