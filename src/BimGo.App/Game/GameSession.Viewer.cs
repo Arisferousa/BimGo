@@ -56,19 +56,23 @@ namespace BimGo.Game
         private const float VIEWER_HINT_SECONDS = 10f;
 
         // Toolbar buttons
-        private const int VT_HOME = 0, VT_ORBIT = 1, VT_WALK = 2, VT_MEASURE = 3, VT_SECTION = 4, VT_COMMENT = 5, VT_VIEWS = 6, VT_PHOTOS = 7,
-            VT_MAP = 8, VT_SUN = 9, VT_FULLSCREEN = 10, VT_MENU = 11, VT_COUNT = 12;
+        private const int VT_HOME = 0, VT_ORBIT = 1, VT_WALK = 2, VT_GHOST = 3, VT_MEASURE = 4, VT_SECTION = 5, VT_COMMENT = 6, VT_VIEWS = 7,
+            VT_PHOTOS = 8, VT_MAP = 9, VT_SUN = 10, VT_FULLSCREEN = 11, VT_MENU = 12, VT_COUNT = 13;
 
         private static readonly string[] VIEWER_TOOL_LABELS =
         {
-            "Home view", "Orbit", "Walk", "Measure", "Section box", "Comments", "Views and tour", "Site photos", "Site map", "Sun and shadows", "Fullscreen", "Menu"
+            "Home view", "Orbit", "Walk", "Pass through walls", "Measure", "Section box", "Comments", "Views and tour", "Site photos", "Site map",
+            "Sun and shadows", "Fullscreen", "Menu"
         };
 
         // Groups: a gap after these buttons
-        private static readonly bool[] VIEWER_GAP_AFTER = { true, false, true, false, false, true, false, false, false, true, false, false };
+        private static readonly bool[] VIEWER_GAP_AFTER = { true, false, false, true, false, false, true, false, false, false, true, false, false };
 
         private static readonly KeyHint HINT_VIEWER_WALKING = new(() => $"Move keys walk · drag to look · double-click a floor to go there · {Key(InputAction.Fly)} orbits");
         private static readonly KeyHint HINT_VIEWER_ORBITING = new(() => $"Drag to orbit · right-drag to pan · scroll to zoom · double-click to focus · {Key(InputAction.Fly)} walks");
+        private static readonly KeyHint HINT_VIEWER_GHOST_ON = new(() =>
+            $"Passing through walls: the move keys go where you look ({Key(InputAction.Jump)} / {Key(InputAction.Crouch)} up and down; {Key(InputAction.ViewerGhost)} walks again)");
+        private static readonly KeyHint HINT_VIEWER_GHOST = new(() => $"Pass through walls ({Key(InputAction.ViewerGhost)})");
         private static readonly KeyHint HINT_VIEWER_ORBIT = new(() => $"Orbit ({Key(InputAction.Fly)})");
         private static readonly KeyHint HINT_VIEWER_WALK = new(() => $"Walk ({Key(InputAction.Fly)}: drop from here)");
 
@@ -85,6 +89,8 @@ namespace BimGo.Game
         private bool _viewerFile;          // the file opens in the viewer (kept when it is saved)
         private string _viewerStart = ViewerStart.ORBIT;
         private bool _viewerWalk;          // walking (else orbiting)
+        private bool _viewerGhost;         // walking through walls (the player flies, no-clip, and stays walking)
+        private float _viewerSpeed = 1f;   // the walking speed (× normal)
         private bool _viewerFromBar;       // a panel (views, comments) was opened from the toolbar: closing it goes back to the model
         private int _viewerPopup;          // VP_*
         private bool _viewerPhotosShown;   // the site photos button shows (the file has photos in the model; set as the bar is drawn)
@@ -187,6 +193,8 @@ namespace BimGo.Game
             _window.Input.ReleaseAll();
             _viewerMouse = _window.Input.MousePosition;
             _viewerWalk = false; // each branch below walks or orbits
+            _viewerGhost = false;
+            _player.SpeedScale = _viewerSpeed;
 
             if (fromWalkthrough)
             {
@@ -225,6 +233,8 @@ namespace BimGo.Game
         {
             if (!_viewer) { return; }
             _viewer = false;
+            _viewerGhost = false;
+            _player.SpeedScale = 1f; // the walkthrough walks at its own speed
             _viewerPopup = VP_NONE;
             _viewerDrag = 0;
             _viewerFromBar = false;
@@ -365,13 +375,15 @@ namespace BimGo.Game
             {
                 bool wasWalking = _viewerWalk;
                 _viewerWalk = false;
+                _viewerGhost = false;
                 if (wasWalking) { OrbitFromPlayer(); }
-                RememberPlayerPose(); // the eye is the player's: nothing to take up
+                OrbitToPlayer(); // flying at the eye at once: a fall or a step this tick would read as a move made elsewhere
                 if (announce) { Toast("Orbit: drag to turn around the model, right-drag to pan, scroll to zoom", 3f); }
                 return;
             }
 
             _viewerWalk = true;
+            _viewerGhost = false;
             _glideT = 1f;
             if (!keepPose)
             {
@@ -558,15 +570,26 @@ namespace BimGo.Game
                 return;
             }
 
+            // One key per toolbar tool
+            if (input.Pressed(InputAction.ViewerMeasure)) { ViewerBarClick(VT_MEASURE); }
+            if (input.Pressed(InputAction.ViewerComment)) { ViewerBarClick(VT_COMMENT); }
+            if (input.Pressed(InputAction.ViewerSection)) { ViewerBarClick(VT_SECTION); }
+            if (input.Pressed(InputAction.ViewerViews)) { ViewerBarClick(VT_VIEWS); }
+            if (input.Pressed(InputAction.ViewerSun)) { ViewerBarClick(VT_SUN); }
+            if (input.Pressed(InputAction.ViewerGhost)) { ToggleViewerGhost(); }
+            if (input.PressedOrRepeated(InputAction.ViewerFaster)) { StepViewerSpeed(+1); }
+            if (input.PressedOrRepeated(InputAction.ViewerSlower)) { StepViewerSpeed(-1); }
+
             if (_viewerWalk)
             {
                 UpdateRoom();
-                if (_player.Flying)
+                if (_player.Flying && !_viewerGhost)
                 {
                     SetViewerWalk(false, announce: false); // a flying bookmark or view: orbit from there
                     return;
                 }
-                if (input.Pressed(InputAction.Jump)) { _player.QueueJump(); }
+                if (!_player.Flying && _viewerGhost) { _viewerGhost = false; } // a walking bookmark or view lands
+                if (input.Pressed(InputAction.Jump) && !_player.Flying) { _player.QueueJump(); }
                 if (_window.IsActive) { PadLook(input); }
             }
 
@@ -626,10 +649,11 @@ namespace BimGo.Game
                 }
             }
 
-            // The wheel zooms (orbiting) toward the cursor
-            if (input.Wheel != 0 && !overUi && !_viewerWalk)
+            // The wheel zooms (orbiting) toward the cursor; walking, it sets the speed
+            if (input.Wheel != 0 && !overUi)
             {
-                ZoomAt(mouse, input.Wheel);
+                if (_viewerWalk) { StepViewerSpeed(Math.Sign(input.Wheel)); }
+                else { ZoomAt(mouse, input.Wheel); }
                 input.ConsumeWheel();
             }
         }
@@ -640,6 +664,39 @@ namespace BimGo.Game
             _viewerDrag = 0;
             _viewerDragged = false;
             _orbitPivotShown = false;
+        }
+
+        /// <summary>
+        /// G / the toolbar's pass-through button: walking through walls (the player flies with no collision: the move keys
+        /// go where you look, Space / Ctrl up and down) or back to walking with gravity. From orbiting it starts walking
+        /// there, through walls, where the camera is.
+        /// </summary>
+        private void ToggleViewerGhost()
+        {
+            if (!_viewerWalk)
+            {
+                SetViewerWalk(true, announce: false, keepPose: true);
+                if (!_player.Flying) { _player.ToggleFly(); } // stay where the camera is
+                _viewerGhost = true;
+            }
+            else
+            {
+                _viewerGhost = !_viewerGhost;
+                if (_player.Flying != _viewerGhost) { _player.ToggleFly(); }
+            }
+            Sound.Play(SoundId.UiClick);
+            _viewerHintFrom = _clock;
+            Toast(_viewerGhost ? HINT_VIEWER_GHOST_ON.Text : "Walking: walls and floors stop you again", 3.5f);
+        }
+
+        /// <summary>Walk faster (+1) or slower (−1): ×1.25 a step, 0.25× to 4×.</summary>
+        private void StepViewerSpeed(int direction)
+        {
+            float speed = Math.Clamp(_viewerSpeed * MathF.Pow(1.25f, direction), 0.25f, 4f);
+            if (MathF.Abs(speed - 1f) < 0.06f) { speed = 1f; } // land on normal again
+            _viewerSpeed = speed;
+            _player.SpeedScale = speed;
+            Toast($"Walking speed {speed:0.##}× ({Key(InputAction.ViewerSlower)} / {Key(InputAction.ViewerFaster)} or the wheel while walking)", 2f);
         }
 
         /// <summary>A click on the model: the armed tool fires (aimed by the cursor); a double-click focuses or walks there.</summary>
@@ -773,7 +830,17 @@ namespace BimGo.Game
             if (_viewerWalk)
             {
                 where.Append(CurrentLevelName);
-                if (_roomIndex >= 0 && _roomIndex < Scene.Rooms.Length) { where.Append(" · ").Append(RoomLabel(_roomIndex)); }
+                if (_roomIndex >= 0 && _roomIndex < Scene.Rooms.Length)
+                {
+                    if (_viewerRoomLabelFor != _roomIndex) // the room's label, made once per room entered
+                    {
+                        _viewerRoomLabelFor = _roomIndex;
+                        _viewerRoomLabel = RoomLabel(_roomIndex);
+                    }
+                    where.Append(" · ").Append(_viewerRoomLabel);
+                }
+                if (_viewerGhost) { where.Append(" · through walls"); }
+                if (_viewerSpeed != 1f) { where.Append(" · speed ").Append(_viewerSpeed, _viewerSpeed < 1f ? 2 : 1).Append('×'); }
             }
             else
             {
@@ -851,7 +918,8 @@ namespace BimGo.Game
                 bool on = t switch
                 {
                     VT_ORBIT => !_viewerWalk,
-                    VT_WALK => _viewerWalk,
+                    VT_WALK => _viewerWalk && !_viewerGhost,
+                    VT_GHOST => _viewerGhost,
                     VT_MEASURE => !_unarmed && _guns[_activeGun] == _measureGun,
                     VT_COMMENT => !_unarmed && _guns[_activeGun] == _commentGun,
                     VT_SECTION => _sectionOpen,
@@ -886,7 +954,8 @@ namespace BimGo.Game
             // The tooltip above the hovered button (not over an open popover)
             if (hovered >= 0 && _viewerPopup == VP_NONE)
             {
-                string label = hovered == VT_ORBIT ? HINT_VIEWER_ORBIT.Text : hovered == VT_WALK ? HINT_VIEWER_WALK.Text : VIEWER_TOOL_LABELS[hovered];
+                string label = hovered == VT_ORBIT ? HINT_VIEWER_ORBIT.Text : hovered == VT_WALK ? HINT_VIEWER_WALK.Text
+                    : hovered == VT_GHOST ? HINT_VIEWER_GHOST.Text : ViewerToolTip(hovered);
                 if (hovered == VT_FULLSCREEN && _window.IsFullscreen) { label = "Leave fullscreen"; }
                 float tw = UiBatch.Measure(f.Body, label) + S(20);
                 float tx = Math.Clamp(ViewerButtonCentre(hovered, bx) - tw * 0.5f, S(8), width - tw - S(8));
@@ -895,6 +964,36 @@ namespace BimGo.Game
                 _ui.Text(f.Body, tx + S(10), ty + S(6), label, UiTheme.TEXT);
             }
         }
+
+        /// <summary>A tool's tooltip with its key ("Measure (M)"; cached: drawn every frame while hovered).</summary>
+        private string ViewerToolTip(int tool)
+        {
+            InputAction key = tool switch
+            {
+                VT_MEASURE => InputAction.ViewerMeasure,
+                VT_SECTION => InputAction.ViewerSection,
+                VT_COMMENT => InputAction.ViewerComment,
+                VT_VIEWS => InputAction.ViewerViews,
+                VT_SUN => InputAction.ViewerSun,
+                VT_HOME => InputAction.GoHome,
+                VT_FULLSCREEN => InputAction.Fullscreen,
+                _ => InputAction.None
+            };
+            if (key == InputAction.None) { return VIEWER_TOOL_LABELS[tool]; }
+            _viewerTipCache ??= new string[VT_COUNT];
+            string label = Key(key);
+            string cached = _viewerTipCache[tool];
+            if (cached == null || _viewerTipKeys == null || _viewerTipKeys[tool] != label)
+            {
+                (_viewerTipKeys ??= new string[VT_COUNT])[tool] = label;
+                _viewerTipCache[tool] = cached = string.IsNullOrEmpty(label) ? VIEWER_TOOL_LABELS[tool] : $"{VIEWER_TOOL_LABELS[tool]} ({label})";
+            }
+            return cached;
+        }
+
+        private string[] _viewerTipCache, _viewerTipKeys;
+        private string _viewerRoomLabel;
+        private int _viewerRoomLabelFor = -1;
 
         /// <summary>A toolbar button's centre X (the popovers sit over their button).</summary>
         private float ViewerButtonCentre(int tool, float barX) => barX + S(8) + ViewerButtonX(tool) + S(44) * 0.5f;
@@ -921,7 +1020,11 @@ namespace BimGo.Game
             {
                 case VT_HOME: ViewerGoHome(); break;
                 case VT_ORBIT: if (_viewerWalk) { SetViewerWalk(false, announce: true); } break;
-                case VT_WALK: if (!_viewerWalk) { SetViewerWalk(true, announce: true); } break;
+                case VT_WALK:
+                    if (!_viewerWalk) { SetViewerWalk(true, announce: true); }
+                    else if (_viewerGhost) { ToggleViewerGhost(); } // back on the floor
+                    break;
+                case VT_GHOST: ToggleViewerGhost(); break;
                 case VT_MEASURE:
                     if (_sectionOpen) { CloseSectionEditor(); }
                     ViewerArm(_measureGun);
@@ -955,7 +1058,7 @@ namespace BimGo.Game
             int count = Bookmarks.Bookmarks.Count;
             int rows = Math.Min(count, MAX_ROWS);
             float w = S(320), rowH = S(32);
-            float h = S(UiTheme.PANEL_PAD_Y) * 2f + S(24) + (rows == 0 ? S(44) : rows * (rowH + S(4))) + S(UiTheme.SMALL_BUTTON_HEIGHT) * 2f + S(UiTheme.GAP_SMALL) * 2f;
+            float h = S(UiTheme.PANEL_PAD_Y) * 2f + S(24) + (rows == 0 ? S(44) : rows * (rowH + S(4))) + S(UiTheme.SMALL_BUTTON_HEIGHT) * 3f + S(UiTheme.GAP_SMALL) * 3f;
             float x = Math.Clamp(ViewerButtonCentre(VT_VIEWS, _viewerBarRect.X) - w * 0.5f, S(8), _window.Width - w - S(8));
             float y = _viewerBarRect.Y - S(10) - h;
             _ui.Panel(x, y, w, h, UiTheme.PANEL_STRONG, UiTheme.PANEL_BORDER);
@@ -981,16 +1084,17 @@ namespace BimGo.Game
                 iy += rowH + S(4);
             }
 
-            float bw = (iw - S(UiTheme.GAP_SMALL)) * 0.5f, bh = S(UiTheme.SMALL_BUTTON_HEIGHT);
+            float bh = S(UiTheme.SMALL_BUTTON_HEIGHT);
             iy += S(UiTheme.GAP_SMALL) - S(4);
-            if (MenuButton(f, ix, iy, bw, "PLAY TOUR", primary: count > 0, danger: false, enabled: count > 0, height: bh, compact: true))
+            if (MenuButton(f, ix, iy, iw, "PLAY TOUR", primary: count > 0, danger: false, enabled: count > 0, height: bh, compact: true))
             {
                 _viewerPopup = VP_NONE;
                 ViewerCancelDrag();
                 if (!StartTour()) { Toast(_bookmarksNotice ?? "No views to tour", 3f); }
                 return;
             }
-            if (MenuButton(f, ix + bw + S(UiTheme.GAP_SMALL), iy, bw, "SAVE THIS VIEW", false, false, height: bh, compact: true))
+            iy += bh + S(UiTheme.GAP_SMALL);
+            if (MenuButton(f, ix, iy, iw, "SAVE THIS VIEW", false, false, height: bh, compact: true))
             {
                 _viewerPopup = VP_NONE;
                 AddBookmarkHere();
@@ -1223,6 +1327,15 @@ namespace BimGo.Game
                     _ui.Line(cx - s * 0.55f, cy - s * 0.15f, cx + s * 0.02f, cy - s * 0.35f, t, colour);
                     _ui.Line(cx + s * 0.02f, cy - s * 0.35f, cx + s * 0.5f, cy - s * 0.05f, t, colour);
                     break;
+                case VT_GHOST:
+                {
+                    // An arrow through a wall
+                    _ui.Rect(cx + s * 0.15f, cy - s * 0.95f, t * 1.4f, s * 0.55f, colour);
+                    _ui.Rect(cx + s * 0.15f, cy + s * 0.4f, t * 1.4f, s * 0.55f, colour);
+                    _ui.Line(cx - s * 0.9f, cy, cx + s * 0.75f, cy, t, colour);
+                    GunIcons.Arrowhead(_ui, cx + s * 0.95f, cy, 1f, 0f, s * 0.45f, colour);
+                    break;
+                }
                 case VT_MEASURE: GunIcons.Measure(_ui, cx, cy, r * 1.1f, colour); break;
                 case VT_COMMENT: GunIcons.Comment(_ui, cx, cy, r * 1.1f, colour); break;
                 case VT_SECTION:
