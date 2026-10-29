@@ -45,3 +45,17 @@ numerically. Nothing in BimGo.Revit changed.
 See DEVELOPING → Open build. Also worth a look: orbiting a large site (5 km) and zooming near a facade (min range
 0.4 m), panning speed at the pivot's depth, the toolbar at 150 % scaling on a 1366 px wide screen, and whether the
 icons read well.
+
+## Revision 2 (after testing on Windows)
+- **V** (earlier revision): the fly key toggles orbit and walk. Bug found in testing: after V from orbit (falling), V
+  wouldn't go back to orbit. Going back left the player walking for one physics tick; falling moved the feet, which the
+  orbit camera read as a move made elsewhere and switched straight back to walking. `SetViewerWalk(false)` now flies the
+  player at the eye at once (`OrbitToPlayer`).
+- **Keys for the tools** (`InputContext.Viewer`, defaults version 10): M measure, X section box (closes the editor too),
+  C comments, B views, O sun; tooltips show them.
+- **Pass through walls** (G, a toolbar button in the walk group): walking with the player flying (no-clip); a flying
+  bookmark while it's on stays walking; from orbiting it starts where the camera is.
+- **Walking speed**: = / - (repeating) and the wheel while walking; `Player.SpeedScale` (0.25–4×), shown in the title.
+- The views popover's buttons are full width, one under another (labels didn't fit side by side).
+- The walk flag is reset on entering the viewer (it could stay set from an earlier visit), and the title's room label is
+  made once per room instead of every frame.

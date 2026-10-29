@@ -73,7 +73,9 @@ namespace BimGo.Tests
         {
             InputSituation viewer = InputCatalog.Situation(InputCatalog.SIT_VIEWER);
             Assert.IsNotNull(viewer);
-            foreach (InputAction action in new[] { InputAction.MoveForward, InputAction.Run, InputAction.GoHome, InputAction.Save, InputAction.Fullscreen, InputAction.Fly })
+            foreach (InputAction action in new[] { InputAction.MoveForward, InputAction.Run, InputAction.GoHome, InputAction.Save, InputAction.Fullscreen, InputAction.Fly,
+                InputAction.ViewerMeasure, InputAction.ViewerSection, InputAction.ViewerComment, InputAction.ViewerViews, InputAction.ViewerSun, InputAction.ViewerGhost,
+                InputAction.ViewerFaster, InputAction.ViewerSlower })
             {
                 Assert.IsTrue(viewer.Contains(action), $"{action} should be live in the viewer");
             }
@@ -83,6 +85,15 @@ namespace BimGo.Tests
                 Assert.IsFalse(viewer.Contains(action), $"{action} should not be live in the viewer");
             }
             Assert.IsTrue(viewer.Help.Any(h => h.Label.StartsWith("Orbit")));
+
+            // The viewer's own keys are live there only (the walkthrough keeps M, X, C, B, O, G for its own)
+            foreach (InputSituation other in InputCatalog.Situations)
+            {
+                if (ReferenceEquals(other, viewer)) { continue; }
+                Assert.IsFalse(other.Contains(InputAction.ViewerMeasure), $"ViewerMeasure is live in {other.Name}");
+                Assert.IsFalse(other.Contains(InputAction.ViewerGhost), $"ViewerGhost is live in {other.Name}");
+            }
+            Assert.AreEqual("M", new KeyMap().Primary(InputAction.ViewerMeasure).ToString());
         }
     }
 }

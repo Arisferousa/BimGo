@@ -233,7 +233,7 @@ namespace BimGo.Game
         private void UpdateSectionEditor(InputState input)
         {
             // (Ctrl+P, clear all cuts, is live here so it doesn't also close the editor: it does nothing in it, as before)
-            if (input.Pressed(InputAction.Back) || input.Pressed(InputAction.SectionBox))
+            if (input.Pressed(InputAction.Back) || input.Pressed(InputAction.SectionBox) || (_viewer && input.Pressed(InputAction.ViewerSection)))
             {
                 CloseSectionEditor();
                 return;

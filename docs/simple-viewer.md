@@ -31,12 +31,15 @@ Send that one file. Everything it shows travels inside it, pictures included. Th
 | Walk (first person) | the walk button; then the move keys (W A S D, Shift runs, Space jumps), drag to look, double-click a floor to go there |
 | Back to orbiting | the orbit button |
 | Orbit ↔ walk | **V** (as in the full walkthrough): from orbiting you drop to the ground below the camera, and V again flies back up to orbit |
+| Pass through walls | **G** or the toolbar's pass-through button: walking with no walls or floors in the way (the move keys go where you look, Space / Ctrl up and down); G again walks normally. From orbiting it starts there, where the camera is |
+| Walk faster · slower | **=** · **-**, or the mouse wheel while walking (0.25× to 4×; the title shows it) |
+| Tools | **M** measure · **X** section box · **C** comments · **B** views · **O** sun (each again closes it; the toolbar's tooltips show the keys) |
 | Home view | the home button or **H** |
 | Save · fullscreen | **Ctrl+S** · **F11** |
 
 The toolbar at the bottom:
 
-- **Home**, **Orbit**, **Walk**.
+- **Home**, **Orbit**, **Walk**, **Pass through walls**.
 - **Measure**: click points on the model. Distance, area, angle and clearance; right-click or REMOVE LAST takes the last
   one back. Measurements are saved with the file.
 - **Section box**: a box around the whole model; drag a face's handle to cut. Dragging anywhere else still orbits.
