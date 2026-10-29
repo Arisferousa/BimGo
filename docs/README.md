@@ -7,7 +7,7 @@ detail.
 ![BimGo walkthrough](images/home-hero.gif)
 
 ## Start here
-- [Getting started](getting-started.md): install, BimGo for Revit, your first walkthrough
+- [Getting started](getting-started.md): install, BimGo for Revit, your first walkthrough, IFC files from Revit LT
 - [Moving around](moving-around.md): walking, flying, levels, bookmarks, the menu
 - [Controls](controls.md): every default key, the guns, the gamepad
 

@@ -32,10 +32,31 @@ publisher: choose **Always Load**.
 
 ## Opening a file
 
-Double-click a `.bimgo`, drag it onto the BimGo window, or use **Open** on the start screen. The start screen lists
+Double-click a `.bimgo`, drag it (or an `.ifc`) onto the BimGo window, or use **Open** on the start screen. The start screen lists
 recent files (with a picture of where you last were) and any live Revit sessions.
 
 ![The start screen](images/gs-start-screen.png)
+
+## Revit LT and IFC files
+
+Revit LT can't run add-ins, so BimGo for Revit (Go, Export .bimgo) isn't available there. Bring the model in as IFC
+instead; the same works for IFC from any other program.
+
+1. In Revit LT: **File → Export → IFC**. The default setup (**IFC2x3 Coordination View 2.0**) works well; **IFC4
+   Reference View** does too. Rooms come across as spaces when the export includes them (if they're missing, look for
+   the room export option in **Modify Setup**, or export from a plan view); *Export only elements visible in view*
+   limits it to a view's content. Avoid *IFC4 Design Transfer View*: its curved surfaces are left out.
+2. In BimGo: **Open** on the start screen (pick the `.ifc` or `.ifczip`), or drag the file onto the window, or run
+   `BimGo.exe "model.ifc"`. BimGo imports it (Esc cancels) and opens the walkthrough.
+3. Walk, comment, measure, take photos as usual. The model isn't saved yet: **Esc → SAVE** writes a `.bimgo` (the IFC
+   is never changed), and closing with unsaved comments or edits asks first. Next time, open the `.bimgo`; open the IFC
+   again only to take in a newer export (as a fresh model).
+
+What comes across: every element with its IFC GUID, name, type, level and property sets (Scan shows them, and search
+sets and colour profiles can use them; Revit's element id appears as *Revit ElementId*), colours and transparency from
+the materials, openings cut from walls and slabs, storeys as levels, spaces as rooms (Find room, room data), grids, the
+site's latitude and longitude for the sun, and Revit's RPC trees and people (swapped for billboards). Furniture,
+fixtures and equipment can be moved; edits stay in the file's journal (they can't be pushed into Revit LT).
 
 The first walkthrough shows a short welcome card with the main keys. Click **START WALKING** (or press Esc), then
 click in the window to look around.

@@ -111,7 +111,7 @@ namespace BimGo.Shell
                             {
                                 target = OpenTarget.Live(request.Attach);
                             }
-                            else if (request?.Open != null && BimGoFormat.HasExtension(request.Open) && File.Exists(request.Open))
+                            else if (request?.Open != null && OpenTarget.CanOpen(request.Open) && File.Exists(request.Open))
                             {
                                 target = OpenTarget.File(request.Open);
                             }

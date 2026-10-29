@@ -100,8 +100,8 @@ namespace BimGo.Shell
                 // Files dropped on the window, and requests from other instances / Revit
                 if (_window.TryTakeDroppedFile(out string dropped))
                 {
-                    if (BimGoFormat.HasExtension(dropped)) { return OpenTarget.File(dropped); }
-                    SetMessage($"{Path.GetFileName(dropped)} is not a .bimgo file.", error: true);
+                    if (OpenTarget.CanOpen(dropped)) { return OpenTarget.File(dropped); }
+                    SetMessage($"{Path.GetFileName(dropped)} is not a .bimgo or .ifc file.", error: true);
                 }
                 poll += dt;
                 if (poll >= 1f)
@@ -184,7 +184,7 @@ namespace BimGo.Shell
             _ui.Text(f.Body, leftX, y, "First-person BIM walkthroughs", UiTheme.TEXT_MUTED);
             y += S(44);
 
-            if (Button(f, input, leftX, y, leftW, "OPEN .BIMGO…", primary: true)) { chosen = FileTarget(BrowseForFile()); }
+            if (Button(f, input, leftX, y, leftW, "OPEN .BIMGO OR IFC…", primary: true)) { chosen = FileTarget(BrowseForFile()); }
             y += S(58);
             if (Button(f, input, leftX, y, leftW, "QUIT", primary: false)) { _quit = true; }
             y += S(72);
@@ -197,7 +197,7 @@ namespace BimGo.Shell
 
             _ui.Text(f.Small, leftX, y, "GET A MODEL", UiTheme.TEXT_MUTED, S(1.6f));
             y += S(22);
-            y += _ui.TextWrapped(f.Body, leftX, y, leftW, "In Revit: BimGo tab → Export .bimgo. Then open it here, double-click it, or drop it on this window.", UiTheme.TEXT_SOFT, maxLines: 6);
+            y += _ui.TextWrapped(f.Body, leftX, y, leftW, "In Revit: BimGo tab → Export .bimgo. Then open it here, double-click it, or drop it on this window. Revit LT (no add-ins): File → Export → IFC, then open the .ifc here.", UiTheme.TEXT_SOFT, maxLines: 7);
             y += S(18);
             _ui.Text(f.Small, leftX, y, "WALK A MODEL LIVE", UiTheme.TEXT_MUTED, S(1.6f));
             y += S(22);
@@ -216,7 +216,7 @@ namespace BimGo.Shell
             chosen ??= DrawRecent(f, input, rightX, top, rightW, height - pad - top);
 
             // Footer
-            _ui.TextRight(f.Small, width - pad, height - S(30), "BimGo " + Program.Version + " · Ctrl+O open · drop a .bimgo here · Go in Revit to walk live", UiTheme.TEXT_FAINT, S(0.5f));
+            _ui.TextRight(f.Small, width - pad, height - S(30), "BimGo " + Program.Version + " · Ctrl+O open · drop a .bimgo or .ifc here · Go in Revit to walk live", UiTheme.TEXT_FAINT, S(0.5f));
             _ui.Text(f.Small, pad, height - S(30), TRADEMARK_LINE, UiTheme.TEXT_FAINT, S(0.3f)); // sky round: bottom left
             _ui.Flush(width, height);
             return chosen;
@@ -508,7 +508,7 @@ namespace BimGo.Shell
                 // No starting folder
             }
             _window.Input.ReleaseAll();
-            return FileDialogs.ShowOpen(_window.Handle, "Open BimGo model", BimGoFormat.DIALOG_FILTER, folder);
+            return FileDialogs.ShowOpen(_window.Handle, "Open BimGo model or IFC file", OpenTarget.OPEN_FILTER, folder);
         }
     }
 }

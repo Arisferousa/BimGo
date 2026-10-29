@@ -80,6 +80,9 @@ namespace BimGo.Format
 
         /// <summary>Written by the add-in for a live session (uncompressed, throwaway; keeps the comment sidecar path).</summary>
         public const string SNAPSHOT = "live-snapshot";
+
+        /// <summary>An IFC file imported by the app (in memory only: once saved it is a <see cref="SAVE"/>).</summary>
+        public const string IFC_IMPORT = "ifc-import";
     }
 
     /// <summary>
