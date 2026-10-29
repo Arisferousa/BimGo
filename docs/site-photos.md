@@ -44,11 +44,13 @@ placed from GPS again.
 
 - **Pins**: a dot where each photo was taken with a short arrow the way it looks, and the nearest photos' thumbnails
   floating above them. **Thumbnail size** (SITE PHOTOS, or the viewer's site photos button) makes them bigger or
-  smaller; it is kept with the file, so a viewer copy shows them the way you set them.
+  smaller, and **Thumbnails show up to** hides the ones farther away (they fade out; their pins stay), so a site with
+  many photos isn't cluttered from afar. Both are kept with the file, so a viewer copy shows them the way you set them.
 - **GALLERY** (SITE PHOTOS, or GALLERY… in the viewer): every photo as a tile, one heading per group. Click one to look
   through it from where it was taken.
 - **SITE MAP** (SITE PHOTOS, the map button in the simple viewer, or EXPAND on the photo view's small map): the model
-  from straight above with every photo as a small arrow, the groups' names and, zoomed in, the rooms' names. **AERIAL**
+  from straight above with every photo as a small camera (a faint wedge shows which way it looks and how wide), the
+  groups' names and, zoomed in, the rooms' names; you are the arrow. **AERIAL**
   shows roofs and the site; **PLAN** cuts 1.2 m above a level (‹ › picks it) and outlines the rooms. Drag to pan,
   scroll to zoom, click a photo to look through it, FIT SITE shows everything; in the simple viewer a double-click
   takes you there. The walkthrough's minimap shows the photos on your level too.
@@ -64,7 +66,8 @@ camera goes to where the photo was taken, with its lens, and the photo covers th
 - **‹ PREVIOUS** and **NEXT ›** step through the photos (within a group when you browse one);
 - the **small map** (top right) shows where you are among the other photos: click one to go to it, or EXPAND for the
   site map;
-- **CLOSE** (or Esc) leaves you standing there.
+- **← / →** (or A / D) step to the previous / next photo too;
+- **CLOSE** (or Esc) takes you back to where you were before you opened the first photo.
 
 In the simple viewer, the **site photos** button on the toolbar shows or hides the photos, BROWSE PHOTOS starts at the
 nearest one, and the groups step through one building's photos. See [Simple viewer](simple-viewer.md).

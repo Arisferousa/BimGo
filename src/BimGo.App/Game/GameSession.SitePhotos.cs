@@ -42,13 +42,12 @@ namespace BimGo.Game
 
         /// <summary>Floating thumbnails drawn at once (the nearest), how far they show (m), uploads and sight lines per frame.</summary>
         private const int SITE_THUMBS_MAX = 40, SITE_THUMB_UPLOADS = 3, SITE_SIGHT_CHECKS = 10;
-        private const float SITE_THUMB_FAR = 900f;
 
         /// <summary>The largest photo file read (bytes).</summary>
         private const long SITE_PHOTO_MAX_FILE = 64L * 1024 * 1024;
 
         private const string SITE_PHOTO_FILTER = "JPEG photos (*.jpg;*.jpeg)|*.jpg;*.jpeg|All files (*.*)|*.*";
-        private const int SITE_SLIDER_OPACITY = 9201, SITE_SLIDER_FOV = 9202, SITE_SLIDER_THUMBS = 9203;
+        private const int SITE_SLIDER_OPACITY = 9201, SITE_SLIDER_FOV = 9202, SITE_SLIDER_THUMBS = 9203, SITE_SLIDER_THUMB_DISTANCE = 9204;
         private bool _siteThumbScaleUnsaved; // the size slider moved: saved once it's let go
 
         /// <summary>The model's site photos (never null after setup).</summary>
@@ -74,7 +73,12 @@ namespace BimGo.Game
 
         // The photo view
         private SitePhoto _sitePhotoView;
-        private bool _sitePhotoAdjust, _siteWasWalking;
+        private bool _sitePhotoAdjust;
+
+        // Where the camera was before the photo view (put back on closing): the player, and the viewer's orbit / walk
+        private Vector3 _siteReturnFeet, _siteReturnOrbitEye;
+        private float _siteReturnYaw, _siteReturnPitch, _siteReturnOrbitYaw, _siteReturnOrbitPitch;
+        private bool _siteReturnFlying, _siteReturnWalk, _siteReturnGhost;
         private float _sitePhotoOpacity = 1f, _siteAdjustOpacity = 0.55f, _siteAdjustFov = SitePhoto.DEFAULT_FOV;
         private uint _sitePhotoTexture;
         private string _sitePhotoTextureFor;
@@ -572,13 +576,14 @@ namespace BimGo.Game
             // Candidates in front of the camera, nearest first
             List<SitePhoto> photos = SitePhotos.Photos;
             Vector3 eye = Camera.Position;
+            float far = SitePhotos.Document.ThumbDistance, fadeFrom = far * 0.8f;
             int n = 0;
             for (int i = 0; i < photos.Count; i++)
             {
                 SitePhoto photo = photos[i];
                 if (!photo.IsPlaced) { continue; }
                 float distance = Vector3.Distance(eye, photo.Local);
-                if (distance < 0.6f || distance > SITE_THUMB_FAR || Vector3.Dot(photo.Local - eye, Camera.Forward) <= 0f) { continue; }
+                if (distance < 0.6f || distance > far || Vector3.Dot(photo.Local - eye, Camera.Forward) <= 0f) { continue; }
                 _siteOrder[n] = i;
                 _siteDistance[n] = distance;
                 n++;
@@ -615,7 +620,8 @@ namespace BimGo.Game
                 if (x > _window.Width || y > _window.Height || x + w < 0 || y + h < 0) { continue; }
 
                 bool blocked = _siteBlocked[index];
-                float alpha = blocked ? 0.35f : 1f;
+                float alpha = (blocked ? 0.35f : 1f) * Math.Clamp((far - _siteDistance[j]) / MathF.Max(far - fadeFrom, 1f), 0f, 1f); // far ones fade out
+                if (alpha < 0.02f) { continue; }
                 uint texture = SiteThumbTexture(photo, ref uploads);
                 _ui.Line(anchor.X, anchor.Y, anchor.X, y + h, MathF.Max(1f, S(1.5f)), Rgba.WithAlpha(UiTheme.BOOKMARK, 0.7f * alpha));
                 _ui.Rect(x - S(2), y - S(2), w + S(4), h + S(4), Rgba.Hex(0x0C0E12, 0.85f * alpha));
@@ -684,27 +690,41 @@ namespace BimGo.Game
             CloseGridsPanel();
             CloseFixtureDock();
             if (_viewer) { ViewerCancelDrag(); }
-            if (_sitePhotoView == null) { _siteWasWalking = _viewer ? _viewerWalk : !_player.Flying; }
+            if (_sitePhotoView == null) { RememberSiteReturn(); } // stepping to the next photo keeps the first view to go back to
 
             _sitePhotoView = photo;
             _sitePhotoAdjust = !_viewer && (adjust || !photo.IsPlaced);
             _siteAdjustFov = photo.Fov;
-            if (photo.IsPlaced) { PutPlayerAtSitePhoto(photo); }
-            else if (!_player.Flying) { _player.ToggleFly(); } // adjusting flies
+            if (_sitePhotoAdjust && photo.IsPlaced) { PutPlayerAtSitePhoto(photo); } // adjusting flies from the photo's eye
+            else if (_sitePhotoAdjust && !_player.Flying) { _player.ToggleFly(); } // (a photo not placed yet: from here)
 
             _window.SetCaptured(false);
             _window.Input.ReleaseAll();
             Sound.Play(SoundId.UiClick);
         }
 
-        /// <summary>The player at the photo's eye and view (flying), so closing the view leaves you there.</summary>
+        /// <summary>Remembers where the camera is, for <see cref="CloseSitePhoto"/> to put back.</summary>
+        private void RememberSiteReturn()
+        {
+            _siteReturnFeet = _player.Feet;
+            _siteReturnYaw = _player.Yaw;
+            _siteReturnPitch = _player.Pitch;
+            _siteReturnFlying = _player.Flying;
+            _siteReturnWalk = _viewerWalk;
+            _siteReturnGhost = _viewerGhost;
+            _siteReturnOrbitEye = _orbitEye;
+            _siteReturnOrbitYaw = _orbitYaw;
+            _siteReturnOrbitPitch = _orbitPitch;
+        }
+
+        /// <summary>The player at the photo's eye and view (flying: adjusting a photo flies from there).</summary>
         private void PutPlayerAtSitePhoto(SitePhoto photo)
         {
             if (!_player.Flying) { _player.ToggleFly(); }
             _player.TeleportTo(photo.Local - new Vector3(0f, 0f, _player.Controller.StandEye), photo.Yaw, photo.Pitch);
         }
 
-        /// <summary>Closes the photo view where it looked (walking on the floor below when walking before).</summary>
+        /// <summary>Closes the photo view: the camera goes back to where it was before the first photo opened.</summary>
         private void CloseSitePhoto()
         {
             if (_sitePhotoView == null) { return; }
@@ -712,7 +732,22 @@ namespace BimGo.Game
             _sitePhotoAdjust = false;
             _siteGroupFilter = null;
             ReleaseSitePhotoPicture();
-            if (_siteWasWalking && _player.Flying) { _player.ToggleFly(); }
+
+            if (_player.Flying != _siteReturnFlying) { _player.ToggleFly(); }
+            _player.TeleportTo(_siteReturnFeet, _siteReturnYaw, _siteReturnPitch);
+            if (_viewer)
+            {
+                _viewerWalk = _siteReturnWalk;
+                _viewerGhost = _siteReturnGhost;
+                if (!_viewerWalk)
+                {
+                    _orbitEye = _siteReturnOrbitEye;
+                    _orbitYaw = _siteReturnOrbitYaw;
+                    _orbitPitch = _siteReturnOrbitPitch;
+                    _glideT = 1f;
+                    OrbitToPlayer(); // nothing to take up: the orbit is as it was
+                }
+            }
             _window.Input.ReleaseAll();
             if (!_viewer && !_paused && _window.IsActive && !CursorModeOpen) { _window.SetCaptured(true); }
         }
@@ -860,10 +895,16 @@ namespace BimGo.Game
                     input.ConsumeWheel();
                 }
             }
-            else if (input.Wheel != 0 && !overPanel)
+            else
             {
-                _sitePhotoOpacity = Math.Clamp(_sitePhotoOpacity - input.Wheel * 0.1f, 0f, 1f);
-                input.ConsumeWheel();
+                if (input.Wheel != 0 && !overPanel)
+                {
+                    _sitePhotoOpacity = Math.Clamp(_sitePhotoOpacity - input.Wheel * 0.1f, 0f, 1f);
+                    input.ConsumeWheel();
+                }
+                // ← / → (the move keys left and right) step through the photos
+                if (input.Pressed(InputAction.MoveLeft)) { StepSitePhoto(-1); }
+                else if (input.Pressed(InputAction.MoveRight)) { StepSitePhoto(+1); }
             }
         }
 
@@ -1053,7 +1094,7 @@ namespace BimGo.Game
             if (count > 0)
             {
                 SiteThumbSizeSlider(f, input, frame.Ix, y, MathF.Min(S(360), frame.Iw));
-                y += S(48);
+                y += S(96);
             }
             BuildSitePhotoRows(f, input, frame.Ix, y, frame.Iw, frame.BodyBottom);
             if (!_sitePhotosOpen) { return; } // OPEN left the panel
@@ -1159,6 +1200,7 @@ namespace BimGo.Game
         private void SiteThumbSizeSlider(FontAtlas f, InputState input, float x, float y, float w)
         {
             PhotoDocument document = SitePhotos.Document;
+            SiteThumbDistanceSliderCore(document, f, input, x, y + S(48), w);
             TextBuffer text = Text.Clear().Append(document.ThumbScale * 100f, 0).Append(" %");
             float scale = Slider(f, input, SITE_SLIDER_THUMBS, x, y, w, "Thumbnail size", text.Span, document.ThumbScale, PhotoDocument.MIN_THUMB_SCALE, PhotoDocument.MAX_THUMB_SCALE);
             if (_activeSlider == SITE_SLIDER_THUMBS)
@@ -1175,6 +1217,22 @@ namespace BimGo.Game
                 _siteThumbScaleUnsaved = false;
                 SitePhotos.Save();
             }
+        }
+
+        /// <summary>
+        /// How far the floating thumbnails show (drawn 48 px under the size slider; saved with it when let go): farther
+        /// ones fade out and only their pins show, so a big site isn't cluttered.
+        /// </summary>
+        private void SiteThumbDistanceSliderCore(PhotoDocument document, FontAtlas f, InputState input, float x, float y, float w)
+        {
+            TextBuffer text = Text.Clear().Append(document.ThumbDistance, 0).Append(" m");
+            float distance = Slider(f, input, SITE_SLIDER_THUMB_DISTANCE, x, y, w, "Thumbnails show up to", text.Span, document.ThumbDistance,
+                PhotoDocument.MIN_THUMB_DISTANCE, 500f);
+            if (_activeSlider != SITE_SLIDER_THUMB_DISTANCE) { return; }
+            float stepped = Math.Clamp(MathF.Round(distance / 10f) * 10f, PhotoDocument.MIN_THUMB_DISTANCE, PhotoDocument.MAX_THUMB_DISTANCE);
+            if (MathF.Abs(stepped - document.ThumbDistance) < 0.5f) { return; }
+            document.ThumbDistance = stepped;
+            _siteThumbScaleUnsaved = true;
         }
 
         /// <summary>The groups (the viewer's popover; rebuilt when the photos change).</summary>

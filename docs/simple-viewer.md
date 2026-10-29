@@ -33,7 +33,8 @@ Send that one file. Everything it shows travels inside it, pictures included. Th
 | Orbit ↔ walk | **V** (as in the full walkthrough): from orbiting you drop to the ground below the camera, and V again flies back up to orbit |
 | Pass through walls | **G** or the toolbar's pass-through button: walking with no walls or floors in the way (the move keys go where you look, Space / Ctrl up and down); G again walks normally. From orbiting it starts there, where the camera is |
 | Walk faster · slower | **=** · **-**, or the mouse wheel while walking (0.25× to 4×; the title shows it) |
-| Tools | **M** measure · **X** section box · **C** comments · **B** views · **O** sun (each again closes it; the toolbar's tooltips show the keys) |
+| Tools | **M** measure · **X** section box · **C** comments · **B** views · **P** site photos · **Shift+P** gallery · **O** sun (each again closes it; the toolbar's tooltips show the keys) |
+| Map | **Tab** shows / hides the corner map · **Shift+Tab** the site map |
 | Home view | the home button or **H** |
 | Save · fullscreen | **Ctrl+S** · **F11** |
 
@@ -50,8 +51,9 @@ The toolbar at the bottom:
   A view saved walking opens walking; one saved flying opens orbiting.
 - **Site photos** (when the file has some): show or hide them, the thumbnails' size, BROWSE NEAREST, the GALLERY…, or
   one group (building) at a time. Click a floating thumbnail to look through that photo. See [Site photos](site-photos.md).
-- **Site map**: the whole site from above (aerial or a floor plan), the photos as arrows, rooms' and groups' names, where
-  you are. Click a photo to look through it, double-click anywhere to go there.
+- **Site map**: the whole site from above (aerial or a floor plan), the photos as small cameras, rooms' and groups' names,
+  where you are (the arrow). Click a photo to look through it, double-click anywhere to go there. A **corner map**
+  (bottom right) follows what you look at; click it for the site map there, or a photo on it to look through it.
 - **Sun**: shadows on or off, the time of day and the month.
 - **Fullscreen** and the **menu**: save, save as, the views and comments lists, close the model.
 

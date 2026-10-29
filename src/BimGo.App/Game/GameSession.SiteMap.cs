@@ -239,8 +239,8 @@ namespace BimGo.Game
                     Vector2 at = SiteMapPoint(photo.Local, rect, centre, across);
                     if (at.X < rect.X - S(10) || at.X > rect.X + rect.Z + S(10) || at.Y < rect.Y - S(10) || at.Y > rect.Y + rect.W + S(10)) { continue; }
                     bool isCurrent = ReferenceEquals(photo, current);
-                    DrawMapArrow(at, photo.Yaw, isCurrent ? S(9) : S(6), isCurrent ? UiTheme.ACCENT : UiTheme.BOOKMARK);
-                    if (isCurrent) { _ui.Ring(at.X, at.Y, S(12), MathF.Max(1.5f, S(1.5f)), UiTheme.ACCENT, 20); }
+                    DrawMapCamera(at, photo.Yaw, photo.Fov, isCurrent ? S(8) : S(6), isCurrent ? UiTheme.ACCENT : UiTheme.BOOKMARK_LABEL);
+                    if (isCurrent) { _ui.Ring(at.X, at.Y, S(13), MathF.Max(1.5f, S(1.5f)), UiTheme.ACCENT, 20); }
                     float d = Vector2.DistanceSquared(at, pointer);
                     if (pointable && d < best)
                     {
@@ -275,6 +275,21 @@ namespace BimGo.Game
                 _ui.TextWrapped(f.Small, tx + S(6), ty + th + S(11), tw, label, UiTheme.TEXT, maxLines: 1);
             }
             return hovered;
+        }
+
+        /// <summary>
+        /// A site photo on a map: a small camera, with a faint wedge the way it looks and as wide as its lens (north up,
+        /// screen Y down). The player (the viewer's camera) is an arrow instead.
+        /// </summary>
+        private void DrawMapCamera(Vector2 at, float yaw, float fov, float size, uint colour)
+        {
+            float half = Math.Clamp(fov, 10f, 150f) * MathF.PI / 360f;
+            _ui.Wedge(at.X, at.Y, size * 3.2f, -yaw - half, -yaw + half, Rgba.WithAlpha(colour, 0.22f), 10);
+            float w = size * 1.7f, h = size * 1.15f;
+            _ui.Rect(at.X - w * 0.5f - S(1), at.Y - h * 0.5f - S(1), w + S(2), h + S(2), Rgba.Hex(0x0C0E12, 0.8f));
+            _ui.Rect(at.X - w * 0.5f, at.Y - h * 0.5f, w, h, colour);
+            _ui.Rect(at.X - w * 0.18f, at.Y - h * 0.5f - size * 0.3f, w * 0.36f, size * 0.3f, colour); // the viewfinder bump
+            _ui.Circle(at.X, at.Y, h * 0.32f, Rgba.Hex(0x0C0E12, 0.9f), 10); // the lens
         }
 
         /// <summary>A small arrow on a map: the way a yaw looks (north up, screen Y down).</summary>
@@ -357,6 +372,69 @@ namespace BimGo.Game
                 else { OpenSiteMap(photo.Local, SITE_MINI_ACROSS * 2f); }
             }
         }
+
+        #endregion
+
+        #region The viewer's corner map
+
+        private bool _viewerMapShown = true;
+        private Vector4 _viewerMapRect;
+
+        /// <summary>
+        /// The simple viewer's corner map (bottom right, clear of the toolbar): centred on what the camera looks at (orbiting)
+        /// or where you stand (walking), wider the higher the camera; the photos and where you are. A click on a photo
+        /// opens it; elsewhere, the site map there. Tab hides / shows it.
+        /// </summary>
+        private void BuildViewerMiniMap(FontAtlas f, InputState input, int width, int height)
+        {
+            if (!_viewerMapShown)
+            {
+                _viewerMapRect = Vector4.Zero;
+                return;
+            }
+            float w = S(250), h = S(210), header = S(26);
+            float x = width - S(UiTheme.COLUMN_MARGIN) - w, y = height - S(24) - h;
+            if (_viewerBarRect.Z > 0f && x < _viewerBarRect.X + _viewerBarRect.Z) { y = _viewerBarRect.Y - S(12) - h; } // a narrow window: above the toolbar
+            _viewerMapRect = new Vector4(x, y, w, h);
+
+            // What it shows: walking, around the player; orbiting, around what the middle of the view looks at
+            Vector3 focus = _viewerWalk ? _player.Feet + new Vector3(0f, 0f, SITE_PHOTO_EYE) : Camera.Position;
+            float across = 90f;
+            if (!_viewerWalk)
+            {
+                if (Pick(Camera.Position, Camera.Forward, 5000f, out RayHit hit)) { focus = hit.Point + new Vector3(0f, 0f, SITE_PHOTO_EYE); }
+                across = Math.Clamp((Camera.Position.Z - _groundZ) * 2.2f, 80f, MathF.Max(SiteMapFitAcross(), 80f));
+            }
+            int level = Scene.Levels.Length > 0 ? LevelIndexAt(focus.Z - SITE_PHOTO_EYE) : 0;
+            var rect = new Vector4(x + S(6), y + header, w - S(12), h - header - S(6));
+            var centre = new Vector2(focus.X, focus.Y);
+
+            _ui.Panel(x, y, w, h, UiTheme.PANEL_STRONG, UiTheme.PANEL_BORDER);
+            _ui.Text(f.Small, x + S(10), y + S(7), HINT_VIEWER_MAP.Text, UiTheme.TEXT_MUTED);
+            bool expand = MenuButton(f, x + w - S(84), y + S(3), S(78), "EXPAND", false, false, height: S(20), compact: true);
+            DrawSiteMapPlan(rect.X, rect.Y, rect.Z, rect.W, centre, across, _siteMapAerial, level);
+            Vector2 mouse = input.MousePosition;
+            bool inside = Inside(rect, mouse) && _viewerPopup == VP_NONE;
+            int hovered = DrawSiteMapMarks(f, rect, centre, across, _siteMapAerial, level, null, mouse, inside, showCamera: true);
+
+            if (expand)
+            {
+                OpenSiteMap(new Vector3(centre, focus.Z), across * 2f);
+                return;
+            }
+            if (inside && input.LeftPressed)
+            {
+                input.ConsumeClicks();
+                if (hovered >= 0) { OpenSitePhoto(SitePhotos.Photos[hovered], adjust: false); }
+                else
+                {
+                    Vector2 there = SiteMapWorld(mouse, rect, centre, across);
+                    OpenSiteMap(new Vector3(there, focus.Z), across * 1.5f);
+                }
+            }
+        }
+
+        private static readonly KeyHint HINT_VIEWER_MAP = new(() => $"MAP ({Key(InputAction.ViewerMap)} hides)");
 
         #endregion
 

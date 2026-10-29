@@ -152,7 +152,7 @@ namespace BimGo.Game
         /// <summary>True when a window pixel is over the toolbar, the title, the popover, the tool panel or the section dock.</summary>
         private bool ViewerOverPanels(Vector2 p)
         {
-            if (Inside(_viewerBarRect, p) || Inside(_viewerTitleRect, p)) { return true; }
+            if (Inside(_viewerBarRect, p) || Inside(_viewerTitleRect, p) || Inside(_viewerMapRect, p)) { return true; }
             if (_viewerPopup != VP_NONE && Inside(_viewerPopupRect, p)) { return true; }
             if (!_unarmed && Inside(_viewerPanelRect, p)) { return true; }
             return _sectionOpen && Inside(_sectionPanelRect, p);
@@ -577,6 +577,22 @@ namespace BimGo.Game
             if (input.Pressed(InputAction.ViewerViews)) { ViewerBarClick(VT_VIEWS); }
             if (input.Pressed(InputAction.ViewerSun)) { ViewerBarClick(VT_SUN); }
             if (input.Pressed(InputAction.ViewerGhost)) { ToggleViewerGhost(); }
+            if (input.Pressed(InputAction.ViewerPhotos) && _viewerPhotosShown) { ViewerBarClick(VT_PHOTOS); }
+            if (input.Pressed(InputAction.ViewerGallery) && SitePhotos.Photos.Count > 0)
+            {
+                ViewerOpenGallery();
+                return;
+            }
+            if (input.Pressed(InputAction.ViewerMap))
+            {
+                _viewerMapShown = !_viewerMapShown;
+                Sound.Play(SoundId.UiClick);
+            }
+            if (input.Pressed(InputAction.ViewerBigMap))
+            {
+                ViewerBarClick(VT_MAP);
+                return;
+            }
             if (input.PressedOrRepeated(InputAction.ViewerFaster)) { StepViewerSpeed(+1); }
             if (input.PressedOrRepeated(InputAction.ViewerSlower)) { StepViewerSpeed(-1); }
 
@@ -807,6 +823,8 @@ namespace BimGo.Game
             else { _viewerPanelRect = Vector4.Zero; }
 
             BuildViewerBar(f, input, width, height);
+            BuildViewerMiniMap(f, input, width, height); // site photos round
+            if (SitePhotoViewOpen || _siteMapOpen) { return; } // a click on the map opened a photo or the site map
             if (_viewerPopup == VP_VIEWS) { BuildViewerViews(f, input); }
             else if (_viewerPopup == VP_SUN) { BuildViewerSun(f, input); }
             else if (_viewerPopup == VP_PHOTOS && _viewerPhotosShown) { BuildViewerPhotos(f, input); }
@@ -975,6 +993,8 @@ namespace BimGo.Game
                 VT_COMMENT => InputAction.ViewerComment,
                 VT_VIEWS => InputAction.ViewerViews,
                 VT_SUN => InputAction.ViewerSun,
+                VT_PHOTOS => InputAction.ViewerPhotos,
+                VT_MAP => InputAction.ViewerBigMap,
                 VT_HOME => InputAction.GoHome,
                 VT_FULLSCREEN => InputAction.Fullscreen,
                 _ => InputAction.None
@@ -1115,7 +1135,7 @@ namespace BimGo.Game
             List<string> groups = SitePhotoGroups();
             int rows = Math.Min(groups.Count, MAX_GROUPS);
             float w = S(320), rowH = S(30), bh = S(UiTheme.SMALL_BUTTON_HEIGHT);
-            float h = S(UiTheme.PANEL_PAD_Y) * 2f + S(24) + S(30) + S(48) + bh + S(UiTheme.GAP_SMALL) + (rows > 0 ? S(22) + rows * (rowH + S(4)) : 0f);
+            float h = S(UiTheme.PANEL_PAD_Y) * 2f + S(24) + S(30) + S(96) + (bh + S(UiTheme.GAP_SMALL)) * 2f + (rows > 0 ? S(22) + rows * (rowH + S(4)) : 0f);
             float x = Math.Clamp(ViewerButtonCentre(VT_PHOTOS, _viewerBarRect.X) - w * 0.5f, S(8), _window.Width - w - S(8));
             float y = _viewerBarRect.Y - S(10) - h;
             _ui.Panel(x, y, w, h, UiTheme.PANEL_STRONG, UiTheme.PANEL_BORDER);
@@ -1131,16 +1151,16 @@ namespace BimGo.Game
                 SitePhotos.Save();
             }
             iy += S(30);
-            SiteThumbSizeSlider(f, input, ix, iy, iw);
-            iy += S(48);
-            float half = (iw - S(UiTheme.GAP_SMALL)) * 0.5f;
-            if (MenuButton(f, ix, iy, half, "BROWSE NEAREST", primary: true, danger: false, height: bh, compact: true))
+            SiteThumbSizeSlider(f, input, ix, iy, iw); // and the distance under it
+            iy += S(96);
+            if (MenuButton(f, ix, iy, iw, "BROWSE FROM THE NEAREST", primary: true, danger: false, height: bh, compact: true))
             {
                 _viewerPopup = VP_NONE;
                 BrowseSitePhotos(null);
                 return;
             }
-            if (MenuButton(f, ix + half + S(UiTheme.GAP_SMALL), iy, half, "GALLERY…", false, false, height: bh, compact: true))
+            iy += bh + S(UiTheme.GAP_SMALL);
+            if (MenuButton(f, ix, iy, iw, "GALLERY…", false, false, height: bh, compact: true))
             {
                 ViewerOpenGallery();
                 return;

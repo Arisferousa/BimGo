@@ -82,3 +82,20 @@ then V back), arrows, the size slider in both places (and that a viewer copy kee
 current photo ringed, a click on another photo, EXPAND), the big map (aerial / plan, levels, pan, zoom at the cursor,
 FIT SITE, the scale bar, hovering a photo's thumbnail, a click opening it, a double-click going there in the viewer),
 room names when zoomed in, the minimap's photo arrows, the gallery (groups, tiles, scrolling 500 photos, a click).
+
+## Revision 3 (after testing revision 2)
+Asked: (1) V back to orbit failed after falling (fixed in the viewer's PR: the player now flies at the eye at once);
+(2) the map in the simple viewer too; (3) closing a photo should put the camera back where it was, not leave it at the
+photo; (4) the photos popover's buttons overflowed; (5) photos on the map as cameras, unlike the player; (6) keys for the
+viewer's tools; (7) pass through walls and (8) the walking speed (both in the viewer's PR); (9) far thumbnails hidden.
+
+- The viewer's corner map (`BuildViewerMiniMap`): bottom right, Tab hides it, EXPAND / a click opens the site map.
+- `RememberSiteReturn` / `CloseSitePhoto`: the player and the viewer's orbit / walk / pass-through put back; looking at
+  a photo no longer moves the player (only adjusting does).
+- The popover's buttons are full width, one under another; a distance slider under the size slider.
+- `DrawMapCamera` (body, viewfinder, lens, a wedge as wide as the lens) for photos on the corner, small, big and the
+  walkthrough's maps.
+- `PhotoDocument.ThumbDistance` (default 150 m) with a fade over the last fifth.
+- Keys (defaults version 11): P site photos popover, Shift+P gallery, Tab corner map, Shift+Tab site map; ← / → step
+  photos in the photo view.
+- Tests: `ThumbDistance` round trip and clamping; the viewer situation's keys (in the viewer's PR).

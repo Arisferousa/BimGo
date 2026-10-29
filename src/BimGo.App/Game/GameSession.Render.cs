@@ -559,7 +559,7 @@ namespace BimGo.Game
                     if (!photo.IsPlaced || LevelIndexAt(photo.Local.Z - SITE_PHOTO_EYE) != levelIndex) { continue; }
                     float px = cx + (photo.Local.X - _player.Feet.X) / metresPerPixel, py = cy - (photo.Local.Y - _player.Feet.Y) / metresPerPixel;
                     if (px < mapX + S(6) || px > mapX + mapW - S(6) || py < mapY + S(6) || py > mapY + mapH - S(6)) { continue; }
-                    DrawMapArrow(new Vector2(px, py), photo.Yaw, S(5), UiTheme.BOOKMARK_LABEL);
+                    DrawMapCamera(new Vector2(px, py), photo.Yaw, photo.Fov, S(4), UiTheme.BOOKMARK_LABEL);
                 }
             }
 

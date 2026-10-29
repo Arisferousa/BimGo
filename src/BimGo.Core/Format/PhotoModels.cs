@@ -178,6 +178,15 @@ namespace BimGo.Format
         /// <summary>The floating thumbnails' size (1 = the default; kept with the file, so a viewer copy shows them as set).</summary>
         public float ThumbScale { get; set; } = 1f;
 
+        /// <summary>Nearest / farthest <see cref="ThumbDistance"/> (m).</summary>
+        public const float MIN_THUMB_DISTANCE = 20f, MAX_THUMB_DISTANCE = 1000f;
+
+        /// <summary>
+        /// How far away a photo's floating thumbnail still shows (m; it fades out over the last fifth, the pin stays), so a
+        /// site with many photos isn't cluttered from afar.
+        /// </summary>
+        public float ThumbDistance { get; set; } = 150f;
+
         /// <summary>The photos, in import order.</summary>
         public List<SitePhoto> Photos { get; set; } = new();
 
@@ -200,6 +209,7 @@ namespace BimGo.Format
             Version = 1;
             Model ??= string.Empty;
             ThumbScale = float.IsFinite(ThumbScale) ? Math.Clamp(ThumbScale, MIN_THUMB_SCALE, MAX_THUMB_SCALE) : 1f;
+            ThumbDistance = float.IsFinite(ThumbDistance) ? Math.Clamp(ThumbDistance, MIN_THUMB_DISTANCE, MAX_THUMB_DISTANCE) : 150f;
             Photos ??= new List<SitePhoto>();
             var seen = new HashSet<string>(StringComparer.Ordinal);
             Photos.RemoveAll(p => p == null || !p.Clean() || !seen.Add(p.Id));

@@ -121,6 +121,7 @@ namespace BimGo.Scene
 
         // The simple viewer (viewer round): its tools, pass through walls, walking speed
         ViewerMeasure, ViewerSection, ViewerComment, ViewerViews, ViewerSun, ViewerGhost, ViewerFaster, ViewerSlower,
+        ViewerPhotos, ViewerGallery, ViewerMap, ViewerBigMap, // site photos round
 
         // Fixed (not rebindable)
         Back, CloseWindow, Click, DragLook, FineAdjust, PhotoZoom, OpenFile, PadClick, PadMenuBack
@@ -469,6 +470,10 @@ namespace BimGo.Scene
             Add(InputAction.ViewerGhost, InputContext.Viewer, "Pass through walls (walking)", P, "G");
             Add(InputAction.ViewerFaster, InputContext.Viewer, "Walk faster", R, "=");
             Add(InputAction.ViewerSlower, InputContext.Viewer, "Walk slower", R, "-");
+            Add(InputAction.ViewerPhotos, InputContext.Viewer, "Site photos", P, "P");
+            Add(InputAction.ViewerGallery, InputContext.Viewer, "Photo gallery", P, "Shift+P");
+            Add(InputAction.ViewerMap, InputContext.Viewer, "Map in the corner: show / hide", P, "Tab");
+            Add(InputAction.ViewerBigMap, InputContext.Viewer, "Site map", P, "Shift+Tab");
 
             Add(InputAction.KioskExit, InputContext.Kiosk, "Leave kiosk mode (hold " + KIOSK_EXIT_HOLD_SECONDS.ToString("0", System.Globalization.CultureInfo.InvariantCulture) + " s)", ActionKind.Hold, "Ctrl+Shift+Q");
 
@@ -921,6 +926,8 @@ namespace BimGo.Scene
                     H("Orbit / walk (drops from where you are)", InputAction.Fly),
                     H("Measure · section box · comments", InputAction.ViewerMeasure, InputAction.ViewerSection, InputAction.ViewerComment),
                     H("Views · sun", InputAction.ViewerViews, InputAction.ViewerSun),
+                    H("Site photos · gallery", InputAction.ViewerPhotos, InputAction.ViewerGallery),
+                    H("Map: corner · site map", InputAction.ViewerMap, InputAction.ViewerBigMap),
                     H("Pass through walls (walking)", InputAction.ViewerGhost),
                     HK("Walk slower · faster", "- · = · WHEEL", InputAction.ViewerSlower, InputAction.ViewerFaster),
                     move,
@@ -945,7 +952,8 @@ namespace BimGo.Scene
                     H("Up · down (adjusting)", InputAction.Jump, InputAction.Crouch),
                     dragLook,
                     H("Fullscreen · screenshot", InputAction.Fullscreen, InputAction.Screenshot),
-                    H("Previous · next · pin · close", InputAction.Click)
+                    H("Previous · next photo", InputAction.MoveLeft, InputAction.MoveRight),
+                    H("Pin · close (the dock's buttons)", InputAction.Click)
                 }),
                 // Site photos round: the big site map (GameSession.UpdateSiteMap): the mouse pans, zooms and picks photos
                 new InputSituation(SIT_SITE_MAP, Array.Empty<InputContext>(), new[] { InputAction.Fullscreen, InputAction.Screenshot, InputAction.Click }, new[]
@@ -1003,10 +1011,10 @@ namespace BimGo.Scene
         /// The controls defaults version (polish round P-B). 0: the defaults up to P-A2; 1: P-B's hotkey review; 2: Round
         /// K-A's media panel; 3: Round K-B's path editor; 4: Round X-B3's billboard resize (HoldScale); 5: Round X-E's
         /// Revit views from here (RevitViewNew, RevitViewUpdate); 6: Round Y-A's saved measurements (MeasureShowAll, MeasureExport); 7: Round Y-C2's
-        /// fixture light profile dock (FixtureProfile); 8: Round Z-A's room tags (RoomTags); 9: Round Z-C's kiosk exit (KioskExit); 10: the simple viewer's keys (Viewer*). Raise it when a default changes and add the changes to
+        /// fixture light profile dock (FixtureProfile); 8: Round Z-A's room tags (RoomTags); 9: Round Z-C's kiosk exit (KioskExit); 10: the simple viewer's keys (Viewer*); 11: its site photo and map keys. Raise it when a default changes and add the changes to
         /// <see cref="DefaultsChanges"/> (ControlsTests checks the table against the defaults).
         /// </summary>
-        public const int DEFAULTS_VERSION = 10;
+        public const int DEFAULTS_VERSION = 11;
 
         /// <summary>Every default that changed, by version (oldest first). <c>Was</c>: the old binding ("none" for none).</summary>
         public static readonly DefaultsChange[] DefaultsChanges =
@@ -1073,7 +1081,13 @@ namespace BimGo.Scene
             new(10, InputAction.ViewerSun, true, null),
             new(10, InputAction.ViewerGhost, true, null),
             new(10, InputAction.ViewerFaster, true, null),
-            new(10, InputAction.ViewerSlower, true, null)
+            new(10, InputAction.ViewerSlower, true, null),
+
+            // Version 11 (site photos round): the simple viewer's site photos, gallery and maps
+            new(11, InputAction.ViewerPhotos, true, null),
+            new(11, InputAction.ViewerGallery, true, null),
+            new(11, InputAction.ViewerMap, true, null),
+            new(11, InputAction.ViewerBigMap, true, null)
         };
 
         /// <summary>The changes made after a version the user saw (empty when it is current or newer).</summary>

@@ -313,7 +313,7 @@ namespace BimGo.Tests
                 [placed.Thumb] = new byte[] { 0xFF, 0xD8, 4, 0xFF, 0xD9 },
                 [loose.Image] = new byte[] { 0xFF, 0xD8, 5, 0xFF, 0xD9 }
             };
-            return new PhotoDocument { Model = "Test Model", ShowPins = false, ThumbScale = 1.75f, Photos = new List<SitePhoto> { placed, loose } };
+            return new PhotoDocument { Model = "Test Model", ShowPins = false, ThumbScale = 1.75f, ThumbDistance = 320f, Photos = new List<SitePhoto> { placed, loose } };
         }
 
         [TestMethod]
@@ -336,6 +336,7 @@ namespace BimGo.Tests
             Assert.AreEqual(2, read.Photos.Photos.Count);
             Assert.IsFalse(read.Photos.ShowPins);
             Assert.AreEqual(1.75f, read.Photos.ThumbScale, 1e-6f);
+            Assert.AreEqual(320f, read.Photos.ThumbDistance, 1e-6f);
             SitePhoto a = read.Photos.Photos[0], b = read.Photos.Photos[1];
             Assert.AreEqual("Block A", a.Group);
             Assert.AreEqual(PhotoPlacements.PINNED, a.Placement);
@@ -364,6 +365,7 @@ namespace BimGo.Tests
             var document = new PhotoDocument
             {
                 ThumbScale = 40f,
+                ThumbDistance = 5f,
                 Photos = new List<SitePhoto>
                 {
                     twin,
@@ -377,6 +379,8 @@ namespace BimGo.Tests
 
             Assert.AreEqual(3, document.Photos.Count);
             Assert.AreEqual(PhotoDocument.MAX_THUMB_SCALE, document.ThumbScale);
+            Assert.AreEqual(PhotoDocument.MIN_THUMB_DISTANCE, document.ThumbDistance);
+            Assert.AreEqual(150f, new PhotoDocument().ThumbDistance);
             Assert.AreEqual(1f, new PhotoDocument { ThumbScale = float.NaN }.Clean().ThumbScale);
             Assert.AreEqual("a", document.Photos[0].Name);
             SitePhoto clamped = document.Photos[1];
