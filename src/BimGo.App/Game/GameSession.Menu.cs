@@ -474,6 +474,11 @@ namespace BimGo.Game
                 BuildControlsPanel();
                 return;
             }
+            if (IsSiteGalleryOpen)
+            {
+                BuildSiteGalleryPanel(); // site photos round
+                return;
+            }
             if (IsSitePhotosPanelOpen)
             {
                 BuildSitePhotosPanel(); // site photos round

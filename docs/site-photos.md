@@ -10,8 +10,9 @@ while you orbit or walk, and a click looks through it, the photo over the model.
 
 Esc → **SITE PHOTOS**:
 
-- **IMPORT PHOTOS…** picks JPEG files; **IMPORT FOLDER…** takes every JPEG in a folder and its sub-folders. Each
-  sub-folder becomes a **group** (one per building, for example), which the simple viewer lists.
+- **IMPORT PHOTOS…** picks JPEG files; **IMPORT FOLDERS…** takes every JPEG in one or more folders (Ctrl or Shift to
+  pick several) and their sub-folders. Each folder picked, or each sub-folder inside it, becomes a **group** (one per
+  building, for example), which the simple viewer and the gallery list.
 - Each photo is turned upright and kept at up to 2048 px (about 0.4 MB) with a small thumbnail: 100 to 500 photos add
   roughly 40 to 200 MB to the file. Photos already in the model are skipped.
 - From the photo's EXIF: the **GPS position**, the **compass heading**, the lens (the 35 mm equivalent focal length, for
@@ -39,6 +40,21 @@ placed from GPS again.
 
 ![Lining a photo up](images/site-photo-view.png)
 
+## Seeing them
+
+- **Pins**: a dot where each photo was taken with a short arrow the way it looks, and the nearest photos' thumbnails
+  floating above them. **Thumbnail size** (SITE PHOTOS, or the viewer's site photos button) makes them bigger or
+  smaller; it is kept with the file, so a viewer copy shows them the way you set them.
+- **GALLERY** (SITE PHOTOS, or GALLERY… in the viewer): every photo as a tile, one heading per group. Click one to look
+  through it from where it was taken.
+- **SITE MAP** (SITE PHOTOS, the map button in the simple viewer, or EXPAND on the photo view's small map): the model
+  from straight above with every photo as a small arrow, the groups' names and, zoomed in, the rooms' names. **AERIAL**
+  shows roofs and the site; **PLAN** cuts 1.2 m above a level (‹ › picks it) and outlines the rooms. Drag to pan,
+  scroll to zoom, click a photo to look through it, FIT SITE shows everything; in the simple viewer a double-click
+  takes you there. The walkthrough's minimap shows the photos on your level too.
+
+![The site map](images/site-map.png)
+
 ## Looking through a photo
 
 Click a thumbnail (in the simple viewer, with the cursor; in the walkthrough, with the crosshair and no gun out). The
@@ -46,6 +62,8 @@ camera goes to where the photo was taken, with its lens, and the photo covers th
 
 - the **mouse wheel** or the slider fades between the photo and the model;
 - **‹ PREVIOUS** and **NEXT ›** step through the photos (within a group when you browse one);
+- the **small map** (top right) shows where you are among the other photos: click one to go to it, or EXPAND for the
+  site map;
 - **CLOSE** (or Esc) leaves you standing there.
 
 In the simple viewer, the **site photos** button on the toolbar shows or hides the photos, BROWSE PHOTOS starts at the

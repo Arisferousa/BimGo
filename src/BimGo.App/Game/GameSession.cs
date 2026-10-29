@@ -699,6 +699,13 @@ namespace BimGo.Game
                 return;
             }
 
+            // Site photos round: the big map has the cursor (drag pans, the wheel zooms, clicks open photos)
+            if (_siteMapOpen && !_paused)
+            {
+                UpdateSiteMap(input);
+                return;
+            }
+
             // Site photos round: the photo view has the cursor (adjusting, the move keys fly and RMB-drag looks)
             if (SitePhotoViewOpen && !_paused)
             {
@@ -998,7 +1005,7 @@ namespace BimGo.Game
             _player.Controller.GroundZ = _groundZ;
             bool frozen = _welcomeOpen || IsEditingComment || _sunPanelOpen || _sunHoursOpen || GridsPanelHasKeys || FixtureDockHasKeys || !_window.IsActive || _guns[_activeGun].CapturesInput || ClashFreezesPlayer
                 || PathFreezesPlayer || ViewerOrbiting // viewer round: orbiting, the camera places the player
-                || (SitePhotoViewOpen && !_sitePhotoAdjust); // site photos round: looking at a photo (adjusting flies)
+                || (SitePhotoViewOpen && !_sitePhotoAdjust) || _siteMapOpen; // site photos round: looking at a photo (adjusting flies), the map
             if (_pathEditOn)
             {
                 // Round K-B: the path editor flies on its own keys (← / → pick keys there)
@@ -1077,7 +1084,7 @@ namespace BimGo.Game
         {
             PumpSource(dt);
             foreach (Gun gun in _guns) { gun.Tick(dt); }
-            if (_paused || IsEditingComment || _tourActive || SitePhotoViewOpen) { return; }
+            if (_paused || IsEditingComment || _tourActive || SitePhotoViewOpen || _siteMapOpen) { return; }
 
             if (_unarmed)
             {
@@ -1166,7 +1173,7 @@ namespace BimGo.Game
         /// </summary>
         private bool CursorModeOpen => _sunPanelOpen || _sunHoursOpen || _photoOpen || _sectionOpen || _clashModeOn || _gridsPanelOpen || _pathEditOn || _fixtureDockOpen
             || _viewer // viewer round: the cursor is always free there
-            || SitePhotoViewOpen; // site photos round
+            || SitePhotoViewOpen || _siteMapOpen; // site photos round
 
         /// <summary>
         /// Pauses (releases the mouse) or resumes (captures it again, unless a free-cursor mode is on: C-B1 fixes, the

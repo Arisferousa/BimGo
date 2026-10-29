@@ -119,7 +119,7 @@ namespace BimGo.Game
             float mapX = width - S(20) - S(220), mapY = S(20);
             _dockOverMap = _dockOverMapNext; // P-A2: last frame's dock sat over the minimap (a short window): it hides
             _dockOverMapNext = false;
-            if (_showMap && !_paused && !_uiHidden && !_photoOpen && !_clashModeOn && !_dockOverMap && !SitePhotoViewOpen) { DrawMinimapPlan(mapX + S(8), mapY + S(30), S(204), S(170)); }
+            if (_showMap && !_paused && !_uiHidden && !_photoOpen && !_clashModeOn && !_dockOverMap && !SitePhotoViewOpen && !_siteMapOpen) { DrawMinimapPlan(mapX + S(8), mapY + S(30), S(204), S(170)); }
 
             BeginFocusFrame(); // polish round P-A2: the controls drawn now are the next frame's gamepad focus targets
             if (_paused)
@@ -133,6 +133,11 @@ namespace BimGo.Game
             {
                 // Round Z-C: kiosk mode: the key hint (or the idle tour's fades and line) and the exit bar only
                 BuildKioskHud(width, height);
+            }
+            else if (_siteMapOpen)
+            {
+                // Site photos round: the big site map
+                BuildSiteMap(width, height);
             }
             else if (SitePhotoViewOpen)
             {
@@ -544,6 +549,18 @@ namespace BimGo.Game
             {
                 if (LevelIndexAt(bookmark.Local.Z) != levelIndex) { continue; }
                 MapDot(bookmark.Local, UiTheme.BOOKMARK, S(3f));
+            }
+
+            // Site photos round: the photos on this level, as small arrows the way they look
+            if (SitePhotos != null && SitePhotos.Document.ShowPins)
+            {
+                foreach (SitePhoto photo in SitePhotos.Photos)
+                {
+                    if (!photo.IsPlaced || LevelIndexAt(photo.Local.Z - SITE_PHOTO_EYE) != levelIndex) { continue; }
+                    float px = cx + (photo.Local.X - _player.Feet.X) / metresPerPixel, py = cy - (photo.Local.Y - _player.Feet.Y) / metresPerPixel;
+                    if (px < mapX + S(6) || px > mapX + mapW - S(6) || py < mapY + S(6) || py > mapY + mapH - S(6)) { continue; }
+                    DrawMapArrow(new Vector2(px, py), photo.Yaw, S(5), UiTheme.BOOKMARK_LABEL);
+                }
             }
 
             // View cone and player arrow (north up, screen Y down)

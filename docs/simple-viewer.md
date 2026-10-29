@@ -45,8 +45,10 @@ The toolbar at the bottom:
   marker to read it; ALL COMMENTS… lists them with replies.
 - **Views**: the saved views (bookmarks): click one to go there, PLAY TOUR plays them in turn, SAVE THIS VIEW adds one.
   A view saved walking opens walking; one saved flying opens orbiting.
-- **Site photos** (when the file has some): show or hide them, BROWSE PHOTOS from the nearest, or one group (building)
-  at a time. Click a floating thumbnail to look through that photo. See [Site photos](site-photos.md).
+- **Site photos** (when the file has some): show or hide them, the thumbnails' size, BROWSE NEAREST, the GALLERY…, or
+  one group (building) at a time. Click a floating thumbnail to look through that photo. See [Site photos](site-photos.md).
+- **Site map**: the whole site from above (aerial or a floor plan), the photos as arrows, rooms' and groups' names, where
+  you are. Click a photo to look through it, double-click anywhere to go there.
 - **Sun**: shadows on or off, the time of day and the month.
 - **Fullscreen** and the **menu**: save, save as, the views and comments lists, close the model.
 

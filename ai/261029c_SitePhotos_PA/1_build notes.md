@@ -55,3 +55,30 @@ JPEG decode / rotate / scale path (System.Drawing) and everything drawn are unte
 See DEVELOPING → Open build. Also worth a look: import time for 500 phone photos (≈ 12 MP), memory with 500 photos,
 thumbnail clutter on a dense site (40 nearest), the photo view on an ultrawide screen, and whether 1.6 m and the first
 surface below suit the site's photos.
+
+## Revision 2 (after testing on Windows: "it runs quite good")
+Asked: the heading tick as a shorter arrow; bigger thumbnails as a setting; V in the simple viewer (orbit → walk,
+falling); a map in the photo view with the photo points and arrows, expandable to the whole site, with room names;
+importing several folders; a gallery of every photo. Answers to the follow-up questions: the map in the photo view and
+on a viewer toolbar button (and the walkthrough's minimap); aerial by default with a plan toggle; the thumbnail size kept
+in the file; V falls with gravity.
+
+- **V** (PR 1, `export-external`, merged into `site-photos`): `UpdateViewer` toggles with the fly key: orbit → walk
+  keeping the pose (gravity drops the player), walk → orbit. `SIT_VIEWER` lists it; tooltips and the title hint name it.
+- **Pins**: a 0.75 m arrow (shaft + two barbs) instead of the 1.2 m tick.
+- **Thumbnail size**: `PhotoDocument.ThumbScale` (0.5–2.5, default 1; `Clean` clamps it); the base size went from
+  30–92 px (2400 / distance) to 46–130 px (3200 / distance). Slider in SITE PHOTOS and the viewer's popover; saved on
+  release (a live session isn't rewritten every frame of a drag).
+- **Folders**: `Native/FolderPicker.cs` (IFileOpenDialog, vtable slots from shobjidl_core.idl: Show 3, SetOptions 9,
+  GetOptions 10, SetFolder 12, SetTitle 17, GetResults 27; IShellItemArray GetCount 7, GetItemAt 8; IShellItem
+  GetDisplayName 5); null → the WinForms single picker. Groups: the first sub-folder, else the folder picked.
+- **Map**: `GameSession.SiteMap.cs` (see DEVELOPING). `SIT_SITE_MAP`.
+- **Gallery**: `GameSession.SiteGallery.cs`.
+- Tests: `ThumbScale` round trip and clamping. Core tests as before (all pass but the Linux-only one); the app
+  compile-checked, not run.
+
+To verify additionally: the multi-folder picker (Ctrl / Shift several folders; cancel), V from a high orbit (the fall,
+then V back), arrows, the size slider in both places (and that a viewer copy keeps it), the small map (centred, the
+current photo ringed, a click on another photo, EXPAND), the big map (aerial / plan, levels, pan, zoom at the cursor,
+FIT SITE, the scale bar, hovering a photo's thumbnail, a click opening it, a double-click going there in the viewer),
+room names when zoomed in, the minimap's photo arrows, the gallery (groups, tiles, scrolling 500 photos, a click).

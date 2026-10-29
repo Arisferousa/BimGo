@@ -671,6 +671,7 @@ namespace BimGo.Scene
         public const string SIT_KIOSK = "Kiosk mode";
         public const string SIT_VIEWER = "Simple viewer";
         public const string SIT_SITE_PHOTO = "Site photo";
+        public const string SIT_SITE_MAP = "Site map";
 
         /// <summary>Round Z-C: how long the kiosk exit key is held to leave kiosk mode (seconds).</summary>
         public const float KIOSK_EXIT_HOLD_SECONDS = 2f;
@@ -923,6 +924,13 @@ namespace BimGo.Scene
                     dragLook,
                     H("Fullscreen · screenshot", InputAction.Fullscreen, InputAction.Screenshot),
                     H("Previous · next · pin · close", InputAction.Click)
+                }),
+                // Site photos round: the big site map (GameSession.UpdateSiteMap): the mouse pans, zooms and picks photos
+                new InputSituation(SIT_SITE_MAP, Array.Empty<InputContext>(), new[] { InputAction.Fullscreen, InputAction.Screenshot, InputAction.Click }, new[]
+                {
+                    HK("Pan · zoom", "DRAG · WHEEL", InputAction.Click),
+                    H("Look through a photo · go there (double-click)", InputAction.Click),
+                    H("Fullscreen · screenshot", InputAction.Fullscreen, InputAction.Screenshot)
                 }),
                 new InputSituation(SIT_VIDEO, Array.Empty<InputContext>(), new[] { InputAction.Fullscreen }, new[]
                 {

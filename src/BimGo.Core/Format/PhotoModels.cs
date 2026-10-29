@@ -172,6 +172,12 @@ namespace BimGo.Format
         /// <summary>Pins and floating thumbnails show in the model.</summary>
         public bool ShowPins { get; set; } = true;
 
+        /// <summary>Smallest / largest <see cref="ThumbScale"/>.</summary>
+        public const float MIN_THUMB_SCALE = 0.5f, MAX_THUMB_SCALE = 2.5f;
+
+        /// <summary>The floating thumbnails' size (1 = the default; kept with the file, so a viewer copy shows them as set).</summary>
+        public float ThumbScale { get; set; } = 1f;
+
         /// <summary>The photos, in import order.</summary>
         public List<SitePhoto> Photos { get; set; } = new();
 
@@ -193,6 +199,7 @@ namespace BimGo.Format
         {
             Version = 1;
             Model ??= string.Empty;
+            ThumbScale = float.IsFinite(ThumbScale) ? Math.Clamp(ThumbScale, MIN_THUMB_SCALE, MAX_THUMB_SCALE) : 1f;
             Photos ??= new List<SitePhoto>();
             var seen = new HashSet<string>(StringComparer.Ordinal);
             Photos.RemoveAll(p => p == null || !p.Clean() || !seen.Add(p.Id));

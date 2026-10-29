@@ -48,7 +48,8 @@ namespace BimGo.Game
         private const long SITE_PHOTO_MAX_FILE = 64L * 1024 * 1024;
 
         private const string SITE_PHOTO_FILTER = "JPEG photos (*.jpg;*.jpeg)|*.jpg;*.jpeg|All files (*.*)|*.*";
-        private const int SITE_SLIDER_OPACITY = 9201, SITE_SLIDER_FOV = 9202;
+        private const int SITE_SLIDER_OPACITY = 9201, SITE_SLIDER_FOV = 9202, SITE_SLIDER_THUMBS = 9203;
+        private bool _siteThumbScaleUnsaved; // the size slider moved: saved once it's let go
 
         /// <summary>The model's site photos (never null after setup).</summary>
         public PhotoStore SitePhotos { get; private set; }
@@ -78,7 +79,7 @@ namespace BimGo.Game
         private uint _sitePhotoTexture;
         private string _sitePhotoTextureFor;
         private string _siteGroupFilter;
-        private Vector4 _sitePhotoPanelRect;
+        private Vector4 _sitePhotoPanelRect, _sitePhotoMapRect;
 
         // The SITE PHOTOS panel
         private bool _sitePhotosOpen;
@@ -184,31 +185,42 @@ namespace BimGo.Game
             _window.SetCaptured(false);
             _window.Input.ReleaseAll();
             string start = !string.IsNullOrEmpty(DocumentPath) ? Path.GetDirectoryName(DocumentPath) : Environment.GetFolderPath(Environment.SpecialFolder.MyPictures);
-            string root = null;
-            string[] files;
+            string[] files, roots;
             if (folder)
             {
-                root = FileDialogs.ShowFolder(_window.Handle, "Import site photos: pick a folder (its sub-folders become groups, such as one per building)", start);
-                if (root == null) { return; }
-                try
+                // Several folders at once (Ctrl / Shift in the picker); the single picker if the system one isn't there
+                const string TITLE = "Import site photos: pick one or more folders (each folder, or its sub-folders, becomes a group such as a building)";
+                string[] picked = Native.FolderPicker.PickFolders(_window.Handle, TITLE, start);
+                if (picked == null)
                 {
-                    files = Directory.EnumerateFiles(root, "*.*", SearchOption.AllDirectories)
-                        .Where(IsJpegPath)
-                        .OrderBy(p => p, StringComparer.OrdinalIgnoreCase)
-                        .ToArray();
+                    string one = FileDialogs.ShowFolder(_window.Handle, TITLE, start);
+                    picked = one == null ? Array.Empty<string>() : new[] { one };
                 }
-                catch (Exception ex)
+                if (picked.Length == 0) { return; }
+                var found = new List<(string File, string Root)>();
+                foreach (string root in picked.Distinct(StringComparer.OrdinalIgnoreCase))
                 {
-                    Utilities.Log_Utils.Write($"Site photo folder not read ({root}): {ex.Message}");
-                    _sitePhotosNotice = $"The folder could not be read: {ex.Message}";
-                    Sound.Play(SoundId.Error);
-                    return;
+                    try
+                    {
+                        foreach (string file in Directory.EnumerateFiles(root, "*.*", SearchOption.AllDirectories).Where(IsJpegPath)) { found.Add((file, root)); }
+                    }
+                    catch (Exception ex)
+                    {
+                        Utilities.Log_Utils.Write($"Site photo folder not read ({root}): {ex.Message}");
+                        _sitePhotosNotice = $"{Path.GetFileName(root)} could not be read: {ex.Message}";
+                        Sound.Play(SoundId.Error);
+                        return;
+                    }
                 }
+                found.Sort((a, b) => StringComparer.OrdinalIgnoreCase.Compare(a.File, b.File));
+                files = found.Select(f => f.File).ToArray();
+                roots = found.Select(f => f.Root).ToArray();
             }
             else
             {
                 files = FileDialogs.ShowOpenMany(_window.Handle, "Import site photos", SITE_PHOTO_FILTER, start);
                 if (files == null) { return; }
+                roots = new string[files.Length]; // no groups
             }
             if (files.Length == 0)
             {
@@ -221,7 +233,7 @@ namespace BimGo.Game
             progress.Begin("Reading the photos", 0.0, 1.0);
             int failed = 0;
             List<ImportedSitePhoto> read = ProgressScreen.Run(_window, _ui, $"Importing {files.Length} photo{(files.Length == 1 ? string.Empty : "s")}", progress,
-                () => ReadSitePhotos(files, root, progress, out failed));
+                () => ReadSitePhotos(files, roots, progress, out failed));
             _window.Input.ReleaseAll();
 
             // Skip what is already here (same file name, time and size)
@@ -267,7 +279,7 @@ namespace BimGo.Game
         private static string SitePhotoKey(SitePhoto photo) => $"{photo.Name}|{photo.Taken}|{photo.Width}x{photo.Height}";
 
         /// <summary>The worker: reads, turns, scales and encodes each photo (unreadable ones are counted, not thrown).</summary>
-        private static List<ImportedSitePhoto> ReadSitePhotos(string[] files, string root, Utilities.OperationProgress progress, out int failed)
+        private static List<ImportedSitePhoto> ReadSitePhotos(string[] files, string[] roots, Utilities.OperationProgress progress, out int failed)
         {
             failed = 0;
             var photos = new List<ImportedSitePhoto>(files.Length);
@@ -275,7 +287,7 @@ namespace BimGo.Game
             {
                 if (progress.CancelRequested) { break; }
                 progress.Detail(Path.GetFileName(files[i]));
-                ImportedSitePhoto photo = ReadSitePhoto(files[i], root);
+                ImportedSitePhoto photo = ReadSitePhoto(files[i], roots[i]);
                 if (photo != null) { photos.Add(photo); }
                 else { failed++; }
                 progress.Step((i + 1) / (double)files.Length);
@@ -337,14 +349,18 @@ namespace BimGo.Game
             }
         }
 
-        /// <summary>The first sub-folder under the imported folder (the group), or empty.</summary>
+        /// <summary>
+        /// The group: the first sub-folder under the folder picked, or (a photo straight in it) that folder's own name;
+        /// empty for photos picked one by one.
+        /// </summary>
         private static string SitePhotoGroup(string path, string root)
         {
             if (string.IsNullOrEmpty(root)) { return string.Empty; }
             try
             {
                 string relative = Path.GetRelativePath(root, Path.GetDirectoryName(path) ?? root);
-                if (relative == "." || relative.StartsWith("..", StringComparison.Ordinal)) { return string.Empty; }
+                if (relative == ".") { return Path.GetFileName(root.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)) ?? string.Empty; }
+                if (relative.StartsWith("..", StringComparison.Ordinal)) { return string.Empty; }
                 int slash = relative.IndexOfAny(new[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar });
                 return slash > 0 ? relative[..slash] : relative;
             }
@@ -516,7 +532,11 @@ namespace BimGo.Game
                 Vector3 eye = photo.Local;
                 Vector3 ahead = new(MathF.Cos(photo.Yaw), MathF.Sin(photo.Yaw), 0f);
                 overlay.Line(eye, eye - new Vector3(0f, 0f, SITE_PHOTO_EYE), 1.5f, Rgba.WithAlpha(colour, 0.5f));
-                overlay.Line(eye, eye + ahead * 1.2f, 2.5f, colour);
+                // The way it looks: a short arrow
+                Vector3 tip = eye + ahead * 0.75f, side = new(-ahead.Y, ahead.X, 0f);
+                overlay.Line(eye, tip, 2.5f, colour);
+                overlay.Line(tip, tip - ahead * 0.24f + side * 0.15f, 2.5f, colour);
+                overlay.Line(tip, tip - ahead * 0.24f - side * 0.15f, 2.5f, colour);
                 overlay.Dot(eye, 7f, UiTheme.TEXT);
                 overlay.Dot(eye, 5f, colour);
             }
@@ -589,7 +609,7 @@ namespace BimGo.Game
                 int index = _siteOrder[j];
                 SitePhoto photo = photos[index];
                 if (!Camera.WorldToScreen(photo.Local + new Vector3(0f, 0f, 0.35f), out Vector2 anchor)) { continue; }
-                float h = S(Math.Clamp(2400f / _siteDistance[j], 30f, 92f));
+                float h = S(Math.Clamp(3200f / _siteDistance[j], 46f, 130f) * SitePhotos.Document.ThumbScale);
                 float w = h * Math.Clamp(photo.Aspect, 0.5f, 2f);
                 float x = MathF.Round(anchor.X - w * 0.5f), y = MathF.Round(anchor.Y - h - S(12));
                 if (x > _window.Width || y > _window.Height || x + w < 0 || y + h < 0) { continue; }
@@ -829,7 +849,7 @@ namespace BimGo.Game
             if (input.Pressed(InputAction.Screenshot)) { RequestScreenshot(); }
 
             Vector2 mouse = input.MousePosition;
-            bool overPanel = Inside(_sitePhotoPanelRect, mouse);
+            bool overPanel = Inside(_sitePhotoPanelRect, mouse) || (_sitePhotoView.IsPlaced && Inside(_sitePhotoMapRect, mouse));
             if (_sitePhotoAdjust)
             {
                 if (input.Down(InputAction.DragLook)) { _player.Look(input.MouseDeltaX, input.MouseDeltaY, _sensitivity, _invertY); }
@@ -884,6 +904,11 @@ namespace BimGo.Game
                 _ui.Rect(cx - S(10), cy - S(0.5f), S(20), MathF.Max(1f, UiScale), Rgba.Hex(0xFFFFFF, 0.6f));
                 _ui.Rect(cx - S(0.5f), cy - S(10), MathF.Max(1f, UiScale), S(20), Rgba.Hex(0xFFFFFF, 0.6f));
             }
+
+            // The small map (top right; not adjusting: the photo is still being placed)
+            if (!_sitePhotoAdjust) { BuildSitePhotoMiniMap(f, input, width); }
+            else { _sitePhotoMapRect = Vector4.Zero; }
+            if (_sitePhotoView == null || _siteMapOpen) { return; } // a click on the map opened another photo or the big map
 
             // The dock
             float dw = MathF.Min(S(820), width - S(32)), dh = S(_sitePhotoAdjust ? 176 : 128);
@@ -995,9 +1020,21 @@ namespace BimGo.Game
             InputState input = _window.Input;
             int count = SitePhotos.Photos.Count;
             Text.Clear().AppendGrouped(count).Append(count == 1 ? " photo · kept in " : " photos · kept in ").Append(SitePhotos.FileName);
-            const string FILES = "IMPORT PHOTOS…", FOLDER = "IMPORT FOLDER…";
+            const string FILES = "IMPORT PHOTOS…", FOLDER = "IMPORT FOLDERS…", MAP = "SITE MAP", GALLERY = "GALLERY";
             PanelFrame frame = BeginPanel(PanelSize.Standard, "SITE PHOTOS", UiTheme.BOOKMARK_LABEL, Text.Span,
-                headerControls: ShellButtonWidth(f, FILES) + ShellButtonWidth(f, FOLDER) + S(UiTheme.GAP_SMALL));
+                headerControls: ShellButtonWidth(f, FILES) + ShellButtonWidth(f, FOLDER) + ShellButtonWidth(f, MAP) + ShellButtonWidth(f, GALLERY) + S(UiTheme.GAP_SMALL) * 3f);
+            if (HeaderButton(ref frame, GALLERY, enabled: count > 0))
+            {
+                OpenSiteGallery(); // over this panel: BACK comes back here
+                return;
+            }
+            if (HeaderButton(ref frame, MAP))
+            {
+                CloseSitePhotosPanel();
+                SetPaused(false);
+                OpenSiteMapOnSite();
+                return;
+            }
             if (HeaderButton(ref frame, FOLDER))
             {
                 ImportSitePhotos(folder: true);
@@ -1009,9 +1046,15 @@ namespace BimGo.Game
                 return;
             }
 
+            if (!input.LeftDown) { _activeSlider = -1; }
             float y = frame.BodyTop;
             float textH = _ui.TextWrapped(f.Body, frame.Ix, y, frame.Iw, SiteAlignmentText(), UiTheme.TEXT_SOFT, maxLines: 3);
             y += textH + S(UiTheme.GAP);
+            if (count > 0)
+            {
+                SiteThumbSizeSlider(f, input, frame.Ix, y, MathF.Min(S(360), frame.Iw));
+                y += S(48);
+            }
             BuildSitePhotoRows(f, input, frame.Ix, y, frame.Iw, frame.BodyBottom);
             if (!_sitePhotosOpen) { return; } // OPEN left the panel
 
@@ -1106,6 +1149,31 @@ namespace BimGo.Game
                     _siteDeleteArmed = delete;
                     _siteDeleteArmedUntil = _clock + 3f;
                 }
+            }
+        }
+
+        /// <summary>
+        /// The floating thumbnails' size (SITE PHOTOS, the viewer's popover): shown at once while dragging, saved with the
+        /// file when let go.
+        /// </summary>
+        private void SiteThumbSizeSlider(FontAtlas f, InputState input, float x, float y, float w)
+        {
+            PhotoDocument document = SitePhotos.Document;
+            TextBuffer text = Text.Clear().Append(document.ThumbScale * 100f, 0).Append(" %");
+            float scale = Slider(f, input, SITE_SLIDER_THUMBS, x, y, w, "Thumbnail size", text.Span, document.ThumbScale, PhotoDocument.MIN_THUMB_SCALE, PhotoDocument.MAX_THUMB_SCALE);
+            if (_activeSlider == SITE_SLIDER_THUMBS)
+            {
+                float stepped = MathF.Round(scale * 20f) / 20f;
+                if (MathF.Abs(stepped - document.ThumbScale) > 1e-4f)
+                {
+                    document.ThumbScale = Math.Clamp(stepped, PhotoDocument.MIN_THUMB_SCALE, PhotoDocument.MAX_THUMB_SCALE);
+                    _siteThumbScaleUnsaved = true;
+                }
+            }
+            if (_siteThumbScaleUnsaved && !input.LeftDown)
+            {
+                _siteThumbScaleUnsaved = false;
+                SitePhotos.Save();
             }
         }
 
