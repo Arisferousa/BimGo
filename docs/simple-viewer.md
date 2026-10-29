@@ -30,6 +30,7 @@ Send that one file. Everything it shows travels inside it, pictures included. Th
 | Go to a spot | double-click it |
 | Walk (first person) | the walk button; then the move keys (W A S D, Shift runs, Space jumps), drag to look, double-click a floor to go there |
 | Back to orbiting | the orbit button |
+| Orbit ↔ walk | **V** (as in the full walkthrough): from orbiting you drop to the ground below the camera, and V again flies back up to orbit |
 | Home view | the home button or **H** |
 | Save · fullscreen | **Ctrl+S** · **F11** |
 

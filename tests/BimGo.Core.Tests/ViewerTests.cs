@@ -73,7 +73,7 @@ namespace BimGo.Tests
         {
             InputSituation viewer = InputCatalog.Situation(InputCatalog.SIT_VIEWER);
             Assert.IsNotNull(viewer);
-            foreach (InputAction action in new[] { InputAction.MoveForward, InputAction.Run, InputAction.GoHome, InputAction.Save, InputAction.Fullscreen })
+            foreach (InputAction action in new[] { InputAction.MoveForward, InputAction.Run, InputAction.GoHome, InputAction.Save, InputAction.Fullscreen, InputAction.Fly })
             {
                 Assert.IsTrue(viewer.Contains(action), $"{action} should be live in the viewer");
             }

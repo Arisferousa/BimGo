@@ -67,6 +67,11 @@ namespace BimGo.Game
         // Groups: a gap after these buttons
         private static readonly bool[] VIEWER_GAP_AFTER = { true, false, true, false, false, true, false, true, false, false };
 
+        private static readonly KeyHint HINT_VIEWER_WALKING = new(() => $"Move keys walk · drag to look · double-click a floor to go there · {Key(InputAction.Fly)} orbits");
+        private static readonly KeyHint HINT_VIEWER_ORBITING = new(() => $"Drag to orbit · right-drag to pan · scroll to zoom · double-click to focus · {Key(InputAction.Fly)} walks");
+        private static readonly KeyHint HINT_VIEWER_ORBIT = new(() => $"Orbit ({Key(InputAction.Fly)})");
+        private static readonly KeyHint HINT_VIEWER_WALK = new(() => $"Walk ({Key(InputAction.Fly)}: drop from here)");
+
         private static readonly string[] VIEWER_MEASURE_MODES = { "DISTANCE", "AREA", "ANGLE", "CLEARANCE" };
 
         private static readonly string[] MONTH_NAMES = { "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };
@@ -527,6 +532,17 @@ namespace BimGo.Game
                 return;
             }
             if (input.Pressed(InputAction.GoHome)) { ViewerGoHome(); }
+            if (input.Pressed(InputAction.Fly))
+            {
+                // V, as the walkthrough's fly key: orbit → walk where the camera is (gravity takes it down), walk → orbit
+                if (_viewerWalk) { SetViewerWalk(false, announce: true); }
+                else
+                {
+                    SetViewerWalk(true, announce: true, keepPose: true);
+                    if (_player.Feet.Z > _groundZ + 3f) { Toast($"Falling to the ground… ({Key(InputAction.Fly)} flies back to orbit)", 3f); }
+                }
+                return;
+            }
 
             if (_viewerWalk)
             {
@@ -734,8 +750,8 @@ namespace BimGo.Game
             float shown = _clock - _viewerHintFrom;
             float hintAlpha = shown < VIEWER_HINT_SECONDS ? 1f : MathF.Max(0f, 1f - (shown - VIEWER_HINT_SECONDS) / 1.5f);
             string hint = _viewerWalk
-                ? "Move keys walk · drag to look · double-click a floor to go there"
-                : "Drag to orbit · right-drag to pan · scroll to zoom · double-click to focus";
+                ? HINT_VIEWER_WALKING.Text
+                : HINT_VIEWER_ORBITING.Text;
 
             TextBuffer where = Text.Clear();
             if (_viewerWalk)
@@ -852,7 +868,7 @@ namespace BimGo.Game
             // The tooltip above the hovered button (not over an open popover)
             if (hovered >= 0 && _viewerPopup == VP_NONE)
             {
-                string label = VIEWER_TOOL_LABELS[hovered];
+                string label = hovered == VT_ORBIT ? HINT_VIEWER_ORBIT.Text : hovered == VT_WALK ? HINT_VIEWER_WALK.Text : VIEWER_TOOL_LABELS[hovered];
                 if (hovered == VT_FULLSCREEN && _window.IsFullscreen) { label = "Leave fullscreen"; }
                 float tw = UiBatch.Measure(f.Body, label) + S(20);
                 float tx = Math.Clamp(ViewerButtonCentre(hovered, bx) - tw * 0.5f, S(8), width - tw - S(8));

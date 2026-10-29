@@ -894,10 +894,11 @@ namespace BimGo.Scene
                 {
                     InputAction.MoveForward, InputAction.MoveBack, InputAction.MoveLeft, InputAction.MoveRight, InputAction.Run, InputAction.Jump,
                     InputAction.LookUp, InputAction.LookDown, InputAction.LookLeft, InputAction.LookRight, InputAction.DragLook,
-                    InputAction.GoHome, InputAction.Save, InputAction.Fullscreen, InputAction.Screenshot, InputAction.Click
+                    InputAction.GoHome, InputAction.Save, InputAction.Fullscreen, InputAction.Screenshot, InputAction.Click, InputAction.Fly
                 }, new[]
                 {
                     HK("Orbit · pan · zoom", "LMB · RMB · WHEEL", InputAction.Click),
+                    H("Orbit / walk (drops from where you are)", InputAction.Fly),
                     move,
                     dragLook,
                     H("Run · jump (walking)", InputAction.Run, InputAction.Jump),
