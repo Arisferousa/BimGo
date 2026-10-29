@@ -72,3 +72,11 @@ face by face). Zero unsupported items across these files.
 See DEVELOPING → Open build. Also worth a look: a large real project (import time and memory), an imperial (feet) export,
 IFC from Revit LT itself, walls under sloped roofs (polygon-bounded half-spaces from CV 2.0), and whether the Open
 button's longer label fits at 100 % and 150 % scaling.
+
+## r2: sky shader on Intel graphics
+A user's first run (Revit LT 2027 IFC2x3 export, Intel UHD Graphics, GL 4.1) imported fine (123 elements, 5 storeys,
+0.1 s) but the walkthrough crashed: `Shader 'sky' (fragment) failed to compile: 'float' : overloaded functions must
+have the same return type`. Not IFC-related: `SKY_FS` (night sky) defined `float noise3(vec3)`, which overloads GLSL's
+deprecated built-in `vec3 noise3(genType)` by return type only. NVIDIA / AMD drivers allow it; Intel's (and glslang)
+refuse it, so every Intel PC would hit this on any model. Renamed to `starNoise` (Shaders.cs, 4 places). Every shader
+stage now passes `glslangValidator` (the old one reproduces the exact error); DEVELOPING's GLSL check names the tool.

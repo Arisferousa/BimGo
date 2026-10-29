@@ -1317,7 +1317,7 @@ vec3 hash33(vec3 p)
     p += dot(p, p.yxz + 33.33);
     return fract((p.xxy + p.yxx) * p.zyx);
 }
-float noise3(vec3 p)
+float starNoise(vec3 p)
 {
     vec3 i = floor(p), f = fract(p);
     vec3 u = f * f * (3.0 - 2.0 * f);
@@ -1363,8 +1363,8 @@ vec3 nightSky(vec3 dir, float px)
     float g = dot(c, GALACTIC_POLE);
     float band = exp(-g * g / 0.014);
     float core = 0.55 + 0.9 * pow(max(dot(c, GALACTIC_CENTRE), 0.0), 3.0);
-    float lane = 1.0 - 0.55 * smoothstep(0.45, 0.7, noise3(c * 18.0)) * exp(-g * g / 0.0025);
-    float milky = band * core * lane * (0.5 + 0.5 * noise3(c * 7.0)) * uStars.w * (1.0 - 0.8 * wash);
+    float lane = 1.0 - 0.55 * smoothstep(0.45, 0.7, starNoise(c * 18.0)) * exp(-g * g / 0.0025);
+    float milky = band * core * lane * (0.5 + 0.5 * starNoise(c * 7.0)) * uStars.w * (1.0 - 0.8 * wash);
     return (stars * uStars.y * (1.0 - 0.5 * wash) + vec3(0.50, 0.56, 0.72) * 0.11 * milky) * extinction * uNight;
 }
 
@@ -1402,7 +1402,7 @@ void main()
                 float inside = (1.0 - smoothstep(1.0 - edge, 1.0 + edge, sqrt(q2))) * step(0.0, m);
                 vec3 n = q - uMoonDir * sqrt(max(1.0 - q2, 0.0));
                 float lit = smoothstep(-0.06, 0.10, dot(n, uMoonSun));
-                float maria = 0.86 + 0.14 * noise3(n * 5.0 + 3.0) - 0.16 * smoothstep(0.5, 0.75, noise3(n * 2.2 + 9.0));
+                float maria = 0.86 + 0.14 * starNoise(n * 5.0 + 3.0) - 0.16 * smoothstep(0.5, 0.75, starNoise(n * 2.2 + 9.0));
                 vec3 moon = uMoonDisc * (lit * maria + 0.03);
                 c = c * (1.0 - inside * uNight * 0.75) + moon * inside;
             }
