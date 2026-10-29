@@ -35,6 +35,8 @@ namespace BimGo.Format
     /// library.json      family library: offered family types and the first template vertex (optional; live sessions)
     /// library/…         family library preview images (PNG), referenced from library.json (optional)
     /// rooms.json        every room's parameters, pooled, aligned with model.json's rooms (optional, Round Z-A)
+    /// photos.json       site photos: GPS, lens, where each stands in the model (optional, site photos round)
+    /// photos/…          the site photos (JPEG, up to 2048 px) and their thumbnails, referenced from photos.json (optional)
     /// </code>
     /// </summary>
     public static class BimGoFormat
@@ -133,6 +135,18 @@ namespace BimGo.Format
         /// (&lt;model&gt;.bimgo-comment-pictures, next to &lt;model&gt;.bimgo-comments.json).
         /// </summary>
         public const string COMMENT_PICTURES_SIDECAR_SUFFIX = ".bimgo-comment-pictures";
+
+        /// <summary>Optional (site photos round): the site photos (<see cref="PhotoDocument"/>).</summary>
+        internal const string ENTRY_PHOTOS = "photos.json";
+
+        /// <summary>The folder (entry name prefix) the site photos and their thumbnails live under.</summary>
+        public const string PHOTOS_FOLDER = "photos/";
+
+        /// <summary>Largest site photo kept (bytes).</summary>
+        public const long MAX_PHOTO_IMAGE_BYTES = 16L * 1024 * 1024;
+
+        /// <summary>Site photos beside a Revit model's comments when not in a model folder.</summary>
+        public const string PHOTOS_SIDECAR_SUFFIX = ".bimgo-photos.json";
 
         /// <summary>The folder (entry name prefix) imported billboard pictures live under (Round X-B).</summary>
         public const string ENTOURAGE_FOLDER = "entourage/";

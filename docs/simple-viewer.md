@@ -8,7 +8,7 @@ opens with a clean toolbar instead of the full set of tools and settings, and or
 ## Making a viewer copy
 
 1. Open the model (a `.bimgo`, an IFC file, or **Go** from Revit) and set it up the way it should be seen: views
-   (bookmarks), the sun, a section box, billboards, comments.
+   (bookmarks), the sun, a section box, billboards, comments, [site photos](site-photos.md).
 2. Optional: stand where it should open and press **Shift+H** (set home). Without a home it opens on the whole model,
    seen from the south-west.
 3. Esc → **SAVE VIEWER COPY…** and pick a name. The open file isn't changed.
@@ -44,6 +44,8 @@ The toolbar at the bottom:
   marker to read it; ALL COMMENTS… lists them with replies.
 - **Views**: the saved views (bookmarks): click one to go there, PLAY TOUR plays them in turn, SAVE THIS VIEW adds one.
   A view saved walking opens walking; one saved flying opens orbiting.
+- **Site photos** (when the file has some): show or hide them, BROWSE PHOTOS from the nearest, or one group (building)
+  at a time. Click a floating thumbnail to look through that photo. See [Site photos](site-photos.md).
 - **Sun**: shadows on or off, the time of day and the month.
 - **Fullscreen** and the **menu**: save, save as, the views and comments lists, close the model.
 

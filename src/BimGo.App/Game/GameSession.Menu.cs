@@ -474,6 +474,11 @@ namespace BimGo.Game
                 BuildControlsPanel();
                 return;
             }
+            if (IsSitePhotosPanelOpen)
+            {
+                BuildSitePhotosPanel(); // site photos round
+                return;
+            }
             if (_viewer)
             {
                 BuildViewerMenu(); // viewer round: the simple viewer's own short menu
@@ -528,8 +533,8 @@ namespace BimGo.Game
             bool texturesButton = HasTexturePanel;
             bool libraryButton = HasLibrary;
             bool roomsButton = Scene.Rooms.Length > 0;
-            int sessionButtons = 5 + (IsFileMode ? 4 : 1) + (_live != null ? 2 : 0); // + CONTROLS (input round B2), + Revit views (X-E), + kiosk shortcut (Z-C), + viewer copy
-            int reviewButtons = 7 + (hiddenThings > 0 ? 1 : 0) + (texturesButton ? 1 : 0) + (libraryButton ? 1 : 0) + (roomsButton ? 1 : 0);
+            int sessionButtons = 5 + (IsFileMode ? 5 : 1) + (_live != null ? 2 : 0); // + CONTROLS (input round B2), + Revit views (X-E), + kiosk shortcut (Z-C), + viewer copy
+            int reviewButtons = 8 + (hiddenThings > 0 ? 1 : 0) + (texturesButton ? 1 : 0) + (libraryButton ? 1 : 0) + (roomsButton ? 1 : 0);
             int rows = twoStacks ? Math.Max(sessionButtons, reviewButtons) : sessionButtons + reviewButtons;
             float step = Math.Clamp((endY - S(12) - buttonsTop) / rows, S(32), S(44));
             float buttonH = step - S(6);
@@ -553,6 +558,10 @@ namespace BimGo.Game
 
                 // Edits made offline go into the Revit model they came from
                 if (MenuButton(f, x, y, stackW, PushMenuLabel(), false, false, height: buttonH, compact: true)) { OpenPush(); return; }
+                y += step;
+
+                // Site photos round: a newer IFC of the model in place of this geometry, the review kept
+                if (MenuButton(f, x, y, stackW, "RELOAD FROM IFC…", false, false, height: buttonH, compact: true)) { ReloadFromIfc(); return; }
                 y += step;
 
                 // Round Z-C: a desktop shortcut that opens the saved file in kiosk mode
@@ -599,6 +608,8 @@ namespace BimGo.Game
             if (MenuButton(f, x, y, stackW, "MEDIA", false, false, height: buttonH, compact: true)) { OpenMedia(_mediaTab); return; } // Round K-A
             y += step;
             if (MenuButton(f, x, y, stackW, EntourageMenuLabel(), false, false, height: buttonH, compact: true)) { OpenEntourage(); return; } // Round X-B
+            y += step;
+            if (MenuButton(f, x, y, stackW, SitePhotosMenuLabel(), false, false, height: buttonH, compact: true)) { OpenSitePhotosPanel(); return; } // site photos round
             y += step;
             if (texturesButton)
             {

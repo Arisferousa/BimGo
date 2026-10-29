@@ -119,7 +119,7 @@ namespace BimGo.Game
             float mapX = width - S(20) - S(220), mapY = S(20);
             _dockOverMap = _dockOverMapNext; // P-A2: last frame's dock sat over the minimap (a short window): it hides
             _dockOverMapNext = false;
-            if (_showMap && !_paused && !_uiHidden && !_photoOpen && !_clashModeOn && !_dockOverMap) { DrawMinimapPlan(mapX + S(8), mapY + S(30), S(204), S(170)); }
+            if (_showMap && !_paused && !_uiHidden && !_photoOpen && !_clashModeOn && !_dockOverMap && !SitePhotoViewOpen) { DrawMinimapPlan(mapX + S(8), mapY + S(30), S(204), S(170)); }
 
             BeginFocusFrame(); // polish round P-A2: the controls drawn now are the next frame's gamepad focus targets
             if (_paused)
@@ -133,6 +133,11 @@ namespace BimGo.Game
             {
                 // Round Z-C: kiosk mode: the key hint (or the idle tour's fades and line) and the exit bar only
                 BuildKioskHud(width, height);
+            }
+            else if (SitePhotoViewOpen)
+            {
+                // Site photos round: the photo over the model and its dock
+                BuildSitePhotoView(width, height);
             }
             else if (_photoOpen)
             {
@@ -390,6 +395,7 @@ namespace BimGo.Game
                 _overlay.Begin(Camera);
                 for (int i = 0; i < _guns.Length; i++) { _guns[i].DrawWorld(_overlay, i == _activeGun && !_unarmed); }
                 DrawClashMarkers(_overlay);
+                DrawSitePhotoPins(_overlay); // site photos round
                 DrawGrids(); // grids round A: the lines under the markers
                 _overlay.Draw(Camera, depthTest: true, alpha: 1f, additive: false);
                 _overlay.Draw(Camera, depthTest: false, alpha: 0.16f, additive: false);
@@ -599,6 +605,7 @@ namespace BimGo.Game
             // World-anchored labels (grids round A: grid bubbles and level tags first, under the rest)
             DrawGridLabels(f);
             DrawRoomTags(f); // Round Z-A: floating room tags, under the guns' labels
+            DrawSiteThumbs(f, _window.Input, cursor: !_window.IsCaptured); // site photos round: the nearest photos over their pins
             for (int i = 0; i < _guns.Length; i++) { _guns[i].DrawLabels(_ui, i == _activeGun && !_unarmed); }
             DrawGridHoverLabel(f); // grids round B: the hovered node, over the other labels
 

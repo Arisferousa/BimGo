@@ -147,6 +147,8 @@ namespace BimGo.Format
                         if (png != null && png.Length <= BimGoFormat.MAX_ENTOURAGE_IMAGE_BYTES) { entourageImages[type.Image] = png; }
                     }
                 }
+                PhotoDocument photos = ReadOptionalJson<PhotoDocument>(zip, BimGoFormat.ENTRY_PHOTOS)?.Clean(); // site photos round
+                Dictionary<string, byte[]> photoImages = ReadPhotoImages(zip, photos);
                 progress?.Step(0.1);
                 progress?.ThrowIfCancelled();
                 ReadGeometry(zip, out SceneVertex[] vertices, out uint[] indices, progress);
@@ -182,6 +184,8 @@ namespace BimGo.Format
                     Paths = paths,
                     Entourage = entourage,
                     EntourageImages = entourageImages,
+                    Photos = photos,
+                    PhotoImages = photoImages,
                     LightProfiles = lightProfiles,
                     Measurements = measurements,
                     Sun = sun,
@@ -613,6 +617,22 @@ namespace BimGo.Format
         }
 
         /// <summary>An entry's bytes (capped at 64 MB), or null if absent or unreadable.</summary>
+        /// <summary>Site photos round: the photos' pictures and thumbnails (missing ones are left out), or null.</summary>
+        private static Dictionary<string, byte[]> ReadPhotoImages(ZipArchive zip, PhotoDocument photos)
+        {
+            if (photos == null || photos.IsEmpty) { return null; }
+            var images = new Dictionary<string, byte[]>(StringComparer.Ordinal);
+            foreach (SitePhoto photo in photos.Photos)
+            {
+                foreach (string name in new[] { photo.Image, photo.Thumb })
+                {
+                    byte[] jpeg = ReadBytes(zip, BimGoFormat.PHOTOS_FOLDER + name);
+                    if (jpeg != null && jpeg.Length <= BimGoFormat.MAX_PHOTO_IMAGE_BYTES) { images[name] = jpeg; }
+                }
+            }
+            return images;
+        }
+
         private static byte[] ReadBytes(ZipArchive zip, string name)
         {
             try

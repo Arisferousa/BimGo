@@ -670,6 +670,7 @@ namespace BimGo.Scene
         public const string SIT_FIXTURE = "Fixture light profile";
         public const string SIT_KIOSK = "Kiosk mode";
         public const string SIT_VIEWER = "Simple viewer";
+        public const string SIT_SITE_PHOTO = "Site photo";
 
         /// <summary>Round Z-C: how long the kiosk exit key is held to leave kiosk mode (seconds).</summary>
         public const float KIOSK_EXIT_HOLD_SECONDS = 2f;
@@ -905,6 +906,22 @@ namespace BimGo.Scene
                     H("Save", InputAction.Save),
                     H("Fullscreen · screenshot", InputAction.Fullscreen, InputAction.Screenshot),
                     H("Tools and menus", InputAction.Click)
+                }),
+                // Site photos round: the photo view (GameSession.UpdateSitePhotoView): the wheel fades, the dock's buttons step and
+                // close; adjusting a photo's position, the move keys fly (Space / Ctrl up and down) and RMB-drag looks
+                new InputSituation(SIT_SITE_PHOTO, Array.Empty<InputContext>(), new[]
+                {
+                    InputAction.MoveForward, InputAction.MoveBack, InputAction.MoveLeft, InputAction.MoveRight, InputAction.Run, InputAction.Jump,
+                    InputAction.Crouch, InputAction.LookUp, InputAction.LookDown, InputAction.LookLeft, InputAction.LookRight, InputAction.DragLook,
+                    InputAction.Fullscreen, InputAction.Screenshot, InputAction.Click
+                }, new[]
+                {
+                    HK("Fade the photo · the lens (adjusting)", "WHEEL", InputAction.Click),
+                    H("Fly (adjusting)", InputAction.MoveForward, InputAction.MoveLeft, InputAction.MoveBack, InputAction.MoveRight),
+                    H("Up · down (adjusting)", InputAction.Jump, InputAction.Crouch),
+                    dragLook,
+                    H("Fullscreen · screenshot", InputAction.Fullscreen, InputAction.Screenshot),
+                    H("Previous · next · pin · close", InputAction.Click)
                 }),
                 new InputSituation(SIT_VIDEO, Array.Empty<InputContext>(), new[] { InputAction.Fullscreen }, new[]
                 {

@@ -329,6 +329,7 @@ namespace BimGo.Game
             InitialiseSun();
             InitialiseVisibility();
             ReadViewerFlag(); // viewer round
+            InitialiseSitePhotos(); // site photos round (after the sun: the true north)
 
             _portalGun = new PortalGun(this);
             _commentGun = new CommentGun(this);
@@ -698,6 +699,13 @@ namespace BimGo.Game
                 return;
             }
 
+            // Site photos round: the photo view has the cursor (adjusting, the move keys fly and RMB-drag looks)
+            if (SitePhotoViewOpen && !_paused)
+            {
+                UpdateSitePhotoView(input);
+                return;
+            }
+
             // The sun hours study has the cursor: the player stands still, RMB-drag looks, clicks pick surfaces
             if (_sunHoursOpen && !_paused)
             {
@@ -989,7 +997,8 @@ namespace BimGo.Game
             if (_tourActive) { return; } // the tour places the player itself
             _player.Controller.GroundZ = _groundZ;
             bool frozen = _welcomeOpen || IsEditingComment || _sunPanelOpen || _sunHoursOpen || GridsPanelHasKeys || FixtureDockHasKeys || !_window.IsActive || _guns[_activeGun].CapturesInput || ClashFreezesPlayer
-                || PathFreezesPlayer || ViewerOrbiting; // viewer round: orbiting, the camera places the player
+                || PathFreezesPlayer || ViewerOrbiting // viewer round: orbiting, the camera places the player
+                || (SitePhotoViewOpen && !_sitePhotoAdjust); // site photos round: looking at a photo (adjusting flies)
             if (_pathEditOn)
             {
                 // Round K-B: the path editor flies on its own keys (← / → pick keys there)
@@ -1019,6 +1028,10 @@ namespace BimGo.Game
                 Camera.Yaw = _tourPose.Yaw;
                 Camera.Pitch = _tourPose.Pitch;
             }
+            else if (SitePhotoViewOpen && !_sitePhotoAdjust)
+            {
+                SitePhotoCamera(); // site photos round: at the photo's eye
+            }
             else if (ViewerOrbiting)
             {
                 UpdateViewerCamera(dt); // viewer round: the orbit camera (the player follows it)
@@ -1029,7 +1042,7 @@ namespace BimGo.Game
                 Camera.Yaw = _player.Yaw;
                 Camera.Pitch = _player.Pitch;
             }
-            Camera.HorizontalFovDegrees = _fov;
+            Camera.HorizontalFovDegrees = SitePhotoViewOpen ? SitePhotoWindowFov() : _fov; // a photo's lens across its picture
             Camera.ViewportWidth = _window.Width;
             Camera.ViewportHeight = _window.Height;
             Camera.Aspect = (float)_window.Width / Math.Max(_window.Height, 1);
@@ -1064,9 +1077,14 @@ namespace BimGo.Game
         {
             PumpSource(dt);
             foreach (Gun gun in _guns) { gun.Tick(dt); }
-            if (_paused || IsEditingComment || _tourActive) { return; }
+            if (_paused || IsEditingComment || _tourActive || SitePhotoViewOpen) { return; }
 
-            if (_unarmed) { return; } // no gun out: nothing aims or fires
+            if (_unarmed)
+            {
+                // No gun out: nothing aims or fires; a click on a site photo's thumbnail under the crosshair opens it
+                if (!_viewer && _window.IsCaptured && _window.Input.Pressed(InputAction.GunPrimary)) { TryOpenSitePhotoUnderCrosshair(); }
+                return;
+            }
             Gun active = _guns[_activeGun];
             active.Update(dt, _aim);
 
@@ -1147,7 +1165,8 @@ namespace BimGo.Game
         /// editor, clash mode): resuming must not capture the mouse then.
         /// </summary>
         private bool CursorModeOpen => _sunPanelOpen || _sunHoursOpen || _photoOpen || _sectionOpen || _clashModeOn || _gridsPanelOpen || _pathEditOn || _fixtureDockOpen
-            || _viewer; // viewer round: the cursor is always free there
+            || _viewer // viewer round: the cursor is always free there
+            || SitePhotoViewOpen; // site photos round
 
         /// <summary>
         /// Pauses (releases the mouse) or resumes (captures it again, unless a free-cursor mode is on: C-B1 fixes, the
@@ -1409,6 +1428,7 @@ namespace BimGo.Game
             try { DisposeEntourage(); } catch (Exception ex) { Utilities.Log_Utils.Write($"Entourage cleanup failed: {ex.Message}"); } // Round X-B
             try { ReleaseLibraryPreviews(); } catch (Exception ex) { Utilities.Log_Utils.Write($"Library preview cleanup failed: {ex.Message}"); }
             try { ReleaseMarkup(); } catch (Exception ex) { Utilities.Log_Utils.Write($"Markup cleanup failed: {ex.Message}"); }
+            try { ReleaseSitePhotoTextures(); } catch (Exception ex) { Utilities.Log_Utils.Write($"Site photo cleanup failed: {ex.Message}"); }
             Sound.Dispose();
             _weatherSound.Dispose(); // Round W-C
             _renderer?.Dispose();

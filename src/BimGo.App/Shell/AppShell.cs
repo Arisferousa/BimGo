@@ -70,7 +70,7 @@ namespace BimGo.Shell
                     OpenTarget target = TakeNext() ?? _home.Run();
                     if (target == null) { return 0; }
 
-                    SessionEndReason reason = target.IsLive ? RunLive(target) : RunFile(target.Path, target.Kiosk);
+                    SessionEndReason reason = target.IsLive ? RunLive(target) : RunFile(target.Path, target.Kiosk, target.Pose);
                     if (reason == SessionEndReason.WindowClosed) { return 0; }
 
                     // A switch whose save prompt was cancelled must not fire later
@@ -109,7 +109,8 @@ namespace BimGo.Shell
         /// </summary>
         /// <param name="path">The file.</param>
         /// <param name="kiosk">Round Z-C: start in kiosk mode (desktop kiosk shortcut).</param>
-        private SessionEndReason RunFile(string path, bool kiosk = false)
+        /// <param name="pose">Where to put the player (a file reopened after a reload from IFC), or null.</param>
+        private SessionEndReason RunFile(string path, bool kiosk = false, SessionPose pose = null)
         {
             BimGoDocument document = LoadFile(path, out string notice);
             if (document == null) { return SessionEndReason.EndedByUser; }
@@ -122,6 +123,8 @@ namespace BimGo.Shell
                 Writer = Writer,
                 OnOpenRequest = QueueFile,
                 OnSaved = saved => _recent.Touch(saved),
+                OnReopen = (reopen, at) => _next = new OpenTarget { Path = reopen, Pose = at }, // reload from IFC
+                Pose = pose,
                 PollNotices = PollInbox,
                 Kiosk = kiosk,
                 StartNotice = notice

@@ -1,0 +1,57 @@
+# P-A build notes: site photos
+
+**Built and tested here**: the .NET 8 SDK (Ubuntu package) ran BimGo.Core and its tests (`dotnet test
+tests/BimGo.Core.Tests`: all pass except `SunStudyTests.Studies_WriteListReadDelete`, Linux only, unchanged). The EXIF
+reader was also run against a JPEG written by Pillow (GPS south / east, altitude, magnetic heading, 35 mm focal length,
+orientation 6, date): every value read back. BimGo.App was compile-checked with a scratch project against the
+`Microsoft.WindowsDesktop.App.Ref` 8.0.0 reference assemblies (0 errors); it was **not run** (no Windows / GPU), so the
+JPEG decode / rotate / scale path (System.Drawing) and everything drawn are untested. Nothing in BimGo.Revit changed.
+
+## Files
+- Core `Format/ExifReader.cs` (new): `ExifInfo`, `ExifReader.Read` (APP1 → TIFF, both byte orders, IFD0 → Exif / GPS
+  IFDs; bounded reads, never throws; 0 / 0 GPS treated as no fix).
+- Core `Format/PhotoModels.cs` (new): `PhotoPlacements`, `SitePhoto` (GPS, heading, size, lens, placement, eye pose in
+  internal metres; `Clean`), `PhotoDocument` (`showPins`, ≤ 2000 photos, safe ids / names), `PhotoFiles` (the model
+  folder's `photos.json` + `photos-images`, or `<model>.bimgo-photos.json` beside the comments; not in the
+  `ModelFolders.SIDECARS` mirror list, since the mirror would copy the JSON without its pictures).
+- Core `Scene/PhotoGeo.cs` (new): `PhotoAnchor`, `PhotoGeoFit` (`Apply`, `YawOf`), `PhotoGeo.ToLocal`, `TryFit`,
+  `HeadingCorrection`, `FieldOfView`.
+- Core format: `BimGoFormat` (`ENTRY_PHOTOS`, `PHOTOS_FOLDER`, `MAX_PHOTO_IMAGE_BYTES`, `PHOTOS_SIDECAR_SUFFIX`),
+  `BimGoDocument.Photos` / `PhotoImages`, writer (pictures stored, not deflated), reader. Format version unchanged.
+- Core `InputCatalog`: `SIT_SITE_PHOTO` (no new action).
+- App `Game/PhotoStore.cs` (new), `Game/GameSession.SitePhotos.cs` (new: import, alignment, pins, thumbnails, photo
+  view, the panel, textures), `Platform/FileDialogs.ShowOpenMany`.
+- App hooks: `GameSession.cs` (setup after the sun, the photo view before the editors, player frozen while viewing,
+  its camera and lens in `UpdateCamera`, no firing in it, the no-gun crosshair click, `CursorModeOpen`, cleanup),
+  `Render.cs` (the photo view's 2D layer, pins with the markers, thumbnails in the HUD, no minimap), `Menu.cs` (SITE
+  PHOTOS in the review stack, RELOAD FROM IFC… in the session stack, the panel), `PanelShell.cs` (back / any panel),
+  `Document.cs` (dirty state; `DocumentForSave` / `FinishSave` split out of `Save`; `ReloadFromIfc`), `Gamepad.cs`
+  (situation, editor cursor), `Viewer.cs` (site photos button and popover, thumbnails, `ViewerOverUi`; a reopened
+  file keeps the pose), `SessionOptions.OnReopen`, `Shell/AppShell.cs` (reopen with a pose).
+- Tests `SitePhotoTests.cs` (11): EXIF in both byte orders from a TIFF written in the test, truncated / garbage input,
+  local metres, the fit from three anchors (turn, shift, a fourth point, headings), one anchor and true north (and two
+  anchors on top of each other), the heading correction (and its wrap at ±180°), the field of view, a .bimgo round trip
+  (and none written without photos), `Clean`, the model folder file and pictures, the situation's keys.
+- Docs: `docs/site-photos.md` (new), simple viewer page, docs home, README, DEVELOPING (site photos, format table,
+  model folders, open build, limitations), HISTORY, two placeholder images.
+
+## Decisions worth knowing
+- **Anchors are just pinned photos with GPS**: nothing else is stored, so unpinning or deleting one re-fits at once.
+  The fit is rigid (no scale): GPS metres are metres, and a scale fitted to two noisy points would distort the site.
+- **One pin uses the true north** (`SolarPosition.NorthAngle`, as the sun); two or more ignore it. Anchors within 1 m of
+  their mean count as one.
+- **Heading correction**: one circular-mean offset from the pins that recorded a heading, added to every GPS-placed
+  photo's compass yaw (takes up magnetic declination: about 12° in Sydney).
+- **Placed eye**: the first upward-facing surface under the GPS point from above the model, + 1.6 m. A roof catches a
+  photo that GPS put on a building; pinning fixes it. Altitude isn't used (phone altitude is worse than position).
+- **The photo view's lens**: the photo is letterboxed into the window and the window's horizontal field of view set so
+  the photo's lens spans the photo's rectangle exactly (the model outside it is the true continuation).
+- **Pictures in memory**: the store holds every JPEG (≈ 0.4 MB each), as entourage pictures; textures are made on demand
+  (thumbnails 3 a frame, mipmapped; one full picture at a time).
+- **Reload from IFC** writes the open file and reopens it rather than swapping the scene in place: everything that
+  depends on the geometry (batches, BVH, lights, probes) is built the normal way.
+
+## To verify (Gavin)
+See DEVELOPING → Open build. Also worth a look: import time for 500 phone photos (≈ 12 MP), memory with 500 photos,
+thumbnail clutter on a dense site (40 nearest), the photo view on an ultrawide screen, and whether 1.6 m and the first
+surface below suit the site's photos.
