@@ -328,6 +328,7 @@ namespace BimGo.Game
             InitialiseLightProfiles(); // Round X-D1: IES / built-in light profiles per fixture type
             InitialiseSun();
             InitialiseVisibility();
+            ReadViewerFlag(); // viewer round
 
             _portalGun = new PortalGun(this);
             _commentGun = new CommentGun(this);
@@ -352,7 +353,7 @@ namespace BimGo.Game
             else if (Bookmarks.LastError != null) { Toast(Bookmarks.LastError); }
             else if (!string.IsNullOrEmpty(Scene.PhaseNote)) { Toast(Scene.PhaseNote, 6f); }
             else if (replayFailures > 0) { Toast($"{replayFailures} saved edit{(replayFailures == 1 ? " refers" : "s refer")} to elements not in this file and {(replayFailures == 1 ? "was" : "were")} skipped.", 5f); }
-            else if (!_options.Kiosk && ShowControlsDefaultsNotice()) { /* polish round P-B: once after an update that changed default keys (not to kiosk visitors) */ }
+            else if (!_options.Kiosk && !_viewerFile && ShowControlsDefaultsNotice()) { /* polish round P-B: once after an update that changed default keys (not to kiosk visitors or the viewer) */ }
             else
             {
                 string edits = _journal.Count > 0 ? $" · {_journal.Count} edit{(_journal.Count == 1 ? string.Empty : "s")}" : string.Empty;
@@ -367,6 +368,7 @@ namespace BimGo.Game
 
             // Round Z-C: a kiosk shortcut's launch (files only)
             if (_options.Kiosk && IsFileMode) { EnterKiosk(); }
+            else if (_viewerFile) { EnterViewer(fromWalkthrough: false); } // viewer round: a file saved for the simple viewer
             else if (!LaunchSettings.SafeStart && !Scene.Settings.WelcomeShown) { OpenWelcome(); } // Round Z-E: first walkthrough
         }
 
@@ -665,7 +667,7 @@ namespace BimGo.Game
             if (_window.FocusLost)
             {
                 _window.FocusLost = false;
-                if (!_paused && !IsEditingComment) { SetPaused(true); }
+                if (!_paused && !IsEditingComment && !_viewer) { SetPaused(true); } // the viewer keeps its view (its cursor is free)
             }
 
             // CONTROLS → MAP BUTTONS has the generic controller (and Esc); the mouse still clicks SKIP / CANCEL
@@ -750,6 +752,13 @@ namespace BimGo.Game
             if (_clashModeOn && !_paused)
             {
                 UpdateClashMode(input, dt);
+                return;
+            }
+
+            // Viewer round: the simple viewer has the mouse and its few keys (orbit / walk, toolbar, the armed tool's clicks)
+            if (_viewer && !_paused)
+            {
+                UpdateViewer(input, dt);
                 return;
             }
 
@@ -980,7 +989,7 @@ namespace BimGo.Game
             if (_tourActive) { return; } // the tour places the player itself
             _player.Controller.GroundZ = _groundZ;
             bool frozen = _welcomeOpen || IsEditingComment || _sunPanelOpen || _sunHoursOpen || GridsPanelHasKeys || FixtureDockHasKeys || !_window.IsActive || _guns[_activeGun].CapturesInput || ClashFreezesPlayer
-                || PathFreezesPlayer;
+                || PathFreezesPlayer || ViewerOrbiting; // viewer round: orbiting, the camera places the player
             if (_pathEditOn)
             {
                 // Round K-B: the path editor flies on its own keys (← / → pick keys there)
@@ -995,7 +1004,7 @@ namespace BimGo.Game
             {
                 _player.FixedUpdate(dt, _window.Input, inputEnabled: !frozen);
             }
-            _portalGun.CheckTeleport(_player, dt);
+            if (!_viewer) { _portalGun.CheckTeleport(_player, dt); }
         }
 
         /// <summary>
@@ -1009,6 +1018,10 @@ namespace BimGo.Game
                 Camera.Position = _tourPose.Eye;
                 Camera.Yaw = _tourPose.Yaw;
                 Camera.Pitch = _tourPose.Pitch;
+            }
+            else if (ViewerOrbiting)
+            {
+                UpdateViewerCamera(dt); // viewer round: the orbit camera (the player follows it)
             }
             else
             {
@@ -1028,9 +1041,19 @@ namespace BimGo.Game
         /// </summary>
         private void UpdateAim()
         {
-            _aim.Origin = Camera.Position;
-            _aim.Direction = Camera.Forward;
-            _aim.HasHit = Pick(Camera.Position, Camera.Forward, PICK_DISTANCE, out _aim.Hit);
+            if (_viewer && !_window.IsCaptured)
+            {
+                // Viewer round: tools aim at the cursor (nothing under the toolbar and panels)
+                Vector2 mouse = _window.Input.MousePosition;
+                ScreenRay(mouse, out _aim.Origin, out _aim.Direction);
+                _aim.HasHit = !_paused && !ViewerOverUi(mouse) && Pick(_aim.Origin, _aim.Direction, ViewerOrbiting ? 5000f : PICK_DISTANCE, out _aim.Hit);
+            }
+            else
+            {
+                _aim.Origin = Camera.Position;
+                _aim.Direction = Camera.Forward;
+                _aim.HasHit = Pick(Camera.Position, Camera.Forward, PICK_DISTANCE, out _aim.Hit);
+            }
             UpdateGridHover(); // grids round B: the hovered grid node (and the Measure gun's snap to it)
         }
 
@@ -1049,6 +1072,14 @@ namespace BimGo.Game
 
             InputState input = _window.Input;
             if (_wheelOpen) { return; }
+            if (_viewer && !_window.IsCaptured)
+            {
+                // Viewer round: a click on the model (UpdateViewer), now that the aim follows the cursor
+                if (_viewerFire == 1) { active.OnPrimary(_aim); }
+                else if (_viewerFire == 2) { active.OnSecondary(_aim); }
+                _viewerFire = 0;
+                return;
+            }
             if (_window.IsCaptured)
             {
                 if (input.Pressed(InputAction.GunPrimary)) { active.OnPrimary(_aim); }
@@ -1115,7 +1146,8 @@ namespace BimGo.Game
         /// True while a mode that works with a free cursor is on (sun panel, sun hours study, photo mode, the section box
         /// editor, clash mode): resuming must not capture the mouse then.
         /// </summary>
-        private bool CursorModeOpen => _sunPanelOpen || _sunHoursOpen || _photoOpen || _sectionOpen || _clashModeOn || _gridsPanelOpen || _pathEditOn || _fixtureDockOpen;
+        private bool CursorModeOpen => _sunPanelOpen || _sunHoursOpen || _photoOpen || _sectionOpen || _clashModeOn || _gridsPanelOpen || _pathEditOn || _fixtureDockOpen
+            || _viewer; // viewer round: the cursor is always free there
 
         /// <summary>
         /// Pauses (releases the mouse) or resumes (captures it again, unless a free-cursor mode is on: C-B1 fixes, the

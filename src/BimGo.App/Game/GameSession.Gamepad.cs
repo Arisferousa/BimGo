@@ -44,6 +44,7 @@ namespace BimGo.Game
             if (FixtureDockHasKeys) { return InputCatalog.SIT_FIXTURE; } // Round Y-C2
             if (_pathEditOn) { return InputCatalog.SIT_PATH; } // Round K-B
             if (_clashModeOn) { return InputCatalog.SIT_CLASHES; }
+            if (_viewer) { return InputCatalog.SIT_VIEWER; } // viewer round: its tools are toolbar buttons, not gun keys
             Guns.Gun gun = _guns[_activeGun];
             if (gun.CapturesInput) { return InputCatalog.SIT_HOLDING; }
             if (_unarmed) { return InputCatalog.SIT_WALKING; }

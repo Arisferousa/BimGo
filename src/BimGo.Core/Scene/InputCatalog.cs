@@ -669,6 +669,7 @@ namespace BimGo.Scene
         public const string SIT_PATH = "Path editor";
         public const string SIT_FIXTURE = "Fixture light profile";
         public const string SIT_KIOSK = "Kiosk mode";
+        public const string SIT_VIEWER = "Simple viewer";
 
         /// <summary>Round Z-C: how long the kiosk exit key is held to leave kiosk mode (seconds).</summary>
         public const float KIOSK_EXIT_HOLD_SECONDS = 2f;
@@ -885,6 +886,25 @@ namespace BimGo.Scene
                     H("Jump · crouch", InputAction.Jump, InputAction.Crouch),
                     H("Run", InputAction.Run),
                     H("Leave kiosk mode (hold)", InputAction.KioskExit)
+                }),
+                // Viewer round: a file made for the simple viewer (GameSession.UpdateViewer). The mouse orbits, pans and zooms
+                // (fixed buttons, like the panels' clicks) and the toolbar has the tools; walking, the move keys walk and a drag looks.
+                // Mouse and keyboard only: the gamepad walks and looks (A jumps), its menu click isn't live here
+                new InputSituation(SIT_VIEWER, Array.Empty<InputContext>(), new[]
+                {
+                    InputAction.MoveForward, InputAction.MoveBack, InputAction.MoveLeft, InputAction.MoveRight, InputAction.Run, InputAction.Jump,
+                    InputAction.LookUp, InputAction.LookDown, InputAction.LookLeft, InputAction.LookRight, InputAction.DragLook,
+                    InputAction.GoHome, InputAction.Save, InputAction.Fullscreen, InputAction.Screenshot, InputAction.Click
+                }, new[]
+                {
+                    HK("Orbit · pan · zoom", "LMB · RMB · WHEEL", InputAction.Click),
+                    move,
+                    dragLook,
+                    H("Run · jump (walking)", InputAction.Run, InputAction.Jump),
+                    H("Home view", InputAction.GoHome),
+                    H("Save", InputAction.Save),
+                    H("Fullscreen · screenshot", InputAction.Fullscreen, InputAction.Screenshot),
+                    H("Tools and menus", InputAction.Click)
                 }),
                 new InputSituation(SIT_VIDEO, Array.Empty<InputContext>(), new[] { InputAction.Fullscreen }, new[]
                 {

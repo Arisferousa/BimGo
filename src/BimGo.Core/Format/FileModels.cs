@@ -62,6 +62,40 @@ namespace BimGo.Format
 
         /// <summary>Sizes, for quick listing without reading the rest.</summary>
         public CountsDto Counts { get; set; } = new();
+
+        /// <summary>
+        /// Viewer round: a file made for the simple viewer (opens with the clean toolbar, orbiting), or null for the
+        /// full walkthrough. Optional: older readers ignore it.
+        /// </summary>
+        public ViewerDto Viewer { get; set; }
+    }
+
+    /// <summary>
+    /// manifest.json <c>viewer</c> (viewer round): how a file made for the simple viewer opens. Written only when
+    /// <see cref="Open"/> is true.
+    /// </summary>
+    public sealed class ViewerDto
+    {
+        /// <summary>True: BimGo opens the file in the simple viewer (its menu can still switch to the full walkthrough).</summary>
+        public bool Open { get; set; } = true;
+
+        /// <summary>How the viewer starts: <see cref="ViewerStart.ORBIT"/> (default) or <see cref="ViewerStart.WALK"/>.</summary>
+        public string Start { get; set; } = ViewerStart.ORBIT;
+
+        /// <summary>A copy (unknown start values read as orbit).</summary>
+        public ViewerDto Copy() => new() { Open = Open, Start = Start == ViewerStart.WALK ? ViewerStart.WALK : ViewerStart.ORBIT };
+    }
+
+    /// <summary>
+    /// Values of <see cref="ViewerDto.Start"/>.
+    /// </summary>
+    public static class ViewerStart
+    {
+        /// <summary>Around the model from above: drag to orbit, scroll to zoom.</summary>
+        public const string ORBIT = "orbit";
+
+        /// <summary>First person at the saved home.</summary>
+        public const string WALK = "walk";
     }
 
     /// <summary>

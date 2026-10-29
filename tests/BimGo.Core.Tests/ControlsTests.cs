@@ -803,7 +803,8 @@ namespace BimGo.Tests
                 InputCatalog.SIT_WALKING, InputCatalog.SIT_SCAN, InputCatalog.SIT_MEASURE, InputCatalog.SIT_COMMENT, InputCatalog.SIT_DEMOLISH,
                 InputCatalog.SIT_GIZMO, InputCatalog.SIT_HOLDING, InputCatalog.SIT_MARKUP, InputCatalog.SIT_SECTION, InputCatalog.SIT_PHOTO,
                 InputCatalog.SIT_SUN_PANEL, InputCatalog.SIT_STUDY, InputCatalog.SIT_TOUR, InputCatalog.SIT_CLASHES, InputCatalog.SIT_GRIDS,
-                InputCatalog.SIT_VIDEO, InputCatalog.SIT_START, InputCatalog.SIT_PAUSE, InputCatalog.SIT_PATH, InputCatalog.SIT_KIOSK
+                InputCatalog.SIT_VIDEO, InputCatalog.SIT_START, InputCatalog.SIT_PAUSE, InputCatalog.SIT_PATH, InputCatalog.SIT_KIOSK,
+                InputCatalog.SIT_VIEWER
             })
             {
                 Assert.IsNotNull(InputCatalog.Situation(name), $"no situation called {name}");
