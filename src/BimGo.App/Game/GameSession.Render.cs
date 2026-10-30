@@ -214,6 +214,7 @@ namespace BimGo.Game
             // ---- Sun lighting and shadow maps (only changed cascades re-render). Clash pictures (C-B2) other than the real
             // model view draw without the sun, so they leave the cascades as the main view needs them
             _renderer.Lighting = FrameLighting();
+            _renderer.CutoutsWanted = _realistic && !_whitecard; // materials round: holes cut in the Realistic mode (every pass alike)
             if (!photo) { timers.Stage(GpuTimers.SHADOWS); }
             bool clashShotUnlit = _clashShot && _clashView != CLASH_VIEW_REAL;
             string shadowError = clashShotUnlit ? null : _renderer.UpdateShadows(Camera, Scene.Bounds, ShadowSceneKey(), _groupVisible, Dynamics, _whitecard,
