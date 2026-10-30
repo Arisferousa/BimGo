@@ -145,6 +145,12 @@ Rendering and geometry
 - Shadows: shadow mapping with percentage-closer filtering (W. Reeves,
   D. Salesin, R. Cook, 1987).
 - Section caps: the stencil-buffer capping technique for clipping planes.
+- IFC import, solid booleans (openings, half-space clipping): binary space
+  partitioning CSG after Evan Wallace's csg.js (MIT,
+  https://github.com/evanw/csg.js), rewritten by BimGo in C# without recursion.
+- Polygon triangulation: ear clipping with holes bridged into the outline
+  (D. Eberly, "Triangulation by Ear Clipping", Geometric Tools); B-spline
+  curves by de Boor's algorithm.
 
 Clash detection
 - Triangle / triangle intersection: T. Moller, "A Fast Triangle-Triangle
@@ -180,6 +186,8 @@ Windows interfaces
 File formats
 - BCF 2.1 (BCF-XML), buildingSMART International: comment import / export.
 - IFC GUID compressed 22-character encoding, buildingSMART International.
+- IFC (ISO 16739: IFC2x3, IFC4, IFC4.3) in STEP physical files (ISO 10303-21),
+  buildingSMART International: read by BimGo's own parser (IFC import).
 - Google Photo Sphere XMP metadata (GPano) for 360-degree panoramas.
 - PNG and JPEG via the .NET / Windows imaging components.
 - MP4 (ISO base media file format) with H.264 / AVC video, written by Windows

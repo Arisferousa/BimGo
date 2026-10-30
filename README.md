@@ -5,6 +5,7 @@ BimGo turns a Revit model into an FPS-style, first-person walkthrough: collision
 
 - **BimGo for Revit**: a slim add-in (extractor and session bridge). **Go** opens the model in the app as a *live session*: edits go straight back into Revit, Scan → R selects in Revit, and changes made in Revit prompt a refresh (F5). **Export .bimgo** writes a standalone file.
 - **BimGo** (`BimGo.exe`): joins live sessions, or opens `.bimgo` files without Revit, keeping edits in the file's journal (undo / redo) to **push** into the Revit model later.
+- **IFC import** (for **Revit LT**, which can't run add-ins, or any other IFC): open or drop an `.ifc` / `.ifczip` exported from Revit (File → Export → IFC) and walk it straight away; save it as a `.bimgo` to keep comments, bookmarks and edits.
 
 Publisher **Aussie BIM Guru** · licence **MIT No Attribution (MIT-0)**: use it for anything, no credit required, no warranty. Autodesk and Revit are registered trademarks of Autodesk, Inc.; BimGo is an independent project, not affiliated with, sponsored by or endorsed by Autodesk ("for Revit" describes compatibility only).
 
@@ -24,9 +25,11 @@ Publisher **Aussie BIM Guru** · licence **MIT No Attribution (MIT-0)**: use it 
 - **Review:** section box and plane with caps, colour profiles (by value, parameter ranges or search set), room data overlay with target checks, grids and levels with intersections, walkthrough-only hiding and isolating.
 - **Clash detection:** search sets, hard and clearance tests, clash mode with a docked list, statuses across runs, groups, comments / BCF, HTML and XML reports.
 - **Media:** photo mode (hi-res stills, 360° panoramas), bookmark tours, keyframed camera paths with a 3D editor, MP4 video, sun time-lapses, batch stills, entourage billboards (trees, people, cars; or Revit planting / entourage swapped for them).
+- **Simple viewer:** SAVE VIEWER COPY… writes a `.bimgo` that opens with a clean toolbar for someone who only needs to look: orbit (drag, right-drag, wheel), walk, measure, section box, comments, saved views and tour, sun and shadows; its menu can still switch to the full walkthrough. Comments made in it come back in the same file.
 - **Presentation:** **kiosk mode** (a desktop shortcut opens a saved model fullscreen for visitors: walk, fly and look only; an idle tour after two minutes; Ctrl+Shift+Q held to leave).
 - **Controls:** every key rebindable (keyboard, mouse buttons, wheel), Xbox-style and generic gamepads, a context-sensitive F1 sheet, a gun wheel.
 - **Linked models**, active-view-only extraction, phases (existing / new), metric or imperial units, quality profiles.
+- **IFC import** (IFC2x3 / IFC4 / IFC4.3, `.ifc` or `.ifczip`): openings cut, clipped walls clipped, colours from the file's styles, storeys as levels, spaces as rooms, grids, the site's location for the sun, every property set in Scan, Revit's RPC planting swapped for billboards.
 
 ## Install
 
@@ -44,6 +47,7 @@ Download `BimGo-Setup-<version>.exe` from [Releases](https://github.com/aussieBI
 | Arguments | What it does |
 |---|---|
 | `model.bimgo` | Opens the file (a running BimGo takes it over and opens it when the current model closes) |
+| `model.ifc` / `model.ifczip` | Imports the IFC file as a new, unsaved model (as above) |
 | `--kiosk model.bimgo` | Opens the file in kiosk mode (a running BimGo is only brought forward) |
 | `--session <id>` | Joins a live Revit session (what Go runs; the id is the folder name under `%LocalAppData%\BimGo\Sessions`) |
 | `--register` / `--unregister` [`--quiet`] | Adds or removes the `.bimgo` association and the Start-menu shortcut for the current user (the installer runs these) |
@@ -74,6 +78,7 @@ Every key, mouse button and wheel notch can be rebound (**Esc → CONTROLS**), a
 - Studies (sun hours, daylight, lux) are early design indicators, not compliance calculations.
 - Clash detection: hard depth is an estimate, an element wholly inside another isn't reported, closed solids are assumed, 10,000 clashes per test.
 - Video has no sound. Camera paths and glides fly through walls (the path editor marks where).
+- IFC import: nothing goes back into the IFC or a Revit model (push needs Revit); curved advanced B-reps (IFC4 Design Transfer View) are left out: export with IFC2x3 Coordination View 2.0 or IFC4 Reference View; no materials' textures (colours only); reinforcement isn't imported.
 - Kiosk mode locks BimGo, not Windows (the Windows key, Alt+Tab and Task Manager still work).
 
 The full list, by area, is in [DEVELOPING.md](DEVELOPING.md#known-limitations).

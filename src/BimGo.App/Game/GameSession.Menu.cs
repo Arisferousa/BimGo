@@ -474,6 +474,11 @@ namespace BimGo.Game
                 BuildControlsPanel();
                 return;
             }
+            if (_viewer)
+            {
+                BuildViewerMenu(); // viewer round: the simple viewer's own short menu
+                return;
+            }
 
             FontAtlas f = _ui.Atlas;
             InputState input = _window.Input;
@@ -523,7 +528,7 @@ namespace BimGo.Game
             bool texturesButton = HasTexturePanel;
             bool libraryButton = HasLibrary;
             bool roomsButton = Scene.Rooms.Length > 0;
-            int sessionButtons = 4 + (IsFileMode ? 4 : 1) + (_live != null ? 2 : 0); // + CONTROLS (input round B2), + Revit views (X-E), + kiosk shortcut (Z-C)
+            int sessionButtons = 5 + (IsFileMode ? 4 : 1) + (_live != null ? 2 : 0); // + CONTROLS (input round B2), + Revit views (X-E), + kiosk shortcut (Z-C), + viewer copy
             int reviewButtons = 7 + (hiddenThings > 0 ? 1 : 0) + (texturesButton ? 1 : 0) + (libraryButton ? 1 : 0) + (roomsButton ? 1 : 0);
             int rows = twoStacks ? Math.Max(sessionButtons, reviewButtons) : sessionButtons + reviewButtons;
             float step = Math.Clamp((endY - S(12) - buttonsTop) / rows, S(32), S(44));
@@ -559,6 +564,14 @@ namespace BimGo.Game
                 if (MenuButton(f, x, y, stackW, "SAVE AS .BIMGO…", false, false, height: buttonH, compact: true)) { Save(saveAs: true); return; }
                 y += step;
             }
+
+            // Viewer round: a copy that opens in the simple viewer (a viewer file goes back to it instead)
+            if (_viewerFile)
+            {
+                if (MenuButton(f, x, y, stackW, "SIMPLE VIEWER", false, false, height: buttonH, compact: true)) { EnterViewer(fromWalkthrough: true); SetPaused(false); return; }
+            }
+            else if (MenuButton(f, x, y, stackW, "SAVE VIEWER COPY…", false, false, height: buttonH, compact: true)) { SaveViewerCopy(); return; }
+            y += step;
 
             // Round X-E: Revit views from here (live sessions), as Shift+F5 / Alt+F5
             if (_live != null)

@@ -7,7 +7,7 @@ detail.
 ![BimGo walkthrough](images/home-hero.gif)
 
 ## Start here
-- [Getting started](getting-started.md): install, BimGo for Revit, your first walkthrough
+- [Getting started](getting-started.md): install, BimGo for Revit, your first walkthrough, IFC files from Revit LT
 - [Moving around](moving-around.md): walking, flying, levels, bookmarks, the menu
 - [Controls](controls.md): every default key, the guns, the gamepad
 
@@ -19,6 +19,7 @@ detail.
 - [Lighting, sun and studies](studies.md): sun and shadows, sun hours, daylight
 - [Photos, tours, paths and video](media.md)
 - [Clash detection](clash-detection.md)
+- [Simple viewer](simple-viewer.md): a copy that opens with a clean toolbar (orbit, measure, section box, comments, views)
 - [Kiosk mode](kiosk-mode.md): a model on a screen for visitors
 
 ## Reference

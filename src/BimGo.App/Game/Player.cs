@@ -59,6 +59,9 @@ namespace BimGo.Game
         /// <summary>Feet position (physics).</summary>
         public Vector3 Feet => Controller.Feet;
 
+        /// <summary>Viewer round: walking and flying speeds are multiplied by this (the simple viewer's walk faster / slower; 1 elsewhere).</summary>
+        public float SpeedScale { get; set; } = 1f;
+
         #endregion
 
         /// <summary>
@@ -192,7 +195,7 @@ namespace BimGo.Game
                 var lookForward = new Vector3(cp * cy, cp * sy, sp);
                 Vector3 move = lookForward * forward + right * strafe + Vector3.UnitZ * ((up ? 1f : 0f) - (down ? 1f : 0f));
                 if (move.LengthSquared() > 1f) { move = Vector3.Normalize(move); }
-                Controller.Feet += move * (run ? FLY_FAST_SPEED : FLY_SPEED) * dt;
+                Controller.Feet += move * (run ? FLY_FAST_SPEED : FLY_SPEED) * SpeedScale * dt;
                 Controller.Velocity = Vector3.Zero;
                 _jumpQueued = false;
             }
@@ -200,7 +203,7 @@ namespace BimGo.Game
             {
                 Vector3 wish = flatForward * forward + right * strafe;
                 if (wish.LengthSquared() > 1f) { wish = Vector3.Normalize(wish); }
-                float speed = Controller.Crouching ? CROUCH_SPEED : run ? RUN_SPEED : WALK_SPEED;
+                float speed = (Controller.Crouching ? CROUCH_SPEED : run ? RUN_SPEED : WALK_SPEED) * SpeedScale;
                 Controller.Step(dt, wish * speed, _jumpQueued, down);
                 _jumpQueued = false;
             }

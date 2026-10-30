@@ -186,6 +186,11 @@ namespace BimGo.Shell
         public static RecentInfo For(string path)
         {
             if (!File.Exists(path)) { return new RecentInfo { Exists = false, Title = System.IO.Path.GetFileName(path), Detail = "File not found" }; }
+            if (IfcImporter.HasExtension(path))
+            {
+                // No manifest or thumbnail: it's imported again each time it opens
+                return new RecentInfo { Exists = true, Title = System.IO.Path.GetFileNameWithoutExtension(path), Detail = "IFC · imported when opened" };
+            }
 
             ManifestDto manifest = BimGoReader.ReadManifest(path, out string error);
             if (manifest == null) { return new RecentInfo { Exists = true, Title = System.IO.Path.GetFileName(path), Detail = error ?? "Unreadable" }; }

@@ -188,6 +188,7 @@ namespace BimGo.Format
                     Visibility = visibility,
                     CreatedUtc = manifest.CreatedUtc,
                     Kind = manifest.Kind,
+                    Viewer = manifest.Viewer?.Open == true ? manifest.Viewer.Copy() : null, // viewer round
                     Path = path,
                     ReadFormatVersion = manifest.FormatVersion,
                     Thumbnail = ReadThumbnail(zip),

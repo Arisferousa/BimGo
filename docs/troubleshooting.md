@@ -25,6 +25,15 @@ The menu's DISPLAY tab → *Performance details* shows where the time goes.
 
 BimGo for Revit and the BimGo app come from different releases. Run the latest setup so both match.
 
+## An IFC file is missing geometry, or won't open
+
+- The start notice says when some geometry was left out; the log (`BimGo.App.log`) lists which IFC types. Curved
+  surfaces in *IFC4 Design Transfer View* exports aren't read: export again with **IFC2x3 Coordination View 2.0** or
+  **IFC4 Reference View**.
+- Reinforcement (rebar) isn't imported, and nor are spaces as solids (they become rooms).
+- "has no 3D geometry BimGo can show": the export had no 3D elements (check the export setup's view and phase).
+- Large files take a while to import; Esc cancels. Save the result as a `.bimgo`: it opens much faster than the IFC.
+
 ## Where are the logs?
 
 `%LocalAppData%\BimGo\Logs\BimGo.App.log` (the app) and `BimGo.Revit.log` (the add-in). Include them when reporting a

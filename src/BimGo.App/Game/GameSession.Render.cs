@@ -149,6 +149,7 @@ namespace BimGo.Game
                 // A text box (comment, bookmark or study name) takes the clicks too: panels behind it stay still
                 if (IsEditingComment) { _window.Input.ConsumeClicks(); }
                 if (_uiHidden) { BuildHiddenHud(width); }
+                else if (_viewer) { BuildViewerHud(width, height); } // viewer round: the toolbar instead of the HUD
                 else { BuildHud(mapX, mapY); }
                 if (IsEditingComment) { BuildCommentEditor(); }
                 if (_welcomeOpen) { BuildWelcome(width, height); } // Round Z-E

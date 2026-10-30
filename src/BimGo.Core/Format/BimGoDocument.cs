@@ -62,6 +62,12 @@ namespace BimGo.Format
         /// </summary>
         public byte[] Clashes { get; set; }
 
+        /// <summary>
+        /// Viewer round: the file opens in the simple viewer (manifest <c>viewer</c>), or null for the full walkthrough.
+        /// Optional: older readers ignore it.
+        /// </summary>
+        public ViewerDto Viewer { get; set; }
+
         /// <summary>When the geometry was extracted (UTC); kept across saves.</summary>
         public DateTime CreatedUtc { get; init; }
 

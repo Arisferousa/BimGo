@@ -35,6 +35,9 @@ namespace BimGo.Scene
         /// <summary>Round Z-C: kiosk mode (opened from a kiosk shortcut): visitors walk, fly and look; this leaves it.</summary>
         Kiosk,
 
+        /// <summary>Viewer round: the simple viewer's tools (a file saved for the simple viewer).</summary>
+        Viewer,
+
         /// <summary>Keys that can't be rebound (Esc, menus and panels' mouse, Alt+F4). Listed for reference and clash checks.</summary>
         Fixed
     }
@@ -115,6 +118,9 @@ namespace BimGo.Scene
 
         // Kiosk mode (Round Z-C)
         KioskExit,
+
+        // The simple viewer (viewer round): its tools, pass through walls, walking speed
+        ViewerMeasure, ViewerSection, ViewerComment, ViewerViews, ViewerSun, ViewerGhost, ViewerFaster, ViewerSlower,
 
         // Fixed (not rebindable)
         Back, CloseWindow, Click, DragLook, FineAdjust, PhotoZoom, OpenFile, PadClick, PadMenuBack
@@ -454,6 +460,16 @@ namespace BimGo.Scene
             Add(InputAction.PathUndo, c, "Undo the last path change", P, "Ctrl+Z");
 
             // Kiosk mode (Round Z-C): held, so a visitor mashing keys doesn't fall out of it
+            // The simple viewer (viewer round): one key per toolbar tool; walking, pass through walls and the speed
+            Add(InputAction.ViewerMeasure, InputContext.Viewer, "Measure", P, "M");
+            Add(InputAction.ViewerSection, InputContext.Viewer, "Section box", P, "X");
+            Add(InputAction.ViewerComment, InputContext.Viewer, "Comments", P, "C");
+            Add(InputAction.ViewerViews, InputContext.Viewer, "Views and tour", P, "B");
+            Add(InputAction.ViewerSun, InputContext.Viewer, "Sun and shadows", P, "O");
+            Add(InputAction.ViewerGhost, InputContext.Viewer, "Pass through walls (walking)", P, "G");
+            Add(InputAction.ViewerFaster, InputContext.Viewer, "Walk faster", R, "=");
+            Add(InputAction.ViewerSlower, InputContext.Viewer, "Walk slower", R, "-");
+
             Add(InputAction.KioskExit, InputContext.Kiosk, "Leave kiosk mode (hold " + KIOSK_EXIT_HOLD_SECONDS.ToString("0", System.Globalization.CultureInfo.InvariantCulture) + " s)", ActionKind.Hold, "Ctrl+Shift+Q");
 
             // Pause menu (sky round)
@@ -596,7 +612,7 @@ namespace BimGo.Scene
             InputContext.General, InputContext.Movement, InputContext.Guns, InputContext.Tools,
             InputContext.ScanGun, InputContext.MeasureGun, InputContext.CommentGun, InputContext.DemolishGun, InputContext.GizmoGuns,
             InputContext.Holding, InputContext.Markup, InputContext.SectionEditor, InputContext.PhotoMode, InputContext.SunPanel,
-            InputContext.Tour, InputContext.Clashes, InputContext.PauseMenu, InputContext.PathEditor, InputContext.Kiosk, InputContext.Fixed
+            InputContext.Tour, InputContext.Clashes, InputContext.PauseMenu, InputContext.PathEditor, InputContext.Kiosk, InputContext.Viewer, InputContext.Fixed
         };
 
         /// <summary>A group's heading.</summary>
@@ -621,6 +637,7 @@ namespace BimGo.Scene
             InputContext.PauseMenu => "Pause menu",
             InputContext.PathEditor => "Path editor",
             InputContext.Kiosk => "Kiosk mode",
+            InputContext.Viewer => "Simple viewer",
             _ => "Fixed (not rebindable)"
         };
 
@@ -637,6 +654,7 @@ namespace BimGo.Scene
             InputContext.Tour => "While a bookmark tour or a camera path plays (Esc stops it).",
             InputContext.Clashes => "Clash detection's docked list (the clash mode key or Esc leaves): the move keys fly, run speeds up, RMB-drag looks, the wheel scrolls the list.",
             InputContext.PauseMenu => "While the pause menu shows (not in its panels).",
+            InputContext.Viewer => "A file saved for the simple viewer: one key per toolbar tool, and walking, pass through walls and the walking speed (the mouse wheel too).",
             InputContext.Kiosk => "A file opened from a kiosk shortcut: visitors walk, fly and look only (no menus, guns, panels or saving); after two minutes without input the bookmark tour plays. Leaving it goes to the normal walkthrough.",
             InputContext.PathEditor => "The 3D camera path editor (the path editor key, or MEDIA → PATHS → EDIT IN 3D; Esc leaves): free cursor, RMB-drag looks, click a key or a handle, drag the handles; the scrubber at the bottom drives the camera.",
             InputContext.Fixed => "Text boxes also keep Enter, Tab, Backspace, ↑ / ↓, Ctrl+V and Esc. Gamepad in menus and editors: the look stick moves the cursor, the move stick scrolls (menus) or looks (editors); over menus and docks the D-pad moves the focus ring and LB / RB tapped alone switch tabs; A with LB / RB held is a chord, not a click.",
@@ -669,6 +687,7 @@ namespace BimGo.Scene
         public const string SIT_PATH = "Path editor";
         public const string SIT_FIXTURE = "Fixture light profile";
         public const string SIT_KIOSK = "Kiosk mode";
+        public const string SIT_VIEWER = "Simple viewer";
 
         /// <summary>Round Z-C: how long the kiosk exit key is held to leave kiosk mode (seconds).</summary>
         public const float KIOSK_EXIT_HOLD_SECONDS = 2f;
@@ -886,6 +905,30 @@ namespace BimGo.Scene
                     H("Run", InputAction.Run),
                     H("Leave kiosk mode (hold)", InputAction.KioskExit)
                 }),
+                // Viewer round: a file made for the simple viewer (GameSession.UpdateViewer). The mouse orbits, pans and zooms
+                // (fixed buttons, like the panels' clicks) and the toolbar has the tools; walking, the move keys walk and a drag looks.
+                // Mouse and keyboard only: the gamepad walks and looks (A jumps), its menu click isn't live here
+                new InputSituation(SIT_VIEWER, new[] { InputContext.Viewer }, new[]
+                {
+                    InputAction.MoveForward, InputAction.MoveBack, InputAction.MoveLeft, InputAction.MoveRight, InputAction.Run, InputAction.Jump,
+                    InputAction.LookUp, InputAction.LookDown, InputAction.LookLeft, InputAction.LookRight, InputAction.DragLook,
+                    InputAction.GoHome, InputAction.Save, InputAction.Fullscreen, InputAction.Screenshot, InputAction.Click, InputAction.Fly
+                }, new[]
+                {
+                    HK("Orbit · pan · zoom", "LMB · RMB · WHEEL", InputAction.Click),
+                    H("Orbit / walk (drops from where you are)", InputAction.Fly),
+                    H("Measure · section box · comments", InputAction.ViewerMeasure, InputAction.ViewerSection, InputAction.ViewerComment),
+                    H("Views · sun", InputAction.ViewerViews, InputAction.ViewerSun),
+                    H("Pass through walls (walking)", InputAction.ViewerGhost),
+                    HK("Walk slower · faster", "- · = · WHEEL", InputAction.ViewerSlower, InputAction.ViewerFaster),
+                    move,
+                    dragLook,
+                    H("Run · jump (walking)", InputAction.Run, InputAction.Jump),
+                    H("Home view", InputAction.GoHome),
+                    H("Save", InputAction.Save),
+                    H("Fullscreen · screenshot", InputAction.Fullscreen, InputAction.Screenshot),
+                    H("Tools and menus", InputAction.Click)
+                }),
                 new InputSituation(SIT_VIDEO, Array.Empty<InputContext>(), new[] { InputAction.Fullscreen }, new[]
                 {
                     H("Stop recording", InputAction.Back),
@@ -935,10 +978,10 @@ namespace BimGo.Scene
         /// The controls defaults version (polish round P-B). 0: the defaults up to P-A2; 1: P-B's hotkey review; 2: Round
         /// K-A's media panel; 3: Round K-B's path editor; 4: Round X-B3's billboard resize (HoldScale); 5: Round X-E's
         /// Revit views from here (RevitViewNew, RevitViewUpdate); 6: Round Y-A's saved measurements (MeasureShowAll, MeasureExport); 7: Round Y-C2's
-        /// fixture light profile dock (FixtureProfile); 8: Round Z-A's room tags (RoomTags); 9: Round Z-C's kiosk exit (KioskExit). Raise it when a default changes and add the changes to
+        /// fixture light profile dock (FixtureProfile); 8: Round Z-A's room tags (RoomTags); 9: Round Z-C's kiosk exit (KioskExit); 10: the simple viewer's keys (Viewer*). Raise it when a default changes and add the changes to
         /// <see cref="DefaultsChanges"/> (ControlsTests checks the table against the defaults).
         /// </summary>
-        public const int DEFAULTS_VERSION = 9;
+        public const int DEFAULTS_VERSION = 10;
 
         /// <summary>Every default that changed, by version (oldest first). <c>Was</c>: the old binding ("none" for none).</summary>
         public static readonly DefaultsChange[] DefaultsChanges =
@@ -995,7 +1038,17 @@ namespace BimGo.Scene
             new(8, InputAction.RoomTags, true, null),
 
             // Version 9 (Round Z-C): Ctrl+Shift+Q held leaves kiosk mode
-            new(9, InputAction.KioskExit, true, null)
+            new(9, InputAction.KioskExit, true, null),
+
+            // Version 10 (viewer round): the simple viewer's tool keys, pass through walls and the walking speed
+            new(10, InputAction.ViewerMeasure, true, null),
+            new(10, InputAction.ViewerSection, true, null),
+            new(10, InputAction.ViewerComment, true, null),
+            new(10, InputAction.ViewerViews, true, null),
+            new(10, InputAction.ViewerSun, true, null),
+            new(10, InputAction.ViewerGhost, true, null),
+            new(10, InputAction.ViewerFaster, true, null),
+            new(10, InputAction.ViewerSlower, true, null)
         };
 
         /// <summary>The changes made after a version the user saw (empty when it is current or newer).</summary>

@@ -52,3 +52,5 @@ Adding a new picture: put it here, link it from the page as `![What it shows](im
 | `studies-daylight.png` | [studies](../studies.md) | A daylight factor study |
 | `studies-sun-hours.png` | [studies](../studies.md) | A finished sun hours study with the legend |
 | `studies-sun-panel.gif` | [studies](../studies.md) | Sun panel: dragging the time slider, shadows moving |
+| `viewer-orbit.png` | [simple-viewer](../simple-viewer.md) | The simple viewer orbiting a site from above: the toolbar at the bottom, the title top left, the Views popover open |
+| `viewer-copy.png` | [simple-viewer](../simple-viewer.md) | The pause menu with SAVE VIEWER COPY… hovered, or the "viewer copy is saved" message box |

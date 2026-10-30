@@ -176,6 +176,7 @@ namespace BimGo.Format
                 SavedBy = Environment.UserName,
                 Provenance = scene.Provenance ?? new ModelProvenance(),
                 CommentsSidecar = kind == FileKinds.SNAPSHOT ? scene.CommentsPath : null,
+                Viewer = document.Viewer?.Open == true ? document.Viewer.Copy() : null, // viewer round
                 Extraction = new ExtractionDto
                 {
                     EnabledCategories = settings.EnabledCategories?.ToList() ?? new List<string>(),

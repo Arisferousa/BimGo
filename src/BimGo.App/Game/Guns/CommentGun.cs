@@ -85,12 +85,12 @@ namespace BimGo.Game.Guns
         }
 
         /// <summary>
-        /// The visible marker nearest the crosshair, within a few pixels.
+        /// The visible marker nearest the crosshair (the viewer: the cursor), within a few pixels.
         /// </summary>
         private CommentRecord FindHovered()
         {
             FpsCamera camera = Session.Camera;
-            var centre = new Vector2(camera.ViewportWidth * 0.5f, camera.ViewportHeight * 0.5f);
+            Vector2 centre = Session.AimPixel; // the crosshair, or the viewer's cursor
             float limit = S(HOVER_PIXELS);
             CommentRecord best = null;
             float bestDistance = float.MaxValue;

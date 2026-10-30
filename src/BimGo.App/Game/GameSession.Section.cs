@@ -224,7 +224,7 @@ namespace BimGo.Game
             _sectionOpen = false;
             _sectionDrag = -1;
             _window.Input.ReleaseAll();
-            if (!_paused && _window.IsActive && !_clashModeOn) { _window.SetCaptured(true); } // clash mode keeps its cursor
+            if (!_paused && _window.IsActive && !_clashModeOn && !_viewer) { _window.SetCaptured(true); } // clash mode and the viewer keep their cursor
         }
 
         /// <summary>
@@ -233,19 +233,26 @@ namespace BimGo.Game
         private void UpdateSectionEditor(InputState input)
         {
             // (Ctrl+P, clear all cuts, is live here so it doesn't also close the editor: it does nothing in it, as before)
-            if (input.Pressed(InputAction.Back) || input.Pressed(InputAction.SectionBox))
+            if (input.Pressed(InputAction.Back) || input.Pressed(InputAction.SectionBox) || (_viewer && input.Pressed(InputAction.ViewerSection)))
             {
                 CloseSectionEditor();
                 return;
             }
             if (input.Pressed(InputAction.Fullscreen)) { _window.ToggleFullscreen(); }
             if (input.Pressed(InputAction.Screenshot)) { RequestScreenshot(); }
-            if (input.Down(InputAction.DragLook)) { _player.Look(input.MouseDeltaX, input.MouseDeltaY, _sensitivity, _invertY); }
-            PadEditorLook(input);
-
             Vector2 mouse = input.MousePosition;
             bool overPanel = mouse.X >= _sectionPanelRect.X && mouse.X < _sectionPanelRect.X + _sectionPanelRect.Z
                 && mouse.Y >= _sectionPanelRect.Y && mouse.Y < _sectionPanelRect.Y + _sectionPanelRect.W;
+            if (_viewer)
+            {
+                // Viewer round: the viewer's mouse (orbit, pan, zoom) wherever LMB isn't on a handle or dragging one
+                Vector2 delta = mouse - _viewerMouse;
+                _viewerMouse = mouse;
+                ViewerMouse(input, mouse, delta, leftFree: _sectionDrag < 0 && HandleUnder(mouse) < 0);
+                if (_viewerButton != 0 && _sectionDrag < 0) { return; } // orbiting or panning: no handle this frame
+            }
+            else if (input.Down(InputAction.DragLook)) { _player.Look(input.MouseDeltaX, input.MouseDeltaY, _sensitivity, _invertY); }
+            PadEditorLook(input);
 
             if (_sectionDrag >= 0)
             {

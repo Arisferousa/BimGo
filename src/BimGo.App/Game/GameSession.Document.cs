@@ -396,18 +396,21 @@ namespace BimGo.Game
         /// <paramref name="saveAs"/> = false writes back to the open file; in a Revit session it always asks for a
         /// new file (the model itself is already up to date in Revit).
         /// </summary>
+        /// <param name="saveAs">Ask for a file (always in a Revit session).</param>
+        /// <param name="viewerCopy">Viewer round: write a copy that opens in the simple viewer; the open file (path, unsaved
+        /// changes) stays as it is.</param>
         /// <returns>True if saved.</returns>
-        public bool Save(bool saveAs)
+        public bool Save(bool saveAs, bool viewerCopy = false)
         {
             _window.SetCaptured(false);
             _window.Input.ReleaseAll();
 
-            string path = IsFileMode && !saveAs ? DocumentPath : null;
+            string path = IsFileMode && !saveAs && !viewerCopy ? DocumentPath : null;
             if (string.IsNullOrEmpty(path))
             {
-                string suggestedName = (IsFileMode ? Path.GetFileNameWithoutExtension(DocumentName) : SafeFileName(Scene.ModelTitle)) + BimGoFormat.EXTENSION;
-                path = FileDialogs.ShowSave(_window.Handle, IsFileMode ? "Save BimGo model as" : "Save walkthrough as a BimGo model",
-                    BimGoFormat.DIALOG_FILTER, SuggestedFolder(), suggestedName, BimGoFormat.EXTENSION);
+                string suggestedName = (IsFileMode ? Path.GetFileNameWithoutExtension(DocumentName) : SafeFileName(Scene.ModelTitle)) + (viewerCopy ? " (viewer)" : string.Empty) + BimGoFormat.EXTENSION;
+                string title = viewerCopy ? "Save a copy for the simple viewer" : IsFileMode ? "Save BimGo model as" : "Save walkthrough as a BimGo model";
+                path = FileDialogs.ShowSave(_window.Handle, title, BimGoFormat.DIALOG_FILTER, SuggestedFolder(), suggestedName, BimGoFormat.EXTENSION);
                 if (path == null) { return false; }
                 if (!BimGoFormat.HasExtension(path)) { path += BimGoFormat.EXTENSION; }
             }
@@ -431,6 +434,7 @@ namespace BimGo.Game
                 Visibility = ToVisibilitySettings(),
                 Materials = MaterialsChanged ? CurrentMaterials : null, // Textures panel: picked images are embedded
                 Clashes = ClashBytesForSave(), // Round C: as held when clash detection was never switched on
+                Viewer = viewerCopy || _viewerFile ? new ViewerDto { Start = viewerCopy ? ViewerStart.ORBIT : _viewerStart } : null, // viewer round: a viewer file stays one
                 CreatedUtc = _options.Document?.CreatedUtc ?? Scene.Provenance?.ExtractedUtc ?? DateTime.UtcNow,
                 Path = path
             };
@@ -451,7 +455,7 @@ namespace BimGo.Game
                 return false;
             }
 
-            if (IsFileMode)
+            if (IsFileMode && !viewerCopy)
             {
                 DocumentPath = path;
                 if (Source is FileEditSource fileSource) { fileSource.DisplayName = Path.GetFileName(path); }
@@ -460,6 +464,7 @@ namespace BimGo.Game
             _options.OnSaved?.Invoke(path);
 
             Sound.Play(SoundId.Commit);
+            if (viewerCopy) { return true; } // the caller says what was written
             string pending = EditsPending > 0 ? $" ({EditsPending} edit{(EditsPending == 1 ? " was" : "s were")} still waiting for Revit and not included)" : string.Empty;
             Toast($"Saved {Path.GetFileName(path)}{pending}", pending.Length > 0 ? 5f : 2.6f);
             return true;

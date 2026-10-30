@@ -1,14 +1,22 @@
+using BimGo.Format;
 using BimGo.Game;
 
 // The class belongs to the Shell namespace
 namespace BimGo.Shell
 {
     /// <summary>
-    /// Something the app should open: a .bimgo file, or a live Revit session (optionally with the pose to resume).
+    /// Something the app should open: a .bimgo file, an IFC file (imported as a new, unsaved model), or a live Revit session
+    /// (optionally with the pose to resume).
     /// </summary>
     internal sealed class OpenTarget
     {
-        /// <summary>A .bimgo path (file targets).</summary>
+        /// <summary>The Open dialog's filter: BimGo models and IFC files (Revit LT exports IFC; it can't run the add-in).</summary>
+        public const string OPEN_FILTER = "BimGo or IFC model (*.bimgo;*.ifc;*.ifczip)|*.bimgo;*.ifc;*.ifczip|BimGo model (*.bimgo)|*.bimgo|IFC model (*.ifc;*.ifczip)|*.ifc;*.ifczip|All files (*.*)|*.*";
+
+        /// <summary>True for a file the app opens: a .bimgo, or an .ifc / .ifczip to import.</summary>
+        public static bool CanOpen(string path) => BimGoFormat.HasExtension(path) || IfcImporter.HasExtension(path);
+
+        /// <summary>A .bimgo or IFC path (file targets).</summary>
         public string Path { get; init; }
 
         /// <summary>A session id (live targets).</summary>

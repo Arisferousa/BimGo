@@ -11,7 +11,8 @@ namespace BimGo.Shell
 {
     /// <summary>
     /// The app: one window that alternates between the home screen and walkthroughs, all on the main thread.
-    /// A walkthrough runs on a .bimgo file (edits go to its journal) or on a live Revit session (edits go to Revit).
+    /// A walkthrough runs on a .bimgo file (edits go to its journal), on an IFC file imported as a new unsaved model (saved
+    /// as a .bimgo), or on a live Revit session (edits go to Revit).
     ///
     /// Closing the window quits (after any unsaved-changes prompt); Close model returns to the home screen.
     /// While walking: dropped / double-clicked files are queued until the model is closed; a Go from Revit asks
@@ -104,38 +105,43 @@ namespace BimGo.Shell
         #region Files
 
         /// <summary>
-        /// Opens and walks a .bimgo file.
+        /// Opens and walks a .bimgo file, or imports and walks an IFC file.
         /// </summary>
         /// <param name="path">The file.</param>
         /// <param name="kiosk">Round Z-C: start in kiosk mode (desktop kiosk shortcut).</param>
         private SessionEndReason RunFile(string path, bool kiosk = false)
         {
-            BimGoDocument document = LoadFile(path);
+            BimGoDocument document = LoadFile(path, out string notice);
             if (document == null) { return SessionEndReason.EndedByUser; }
 
             var options = new SessionOptions
             {
-                Source = new FileEditSource(document.Scene, Path.GetFileName(document.Path)),
+                Source = new FileEditSource(document.Scene, Path.GetFileName(document.Path ?? path)),
                 Document = document,
                 InApp = true,
                 Writer = Writer,
                 OnOpenRequest = QueueFile,
                 OnSaved = saved => _recent.Touch(saved),
                 PollNotices = PollInbox,
-                Kiosk = kiosk
+                Kiosk = kiosk,
+                StartNotice = notice
             };
             return RunSession(document.Scene, options, out _);
         }
 
         /// <summary>
-        /// Reads a file, showing a loading frame; on failure the reason goes to the home screen.
+        /// Reads a file (an IFC file is imported), showing a loading frame; on failure the reason goes to the home screen.
         /// </summary>
-        private BimGoDocument LoadFile(string path)
+        /// <param name="path">The file.</param>
+        /// <param name="notice">For an import, what came in and the reminder to save (the start notice), else null.</param>
+        private BimGoDocument LoadFile(string path, out string notice)
         {
+            notice = null;
             string name = Path.GetFileName(path);
+            if (IfcImporter.HasExtension(path)) { return ImportIfc(path, out notice); }
             if (!BimGoFormat.HasExtension(path))
             {
-                _home.SetMessage($"{name} is not a .bimgo file.", error: true);
+                _home.SetMessage($"{name} is not a .bimgo or .ifc file.", error: true);
                 return null;
             }
 
@@ -155,6 +161,34 @@ namespace BimGo.Shell
 
             _recent.Touch(path);
             _home.SetMessage(null, error: false);
+            return document;
+        }
+
+        /// <summary>
+        /// Imports an IFC file (Revit LT's way in: File → Export → IFC) as a new, unsaved model on a worker thread with a
+        /// progress bar (Esc cancels). Saving it writes a .bimgo; the IFC itself is never changed.
+        /// </summary>
+        private BimGoDocument ImportIfc(string path, out string notice)
+        {
+            notice = null;
+            string name = Path.GetFileName(path);
+            var progress = new Utilities.OperationProgress();
+            progress.Begin("Reading the IFC file", 0.0, 1.0);
+            LaunchSettings settings = LaunchSettings.LoadOrDefault();
+            string error = null;
+            IfcImportSummary summary = null;
+            BimGoDocument document = ProgressScreen.Run(_window, _ui, $"Importing {name}", progress,
+                () => IfcImporter.Import(path, settings, out error, out summary, progress));
+            if (document == null)
+            {
+                bool cancelled = progress.CancelRequested;
+                _home.SetMessage(cancelled ? $"Importing {name} was cancelled." : $"{name} could not be imported: {error}", error: !cancelled);
+                return null;
+            }
+
+            _recent.Touch(path);
+            _home.SetMessage(null, error: false);
+            notice = summary?.Notice();
             return document;
         }
 
@@ -270,7 +304,7 @@ namespace BimGo.Shell
         /// </summary>
         private string QueueFile(string path)
         {
-            if (!BimGoFormat.HasExtension(path)) { return $"{Path.GetFileName(path)} is not a .bimgo file"; }
+            if (!OpenTarget.CanOpen(path)) { return $"{Path.GetFileName(path)} is not a .bimgo or .ifc file"; }
             _openQueue.Enqueue(OpenTarget.File(path));
             return $"{Path.GetFileName(path)} will open when you close this model (Esc → CLOSE MODEL)";
         }
