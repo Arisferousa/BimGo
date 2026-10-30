@@ -48,7 +48,7 @@ namespace BimGo.Game
             (_journal.Revision != _savedJournalRevision || Comments.Revision != _savedCommentRevision || Bookmarks.Revision != _savedBookmarkRevision || SunDirty || VisibilityDirty
              || _materialsRevision != _savedMaterialsRevision || ClashesDirty || (CameraPaths != null && CameraPaths.Revision != _savedPathRevision)
              || (Entourage != null && Entourage.Revision != _savedEntourageRevision) || _lightProfileRevision != _savedLightProfileRevision
-             || MeasurementsDirty);
+             || MeasurementsDirty || SitePhotosDirty);
 
         /// <summary>The document's display name (file name, or the Revit model title).</summary>
         public string DocumentName => IsFileMode && !string.IsNullOrEmpty(DocumentPath) ? Path.GetFileName(DocumentPath) : Scene.ModelTitle;
@@ -66,6 +66,7 @@ namespace BimGo.Game
             _savedEntourageRevision = Entourage?.Revision ?? 0;
             _savedLightProfileRevision = _lightProfileRevision;
             _savedMeasurementRevision = _measurementRevision; // Round Y-A
+            _savedSitePhotoRevision = SitePhotos?.Revision ?? 0; // site photos round
             _savedSunRevision = _sunRevision;
             _savedVisibilityRevision = _visibilityRevision;
             _savedClashRevision = _clashRevision;
@@ -418,7 +419,27 @@ namespace BimGo.Game
             // The start screen's picture of this view (before the progress screen draws over the window)
             byte[] thumbnail = CaptureFileThumbnail() ?? _options.Document?.Thumbnail;
 
-            var document = new BimGoDocument
+            BimGoDocument document = DocumentForSave(path, thumbnail, viewerCopy);
+            string kind = IsFileMode ? FileKinds.SAVE : FileKinds.SESSION_SAVE;
+
+            // Written on a worker thread with a progress bar; a cancelled save leaves the file on disk untouched
+            var progress = new Utilities.OperationProgress();
+            progress.Begin("Writing the .bimgo file", 0.0, 1.0);
+            string error = null;
+            bool written = ProgressScreen.Run(_window, _ui, $"Saving {Path.GetFileName(path)}", progress,
+                () => BimGoWriter.Write(path, document, _options.Writer, kind, out error, progress: progress), cancelOnClose: false);
+            return FinishSave(path, written, error, progress, viewerCopy);
+        }
+
+        /// <summary>
+        /// What a save writes: the snapshot and everything reviewed on it.
+        /// </summary>
+        /// <param name="path">Where it goes.</param>
+        /// <param name="thumbnail">The start screen's picture.</param>
+        /// <param name="viewerCopy">Viewer round: mark it for the simple viewer.</param>
+        private BimGoDocument DocumentForSave(string path, byte[] thumbnail, bool viewerCopy)
+        {
+            return new BimGoDocument
             {
                 Thumbnail = thumbnail,
                 Scene = Scene,
@@ -430,6 +451,8 @@ namespace BimGo.Game
                 EntourageImages = Entourage?.ImagesForSave(),
                 LightProfiles = LightProfilesForSave(), // Round X-D1
                 Measurements = MeasurementsForSave(), // Round Y-A
+                Photos = SitePhotos?.ToDocument(), // site photos round
+                PhotoImages = SitePhotos?.ImagesForSave(),
                 Sun = _sun?.Copy(),
                 Visibility = ToVisibilitySettings(),
                 Materials = MaterialsChanged ? CurrentMaterials : null, // Textures panel: picked images are embedded
@@ -438,14 +461,11 @@ namespace BimGo.Game
                 CreatedUtc = _options.Document?.CreatedUtc ?? Scene.Provenance?.ExtractedUtc ?? DateTime.UtcNow,
                 Path = path
             };
-            string kind = IsFileMode ? FileKinds.SAVE : FileKinds.SESSION_SAVE;
+        }
 
-            // Written on a worker thread with a progress bar; a cancelled save leaves the file on disk untouched
-            var progress = new Utilities.OperationProgress();
-            progress.Begin("Writing the .bimgo file", 0.0, 1.0);
-            string error = null;
-            bool written = ProgressScreen.Run(_window, _ui, $"Saving {Path.GetFileName(path)}", progress,
-                () => BimGoWriter.Write(path, document, _options.Writer, kind, out error, progress: progress), cancelOnClose: false);
+        /// <summary>After the write: the outcome said, the open file's path and saved state updated (not for a copy).</summary>
+        private bool FinishSave(string path, bool written, string error, Utilities.OperationProgress progress, bool viewerCopy)
+        {
             _window.Input.ReleaseAll();
             if (!written)
             {
@@ -468,6 +488,100 @@ namespace BimGo.Game
             string pending = EditsPending > 0 ? $" ({EditsPending} edit{(EditsPending == 1 ? " was" : "s were")} still waiting for Revit and not included)" : string.Empty;
             Toast($"Saved {Path.GetFileName(path)}{pending}", pending.Length > 0 ? 5f : 2.6f);
             return true;
+        }
+
+        /// <summary>
+        /// Site photos round: menu → UPDATE FROM IFC… (the pause menu and the viewer's): imports a newer IFC of the same
+        /// model and saves it into this file in place of the old geometry, keeping everything reviewed on it
+        /// (<see cref="ModelUpdate.WithNewModel"/>: positions are in the model's own coordinates, so they stay put).
+        /// Edits made in the walkthrough and picked textures belong to the old geometry and are left out. Offers the
+        /// IFC the model came from first. The file then reopens where you stand.
+        /// </summary>
+        private void ReloadFromIfc()
+        {
+            if (!IsFileMode) { return; }
+            _window.SetCaptured(false);
+            _window.Input.ReleaseAll();
+
+            if (string.IsNullOrEmpty(DocumentPath))
+            {
+                bool save = FileDialogs.AskYesNo(_window.Handle,
+                    "Updating from IFC saves into this model's .bimgo file, and it has none yet.\n\nSave it as a .bimgo first?", "BimGo update from IFC");
+                if (!save || !Save(saveAs: true)) { return; }
+            }
+            // The IFC it came from (if it's still there), else one picked
+            string ifc = ModelUpdate.SourceIfc(Scene.Provenance);
+            if (ifc != null && File.Exists(ifc))
+            {
+                DateTime saved = File.GetLastWriteTimeUtc(ifc);
+                string when = ModelUpdate.SourceChanged(Scene.Provenance, out _, out _) ? $"saved again {saved.ToLocalTime():d MMM yyyy HH:mm}" : "not changed since it was imported";
+                FileDialogs.Answer answer = FileDialogs.AskYesNoCancel(_window.Handle,
+                    $"Update from {Path.GetFileName(ifc)} ({when})?\n\nYes: that file.\nNo: choose another IFC file.", "BimGo update from IFC");
+                if (answer == FileDialogs.Answer.Cancel) { return; }
+                if (answer == FileDialogs.Answer.No) { ifc = null; }
+            }
+            else
+            {
+                ifc = null;
+            }
+            if (ifc == null)
+            {
+                string folder = Path.GetDirectoryName(ModelUpdate.SourceIfc(Scene.Provenance) ?? DocumentPath);
+                if (!Directory.Exists(folder)) { folder = Path.GetDirectoryName(DocumentPath); }
+                ifc = FileDialogs.ShowOpen(_window.Handle, "Update the model from an IFC file", "IFC model (*.ifc;*.ifczip)|*.ifc;*.ifczip|All files (*.*)|*.*", folder);
+                if (ifc == null) { return; }
+            }
+            if (!IfcImporter.HasExtension(ifc))
+            {
+                FileDialogs.ShowError(_window.Handle, $"{Path.GetFileName(ifc)} is not an .ifc or .ifczip file.", "BimGo update from IFC");
+                return;
+            }
+            string dropped = _journal.Count > 0 ? $"\n\nThe {_journal.Count} edit{(_journal.Count == 1 ? "" : "s")} made in the walkthrough (moves, demolitions…) belong to the old geometry and are left out." : string.Empty;
+            bool go = FileDialogs.AskYesNo(_window.Handle,
+                $"Replace the model in {DocumentName} with {Path.GetFileName(ifc)}?\n\nComments, views, site photos, measurements, the sun, billboards, camera paths and the section box are kept. The file is saved and reopens where you stand.{dropped}",
+                "BimGo update from IFC");
+            if (!go) { return; }
+
+            // Import (Esc cancels; nothing changed then)
+            var progress = new Utilities.OperationProgress();
+            progress.Begin("Reading the IFC file", 0.0, 0.85);
+            LaunchSettings settings = LaunchSettings.LoadOrDefault();
+            string error = null;
+            BimGoDocument imported = null;
+            try
+            {
+                imported = ProgressScreen.Run(_window, _ui, $"Importing {Path.GetFileName(ifc)}", progress,
+                    () => IfcImporter.Import(ifc, settings, out error, out _, progress), cancelOnClose: false);
+            }
+            catch (OperationCanceledException)
+            {
+                imported = null;
+            }
+            _window.Input.ReleaseAll();
+            if (imported?.Scene == null)
+            {
+                bool cancelled = progress.CancelRequested;
+                Sound.Play(cancelled ? SoundId.UiClick : SoundId.Error);
+                Toast(cancelled ? "Update cancelled: nothing changed." : $"{Path.GetFileName(ifc)} could not be imported: {error}", 6f, important: !cancelled);
+                return;
+            }
+
+            // Saved into this file with the review kept, then reopened from it
+            string path = DocumentPath;
+            BimGoDocument document = ModelUpdate.WithNewModel(DocumentForSave(path, _options.Document?.Thumbnail, viewerCopy: false), imported.Scene);
+            progress.Begin("Writing the .bimgo file", 0.85, 1.0);
+            bool written = ProgressScreen.Run(_window, _ui, $"Saving {Path.GetFileName(path)}", progress,
+                () => BimGoWriter.Write(path, document, _options.Writer, FileKinds.SAVE, out error, progress: progress), cancelOnClose: false);
+            if (!FinishSave(path, written, error, progress, viewerCopy: false)) { return; }
+
+            Utilities.Log_Utils.Write($"Reloaded {path} from {ifc} ({imported.Scene.Elements.Length} elements; {_journal.Count} walkthrough edits left out).");
+            if (_options.OnReopen == null)
+            {
+                Toast("Updated and saved: close and open the file again to see the new model", 6f, important: true);
+                return;
+            }
+            _options.OnReopen(path, CapturePose());
+            RequestEnd(SessionEndReason.Switch);
         }
 
         /// <summary>

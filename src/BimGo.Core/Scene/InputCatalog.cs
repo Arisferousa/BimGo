@@ -121,6 +121,7 @@ namespace BimGo.Scene
 
         // The simple viewer (viewer round): its tools, pass through walls, walking speed
         ViewerMeasure, ViewerSection, ViewerComment, ViewerViews, ViewerSun, ViewerGhost, ViewerFaster, ViewerSlower,
+        ViewerPhotos, ViewerGallery, ViewerMap, SiteMap, // site photos round (the site map: everywhere)
 
         // Fixed (not rebindable)
         Back, CloseWindow, Click, DragLook, FineAdjust, PhotoZoom, OpenFile, PadClick, PadMenuBack
@@ -309,6 +310,7 @@ namespace BimGo.Scene
             Add(InputAction.Screenshot, c, "Screenshot", P, "F12");
             Add(InputAction.HideUi, c, "Hide / show the UI", P, "U");
             Add(InputAction.Minimap, c, "Minimap", P, "Tab");
+            Add(InputAction.SiteMap, c, "Site map: open / close", P, "Shift+Tab"); // site photos round
             Add(InputAction.Refresh, c, "Refresh from Revit (live)", P, "F5");
             Add(InputAction.Save, c, "Save", P, "Ctrl+S");
             Add(InputAction.SaveAs, c, "Save as", P, "Ctrl+Shift+S");
@@ -469,6 +471,9 @@ namespace BimGo.Scene
             Add(InputAction.ViewerGhost, InputContext.Viewer, "Pass through walls (walking)", P, "G");
             Add(InputAction.ViewerFaster, InputContext.Viewer, "Walk faster", R, "=");
             Add(InputAction.ViewerSlower, InputContext.Viewer, "Walk slower", R, "-");
+            Add(InputAction.ViewerPhotos, InputContext.Viewer, "Site photos", P, "P");
+            Add(InputAction.ViewerGallery, InputContext.Viewer, "Photo browser", P, "Shift+P");
+            Add(InputAction.ViewerMap, InputContext.Viewer, "Map in the corner: show / hide", P, "Tab");
 
             Add(InputAction.KioskExit, InputContext.Kiosk, "Leave kiosk mode (hold " + KIOSK_EXIT_HOLD_SECONDS.ToString("0", System.Globalization.CultureInfo.InvariantCulture) + " s)", ActionKind.Hold, "Ctrl+Shift+Q");
 
@@ -688,6 +693,8 @@ namespace BimGo.Scene
         public const string SIT_FIXTURE = "Fixture light profile";
         public const string SIT_KIOSK = "Kiosk mode";
         public const string SIT_VIEWER = "Simple viewer";
+        public const string SIT_SITE_PHOTO = "Site photo";
+        public const string SIT_SITE_MAP = "Site map";
 
         /// <summary>Round Z-C: how long the kiosk exit key is held to leave kiosk mode (seconds).</summary>
         public const float KIOSK_EXIT_HOLD_SECONDS = 2f;
@@ -749,7 +756,7 @@ namespace BimGo.Scene
                     H("Section box · photo · media · paths", InputAction.SectionBox, InputAction.PhotoMode, InputAction.MediaPanel, InputAction.PathEditMode),
                     H("Clash mode", InputAction.ClashMode),
                     H("Grids · colour profile · room tags", InputAction.GridsCycle, InputAction.ColourProfile, InputAction.RoomTags),
-                    H("Minimap · hide the UI", InputAction.Minimap, InputAction.HideUi),
+                    H("Minimap · site map · hide the UI", InputAction.Minimap, InputAction.SiteMap, InputAction.HideUi),
                     look,
                     H("Go home · go to bookmark", InputAction.GoHome, InputAction.Bookmark1, InputAction.Bookmark2, InputAction.Bookmark3,
                         InputAction.Bookmark4, InputAction.Bookmark5, InputAction.Bookmark6, InputAction.Bookmark7, InputAction.Bookmark8, InputAction.Bookmark9)
@@ -912,13 +919,16 @@ namespace BimGo.Scene
                 {
                     InputAction.MoveForward, InputAction.MoveBack, InputAction.MoveLeft, InputAction.MoveRight, InputAction.Run, InputAction.Jump,
                     InputAction.LookUp, InputAction.LookDown, InputAction.LookLeft, InputAction.LookRight, InputAction.DragLook,
-                    InputAction.GoHome, InputAction.Save, InputAction.Fullscreen, InputAction.Screenshot, InputAction.Click, InputAction.Fly
+                    InputAction.GoHome, InputAction.Save, InputAction.Fullscreen, InputAction.Screenshot, InputAction.Click, InputAction.Fly,
+                    InputAction.SiteMap
                 }, new[]
                 {
                     HK("Orbit · pan · zoom", "LMB · RMB · WHEEL", InputAction.Click),
                     H("Orbit / walk (drops from where you are)", InputAction.Fly),
                     H("Measure · section box · comments", InputAction.ViewerMeasure, InputAction.ViewerSection, InputAction.ViewerComment),
                     H("Views · sun", InputAction.ViewerViews, InputAction.ViewerSun),
+                    H("Site photos · photo browser", InputAction.ViewerPhotos, InputAction.ViewerGallery),
+                    H("Map: corner · site map", InputAction.ViewerMap, InputAction.SiteMap),
                     H("Pass through walls (walking)", InputAction.ViewerGhost),
                     HK("Walk slower · faster", "- · = · WHEEL", InputAction.ViewerSlower, InputAction.ViewerFaster),
                     move,
@@ -928,6 +938,32 @@ namespace BimGo.Scene
                     H("Save", InputAction.Save),
                     H("Fullscreen · screenshot", InputAction.Fullscreen, InputAction.Screenshot),
                     H("Tools and menus", InputAction.Click)
+                }),
+                // Site photos round: the photo view (GameSession.UpdateSitePhotoView): the wheel fades, the dock's buttons step and
+                // close; adjusting a photo's position, the move keys fly (Space / Ctrl up and down) and RMB-drag looks
+                new InputSituation(SIT_SITE_PHOTO, Array.Empty<InputContext>(), new[]
+                {
+                    InputAction.MoveForward, InputAction.MoveBack, InputAction.MoveLeft, InputAction.MoveRight, InputAction.Run, InputAction.Jump,
+                    InputAction.Crouch, InputAction.LookUp, InputAction.LookDown, InputAction.LookLeft, InputAction.LookRight, InputAction.DragLook,
+                    InputAction.Fullscreen, InputAction.Screenshot, InputAction.Click, InputAction.SiteMap
+                }, new[]
+                {
+                    HK("Fade the photo · the lens (adjusting)", "WHEEL", InputAction.Click),
+                    H("Fly (adjusting)", InputAction.MoveForward, InputAction.MoveLeft, InputAction.MoveBack, InputAction.MoveRight),
+                    H("Up · down (adjusting)", InputAction.Jump, InputAction.Crouch),
+                    dragLook,
+                    H("Fullscreen · screenshot", InputAction.Fullscreen, InputAction.Screenshot),
+                    H("Previous · next photo", InputAction.MoveLeft, InputAction.MoveRight),
+                    H("Site map (expand the corner map)", InputAction.SiteMap),
+                    H("Pin · close (the dock's buttons)", InputAction.Click)
+                }),
+                // Site photos round: the big site map (GameSession.UpdateSiteMap): the mouse pans, zooms and picks photos
+                new InputSituation(SIT_SITE_MAP, Array.Empty<InputContext>(), new[] { InputAction.Fullscreen, InputAction.Screenshot, InputAction.Click, InputAction.SiteMap }, new[]
+                {
+                    HK("Pan · zoom", "DRAG · WHEEL", InputAction.Click),
+                    H("Close the map", InputAction.SiteMap, InputAction.Back),
+                    H("Look through a photo · go there (double-click)", InputAction.Click),
+                    H("Fullscreen · screenshot", InputAction.Fullscreen, InputAction.Screenshot)
                 }),
                 new InputSituation(SIT_VIDEO, Array.Empty<InputContext>(), new[] { InputAction.Fullscreen }, new[]
                 {
@@ -978,10 +1014,10 @@ namespace BimGo.Scene
         /// The controls defaults version (polish round P-B). 0: the defaults up to P-A2; 1: P-B's hotkey review; 2: Round
         /// K-A's media panel; 3: Round K-B's path editor; 4: Round X-B3's billboard resize (HoldScale); 5: Round X-E's
         /// Revit views from here (RevitViewNew, RevitViewUpdate); 6: Round Y-A's saved measurements (MeasureShowAll, MeasureExport); 7: Round Y-C2's
-        /// fixture light profile dock (FixtureProfile); 8: Round Z-A's room tags (RoomTags); 9: Round Z-C's kiosk exit (KioskExit); 10: the simple viewer's keys (Viewer*). Raise it when a default changes and add the changes to
+        /// fixture light profile dock (FixtureProfile); 8: Round Z-A's room tags (RoomTags); 9: Round Z-C's kiosk exit (KioskExit); 10: the simple viewer's keys (Viewer*); 11: its site photo and map keys. Raise it when a default changes and add the changes to
         /// <see cref="DefaultsChanges"/> (ControlsTests checks the table against the defaults).
         /// </summary>
-        public const int DEFAULTS_VERSION = 10;
+        public const int DEFAULTS_VERSION = 11;
 
         /// <summary>Every default that changed, by version (oldest first). <c>Was</c>: the old binding ("none" for none).</summary>
         public static readonly DefaultsChange[] DefaultsChanges =
@@ -1048,7 +1084,13 @@ namespace BimGo.Scene
             new(10, InputAction.ViewerSun, true, null),
             new(10, InputAction.ViewerGhost, true, null),
             new(10, InputAction.ViewerFaster, true, null),
-            new(10, InputAction.ViewerSlower, true, null)
+            new(10, InputAction.ViewerSlower, true, null),
+
+            // Version 11 (site photos round): the simple viewer's site photos, gallery and corner map; the site map everywhere
+            new(11, InputAction.ViewerPhotos, true, null),
+            new(11, InputAction.ViewerGallery, true, null),
+            new(11, InputAction.ViewerMap, true, null),
+            new(11, InputAction.SiteMap, true, null)
         };
 
         /// <summary>The changes made after a version the user saw (empty when it is current or newer).</summary>

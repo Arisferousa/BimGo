@@ -46,6 +46,32 @@ namespace BimGo.Platform
         }
 
         /// <summary>
+        /// Shows an Open dialog that takes several files (site photos).
+        /// </summary>
+        /// <returns>The chosen paths, or null if cancelled.</returns>
+        public static string[] ShowOpenMany(nint owner, string title, string filter, string initialFolder)
+        {
+            try
+            {
+                using var dialog = new WinForms.OpenFileDialog
+                {
+                    Title = title,
+                    Filter = filter,
+                    CheckFileExists = true,
+                    Multiselect = true,
+                    RestoreDirectory = true
+                };
+                if (!string.IsNullOrEmpty(initialFolder) && Directory.Exists(initialFolder)) { dialog.InitialDirectory = initialFolder; }
+                return dialog.ShowDialog(new Owner(owner)) == WinForms.DialogResult.OK && dialog.FileNames.Length > 0 ? dialog.FileNames : null;
+            }
+            catch (Exception ex)
+            {
+                Utilities.Log_Utils.Write($"Open dialog failed: {ex.Message}");
+                return null;
+            }
+        }
+
+        /// <summary>
         /// Shows the Windows colour picker (full, with custom colours).
         /// </summary>
         /// <param name="owner">The owner window.</param>

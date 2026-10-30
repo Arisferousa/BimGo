@@ -31,6 +31,12 @@ namespace BimGo.Format
         /// <summary>Round X-B: the imported billboard pictures by file name (PNG bytes), or null.</summary>
         public Dictionary<string, byte[]> EntourageImages { get; set; }
 
+        /// <summary>Site photos round: the site photos (photos.json), or null when there are none. Optional: older readers ignore it.</summary>
+        public PhotoDocument Photos { get; set; }
+
+        /// <summary>Site photos round: the photos' pictures and thumbnails by file name (JPEG bytes), or null.</summary>
+        public Dictionary<string, byte[]> PhotoImages { get; set; }
+
         /// <summary>Round X-D1: per fixture type light profiles and imported .ies files (light-profiles.json), or null. Optional: older readers ignore it.</summary>
         public LightProfileDocument LightProfiles { get; set; }
 

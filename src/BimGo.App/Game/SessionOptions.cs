@@ -70,6 +70,12 @@ namespace BimGo.Game
         /// </summary>
         public Func<string, string> OnOpenRequest { get; init; }
 
+        /// <summary>
+        /// Site photos round: asks the host to open a file again once this session ends (reload from IFC), with where the
+        /// player stood (internal metres). Null when the host can't (then the user reopens it).
+        /// </summary>
+        public Action<string, SessionPose> OnReopen { get; init; }
+
         /// <summary>Called after the walkthrough was saved to a .bimgo (recent files list).</summary>
         public Action<string> OnSaved { get; init; }
 

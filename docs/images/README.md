@@ -54,3 +54,6 @@ Adding a new picture: put it here, link it from the page as `![What it shows](im
 | `studies-sun-panel.gif` | [studies](../studies.md) | Sun panel: dragging the time slider, shadows moving |
 | `viewer-orbit.png` | [simple-viewer](../simple-viewer.md) | The simple viewer orbiting a site from above: the toolbar at the bottom, the title top left, the Views popover open |
 | `viewer-copy.png` | [simple-viewer](../simple-viewer.md) | The pause menu with SAVE VIEWER COPY… hovered, or the "viewer copy is saved" message box |
+| `site-photos-panel.png` | [site-photos](../site-photos.md) | The SITE PHOTOS panel with a dozen photos (thumbnails, groups, placed / pinned) and the alignment line |
+| `site-photo-view.png` | [site-photos](../site-photos.md) | A photo at about 55 % over the model while adjusting: the lens slider and PIN HERE in the dock |
+| `site-map.png` | [site-photos](../site-photos.md) | The SITE MAP, aerial, zoomed to a few buildings: photo arrows, a group name, room names, a hovered photo's thumbnail |

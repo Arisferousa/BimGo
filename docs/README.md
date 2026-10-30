@@ -19,6 +19,7 @@ detail.
 - [Lighting, sun and studies](studies.md): sun and shadows, sun hours, daylight
 - [Photos, tours, paths and video](media.md)
 - [Clash detection](clash-detection.md)
+- [Site photos](site-photos.md): photos of the site placed by GPS, floating thumbnails, looking through a photo, finding a building among many; updating from a newer IFC
 - [Simple viewer](simple-viewer.md): a copy that opens with a clean toolbar (orbit, measure, section box, comments, views)
 - [Kiosk mode](kiosk-mode.md): a model on a screen for visitors
 

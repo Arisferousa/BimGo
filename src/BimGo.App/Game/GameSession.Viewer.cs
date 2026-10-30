@@ -57,15 +57,16 @@ namespace BimGo.Game
 
         // Toolbar buttons
         private const int VT_HOME = 0, VT_ORBIT = 1, VT_WALK = 2, VT_GHOST = 3, VT_MEASURE = 4, VT_SECTION = 5, VT_COMMENT = 6, VT_VIEWS = 7,
-            VT_SUN = 8, VT_FULLSCREEN = 9, VT_MENU = 10, VT_COUNT = 11;
+            VT_PHOTOS = 8, VT_MAP = 9, VT_SUN = 10, VT_FULLSCREEN = 11, VT_MENU = 12, VT_COUNT = 13;
 
         private static readonly string[] VIEWER_TOOL_LABELS =
         {
-            "Home view", "Orbit", "Walk", "Pass through walls", "Measure", "Section box", "Comments", "Views and tour", "Sun and shadows", "Fullscreen", "Menu"
+            "Home view", "Orbit", "Walk", "Pass through walls", "Measure", "Section box", "Comments", "Views and tour", "Site photos", "Site map",
+            "Sun and shadows", "Fullscreen", "Menu"
         };
 
         // Groups: a gap after these buttons
-        private static readonly bool[] VIEWER_GAP_AFTER = { true, false, false, true, false, false, true, false, true, false, false };
+        private static readonly bool[] VIEWER_GAP_AFTER = { true, false, false, true, false, false, true, false, false, false, true, false, false };
 
         private static readonly KeyHint HINT_VIEWER_WALKING = new(() => $"Move keys walk · drag to look · double-click a floor to go there · {Key(InputAction.Fly)} orbits");
         private static readonly KeyHint HINT_VIEWER_ORBITING = new(() => $"Drag to orbit · right-drag to pan · scroll to zoom · double-click to focus · {Key(InputAction.Fly)} walks");
@@ -82,7 +83,7 @@ namespace BimGo.Game
         private const int VIEWER_SLIDER_TIME = 9101, VIEWER_SLIDER_MONTH = 9102;
 
         /// <summary>The popover above the toolbar: none, views, sun.</summary>
-        private const int VP_NONE = 0, VP_VIEWS = 1, VP_SUN = 2;
+        private const int VP_NONE = 0, VP_VIEWS = 1, VP_SUN = 2, VP_PHOTOS = 3;
 
         private bool _viewer;              // the simple viewer is showing (else the full walkthrough)
         private bool _viewerFile;          // the file opens in the viewer (kept when it is saved)
@@ -92,6 +93,7 @@ namespace BimGo.Game
         private float _viewerSpeed = 1f;   // the walking speed (× normal)
         private bool _viewerFromBar;       // a panel (views, comments) was opened from the toolbar: closing it goes back to the model
         private int _viewerPopup;          // VP_*
+        private bool _viewerPhotosShown;   // the site photos button shows (the file has photos in the model; set as the bar is drawn)
         private float _viewerHintFrom;     // when the mode hint came back (clock)
 
         // The orbit camera: a free pose (eye, yaw, pitch) turned about a pivot that each drag picks
@@ -143,7 +145,15 @@ namespace BimGo.Game
         /// <summary>True when a window pixel is over the viewer's UI (toolbar, popover, tool panel, title, section dock).</summary>
         private bool ViewerOverUi(Vector2 p)
         {
-            if (Inside(_viewerBarRect, p) || Inside(_viewerTitleRect, p)) { return true; }
+            if (_unarmed && SiteThumbAt(p) >= 0) { return true; } // a site photo's thumbnail (a tool armed: clicks go to the model)
+            return ViewerOverPanels(p);
+        }
+
+        /// <summary>True when a window pixel is over the toolbar, the title, the popover, the tool panel or the section dock.</summary>
+        private bool ViewerOverPanels(Vector2 p)
+        {
+            if (Inside(_viewerBarRect, p) || Inside(_viewerTitleRect, p) || Inside(_viewerMapRect, p)) { return true; }
+            if (_dropdown != null) { return true; } // an open dropdown takes every click
             if (_viewerPopup != VP_NONE && Inside(_viewerPopupRect, p)) { return true; }
             if (!_unarmed && Inside(_viewerPanelRect, p)) { return true; }
             return _sectionOpen && Inside(_sectionPanelRect, p);
@@ -189,6 +199,12 @@ namespace BimGo.Game
 
             if (fromWalkthrough)
             {
+                if (_player.Flying) { OrbitFromPlayer(); }
+                else { SetViewerWalk(true, announce: false, keepPose: true); }
+            }
+            else if (_options.Pose != null)
+            {
+                // Reopened (reload from IFC): carry on from where the player stood
                 if (_player.Flying) { OrbitFromPlayer(); }
                 else { SetViewerWalk(true, announce: false, keepPose: true); }
             }
@@ -529,7 +545,8 @@ namespace BimGo.Game
 
             if (input.Pressed(InputAction.Back))
             {
-                if (_viewerPopup != VP_NONE) { _viewerPopup = VP_NONE; }
+                if (CloseOverlay()) { } // a dropdown (the site photos popover's group)
+                else if (_viewerPopup != VP_NONE) { _viewerPopup = VP_NONE; }
                 else if (!_unarmed) { ViewerDisarm(); }
                 else { SetPaused(true); }
                 ViewerCancelDrag();
@@ -562,6 +579,22 @@ namespace BimGo.Game
             if (input.Pressed(InputAction.ViewerViews)) { ViewerBarClick(VT_VIEWS); }
             if (input.Pressed(InputAction.ViewerSun)) { ViewerBarClick(VT_SUN); }
             if (input.Pressed(InputAction.ViewerGhost)) { ToggleViewerGhost(); }
+            if (input.Pressed(InputAction.ViewerPhotos) && _viewerPhotosShown) { ViewerBarClick(VT_PHOTOS); }
+            if (input.Pressed(InputAction.ViewerGallery) && SitePhotos.Photos.Count > 0)
+            {
+                ViewerOpenGallery();
+                return;
+            }
+            if (input.Pressed(InputAction.ViewerMap))
+            {
+                _viewerMapShown = !_viewerMapShown;
+                Sound.Play(SoundId.UiClick);
+            }
+            if (input.Pressed(InputAction.SiteMap))
+            {
+                ViewerBarClick(VT_MAP);
+                return;
+            }
             if (input.PressedOrRepeated(InputAction.ViewerFaster)) { StepViewerSpeed(+1); }
             if (input.PressedOrRepeated(InputAction.ViewerSlower)) { StepViewerSpeed(-1); }
 
@@ -773,6 +806,7 @@ namespace BimGo.Game
             if (!input.LeftDown) { _activeSlider = -1; }
 
             for (int i = 0; i < _guns.Length; i++) { _guns[i].DrawLabels(_ui, i == _activeGun && !_unarmed); }
+            DrawSiteThumbs(f, input, cursor: true); // site photos round: click one to look through it
 
             // The pivot while orbiting
             if (_orbitPivotShown && Camera.WorldToScreen(_orbitPivot, out Vector2 pivot))
@@ -791,9 +825,13 @@ namespace BimGo.Game
             else { _viewerPanelRect = Vector4.Zero; }
 
             BuildViewerBar(f, input, width, height);
+            BuildViewerMiniMap(f, input, width, height); // site photos round
+            if (SitePhotoViewOpen || _siteMapOpen) { return; } // a click on the map opened a photo or the site map
             if (_viewerPopup == VP_VIEWS) { BuildViewerViews(f, input); }
             else if (_viewerPopup == VP_SUN) { BuildViewerSun(f, input); }
+            else if (_viewerPopup == VP_PHOTOS && _viewerPhotosShown) { BuildViewerPhotos(f, input); }
             else { _viewerPopupRect = Vector4.Zero; }
+            if (_viewerPopup != VP_PHOTOS && _dropdown != null && ReferenceEquals(_dropdown.Owner, _siteGroupInfos)) { CloseOverlay(); } // its popover closed
 
             BuildToast(f, width);
         }
@@ -884,18 +922,20 @@ namespace BimGo.Game
         /// <summary>Bottom centre: the toolbar (icons; the hovered one's name above it).</summary>
         private void BuildViewerBar(FontAtlas f, InputState input, int width, int height)
         {
-            float size = S(44), gap = S(4), groupGap = S(14), pad = S(8);
-            float barW = pad * 2f;
-            for (int t = 0; t < VT_COUNT; t++) { barW += size + (t < VT_COUNT - 1 ? (VIEWER_GAP_AFTER[t] ? groupGap : gap) : 0f); }
+            float size = S(44), groupGap = S(14), pad = S(8);
+            _viewerPhotosShown = HasPlacedSitePhotos;
+            float barW = pad * 2f + ViewerButtonX(VT_MENU) + size;
             float barH = size + pad * 2f;
             float bx = MathF.Round(width * 0.5f - barW * 0.5f), by = height - S(24) - barH;
             _ui.Panel(bx, by, barW, barH, UiTheme.PANEL_STRONG, UiTheme.PANEL_BORDER);
             _viewerBarRect = new Vector4(bx, by, barW, barH);
 
             int hovered = -1;
-            float x = bx + pad, y = by + pad;
+            float y = by + pad;
             for (int t = 0; t < VT_COUNT; t++)
             {
+                if (!ViewerToolShown(t)) { continue; }
+                float x = bx + pad + ViewerButtonX(t);
                 bool on = t switch
                 {
                     VT_ORBIT => !_viewerWalk,
@@ -906,6 +946,7 @@ namespace BimGo.Game
                     VT_SECTION => _sectionOpen,
                     VT_VIEWS => _viewerPopup == VP_VIEWS,
                     VT_SUN => _viewerPopup == VP_SUN,
+                    VT_PHOTOS => _viewerPopup == VP_PHOTOS,
                     VT_FULLSCREEN => _window.IsFullscreen,
                     _ => false
                 };
@@ -929,7 +970,6 @@ namespace BimGo.Game
                 {
                     _ui.Rect(x + size + groupGap * 0.5f - S(0.5f), y + S(8), MathF.Max(1f, UiScale), size - S(16), UiTheme.DIVIDER);
                 }
-                x += size + (t < VT_COUNT - 1 ? (VIEWER_GAP_AFTER[t] ? groupGap : gap) : 0f);
             }
 
             // The tooltip above the hovered button (not over an open popover)
@@ -956,6 +996,8 @@ namespace BimGo.Game
                 VT_COMMENT => InputAction.ViewerComment,
                 VT_VIEWS => InputAction.ViewerViews,
                 VT_SUN => InputAction.ViewerSun,
+                VT_PHOTOS => InputAction.ViewerPhotos,
+                VT_MAP => InputAction.SiteMap,
                 VT_HOME => InputAction.GoHome,
                 VT_FULLSCREEN => InputAction.Fullscreen,
                 _ => InputAction.None
@@ -977,12 +1019,21 @@ namespace BimGo.Game
         private int _viewerRoomLabelFor = -1;
 
         /// <summary>A toolbar button's centre X (the popovers sit over their button).</summary>
-        private float ViewerButtonCentre(int tool, float barX)
+        private float ViewerButtonCentre(int tool, float barX) => barX + S(8) + ViewerButtonX(tool) + S(44) * 0.5f;
+
+        /// <summary>True when a toolbar button shows (site photos: only with photos in the model).</summary>
+        private bool ViewerToolShown(int tool) => tool != VT_PHOTOS || _viewerPhotosShown;
+
+        /// <summary>A button's left edge from the bar's padding: the shown buttons before it, a wider gap between groups.</summary>
+        private float ViewerButtonX(int tool)
         {
             float size = S(44), gap = S(4), groupGap = S(14);
-            float x = barX + S(8);
-            for (int t = 0; t < tool; t++) { x += size + (VIEWER_GAP_AFTER[t] ? groupGap : gap); }
-            return x + size * 0.5f;
+            float x = 0f;
+            for (int t = 0; t < tool; t++)
+            {
+                if (ViewerToolShown(t)) { x += size + (VIEWER_GAP_AFTER[t] ? groupGap : gap); }
+            }
+            return x;
         }
 
         private void ViewerBarClick(int tool)
@@ -1008,6 +1059,12 @@ namespace BimGo.Game
                 case VT_SECTION: ViewerToggleSection(); break;
                 case VT_VIEWS: _viewerPopup = _viewerPopup == VP_VIEWS ? VP_NONE : VP_VIEWS; break;
                 case VT_SUN: _viewerPopup = _viewerPopup == VP_SUN ? VP_NONE : VP_SUN; break;
+                case VT_PHOTOS: _viewerPopup = _viewerPopup == VP_PHOTOS ? VP_NONE : VP_PHOTOS; break;
+                case VT_MAP:
+                    _viewerPopup = VP_NONE;
+                    if (_sectionOpen) { CloseSectionEditor(); }
+                    OpenSiteMapOnSite();
+                    break;
                 case VT_FULLSCREEN: _window.ToggleFullscreen(); break;
                 case VT_MENU:
                     _viewerPopup = VP_NONE;
@@ -1069,6 +1126,74 @@ namespace BimGo.Game
             iy += bh + S(UiTheme.GAP_SMALL);
             string all = count > MAX_ROWS ? CountLabel(ref _viewerAllViewsLabel, ref _viewerAllViewsLabelFor, count, "ALL ", " VIEWS…") : "MANAGE VIEWS…";
             if (MenuButton(f, ix, iy, iw, all, false, false, height: bh, compact: true)) { ViewerOpenPanel(comments: false, fromBar: true); }
+        }
+
+        /// <summary>
+        /// The site photos popover: show the pins and thumbnails, BROWSE PHOTOS (the nearest first), and one button per
+        /// group (such as a building) to step through its photos.
+        /// </summary>
+        private void BuildViewerPhotos(FontAtlas f, InputState input)
+        {
+            BeginOverlays(input); // the group dropdown
+            bool groups = SiteGroupInfos().Count > 0;
+            bool focused = _siteFocusGroup != null;
+            float w = S(320), bh = S(UiTheme.SMALL_BUTTON_HEIGHT), step = bh + S(UiTheme.GAP_SMALL);
+            float h = S(UiTheme.PANEL_PAD_Y) * 2f + S(24) + S(30) + S(96) + (groups ? S(18) + S(30) + S(UiTheme.GAP) : 0f) + step * (focused ? 3 : 2);
+            float x = Math.Clamp(ViewerButtonCentre(VT_PHOTOS, _viewerBarRect.X) - w * 0.5f, S(8), _window.Width - w - S(8));
+            float y = _viewerBarRect.Y - S(10) - h;
+            _ui.Panel(x, y, w, h, UiTheme.PANEL_STRONG, UiTheme.PANEL_BORDER);
+            _viewerPopupRect = new Vector4(x, y, w, h);
+
+            float ix = x + S(16), iw = w - S(32), iy = y + S(UiTheme.PANEL_PAD_Y);
+            _ui.Text(f.Small, ix, iy, "SITE PHOTOS", UiTheme.BOOKMARK_LABEL, S(1.1f));
+            iy += S(24);
+            bool show = Checkbox(f, input, ix, iy, iw, "Show the photos in the model", SitePhotos.Document.ShowPins);
+            if (show != SitePhotos.Document.ShowPins)
+            {
+                SitePhotos.Document.ShowPins = show;
+                SitePhotos.Save();
+            }
+            iy += S(30);
+            SiteThumbSizeSlider(f, input, ix, iy, iw); // and the distance under it
+            iy += S(96);
+
+            // Which group (building) the model shows: all, or one (in its colour)
+            if (groups)
+            {
+                _ui.Text(f.Small, ix, iy, "SHOW ON THE MODEL", UiTheme.TEXT_MUTED);
+                iy += S(18);
+                SiteGroupDropdown(f, input, ix + S(8), iy, iw - S(8), S(30), DROP_SITE_FOCUS);
+                iy += S(30) + S(UiTheme.GAP);
+            }
+
+            string group = _siteFocusGroup;
+            if (MenuButton(f, ix, iy, iw, focused ? "BROWSE THIS GROUP ›" : "BROWSE FROM THE NEAREST", primary: true, danger: false, height: bh, compact: true))
+            {
+                _viewerPopup = VP_NONE;
+                CloseOverlay();
+                BrowseSitePhotos(group);
+                return;
+            }
+            iy += step;
+            if (focused)
+            {
+                if (MenuButton(f, ix, iy, iw, "SHOW IT ON THE MAP", false, false, height: bh, compact: true))
+                {
+                    _viewerPopup = VP_NONE;
+                    CloseOverlay();
+                    ShowSiteGroupOnMap(group);
+                    return;
+                }
+                iy += step;
+            }
+            if (MenuButton(f, ix, iy, iw, "PHOTO BROWSER…", false, false, height: bh, compact: true))
+            {
+                CloseOverlay();
+                _siteBrowseGroup = group;
+                ViewerOpenGallery();
+                return;
+            }
+            DrawOverlays(f, input, 0f, 0f, _window.Width, _window.Height);
         }
 
         /// <summary>The sun popover: shadows on / off, the time of day and the month.</summary>
@@ -1141,7 +1266,7 @@ namespace BimGo.Game
             _ui.Rect(0, 0, width, height, Rgba.Hex(0x000000, 0.5f));
 
             float w = S(380), bh = S(UiTheme.BUTTON_HEIGHT), step = bh + S(UiTheme.GAP_SMALL);
-            int buttons = IsFileMode ? 7 : 5;
+            int buttons = IsFileMode ? 8 : 5;
             float h = S(UiTheme.PANEL_PAD_Y) * 2f + S(62) + buttons * step + S(78);
             float x = MathF.Round(width * 0.5f - w * 0.5f), y = MathF.Round(MathF.Max(S(16), height * 0.5f - h * 0.5f));
             _ui.Panel(x, y, w, h, UiTheme.PANEL_STRONG, UiTheme.PANEL_BORDER);
@@ -1159,6 +1284,8 @@ namespace BimGo.Game
                 if (MenuButton(f, ix, iy, iw, IsDirty ? "SAVE *" : "SAVE", false, false, height: bh, compact: true)) { Save(saveAs: false); return; }
                 iy += step;
                 if (MenuButton(f, ix, iy, iw, "SAVE AS…", false, false, height: bh, compact: true)) { Save(saveAs: true); return; }
+                iy += step;
+                if (MenuButton(f, ix, iy, iw, "UPDATE FROM IFC…", false, false, height: bh, compact: true)) { ReloadFromIfc(); return; } // site photos round: a newer model, the review kept
                 iy += step;
             }
             if (MenuButton(f, ix, iy, iw, CountLabel(ref _viewerViewsLabel, ref _viewerViewsLabelFor, Bookmarks.Bookmarks.Count, "VIEWS (", ")…"), false, false, height: bh, compact: true))
@@ -1276,6 +1403,29 @@ namespace BimGo.Game
                         _ui.Line(cx + c * s * 0.65f, cy + n * s * 0.65f, cx + c * s * 0.95f, cy + n * s * 0.95f, t, colour);
                     }
                     break;
+                case VT_MAP:
+                {
+                    // A folded map: three panels, a route across
+                    _ui.Line(cx - s * 0.85f, cy - s * 0.6f, cx - s * 0.3f, cy - s * 0.8f, t, colour);
+                    _ui.Line(cx - s * 0.3f, cy - s * 0.8f, cx + s * 0.3f, cy - s * 0.6f, t, colour);
+                    _ui.Line(cx + s * 0.3f, cy - s * 0.6f, cx + s * 0.85f, cy - s * 0.8f, t, colour);
+                    _ui.Line(cx - s * 0.85f, cy + s * 0.8f, cx - s * 0.3f, cy + s * 0.6f, t, colour);
+                    _ui.Line(cx - s * 0.3f, cy + s * 0.6f, cx + s * 0.3f, cy + s * 0.8f, t, colour);
+                    _ui.Line(cx + s * 0.3f, cy + s * 0.8f, cx + s * 0.85f, cy + s * 0.6f, t, colour);
+                    _ui.Line(cx - s * 0.85f, cy - s * 0.6f, cx - s * 0.85f, cy + s * 0.8f, t, colour);
+                    _ui.Line(cx + s * 0.85f, cy - s * 0.8f, cx + s * 0.85f, cy + s * 0.6f, t, colour);
+                    _ui.Line(cx - s * 0.3f, cy - s * 0.8f, cx - s * 0.3f, cy + s * 0.6f, t, Rgba.WithAlpha(colour, 0.6f));
+                    _ui.Line(cx + s * 0.3f, cy - s * 0.6f, cx + s * 0.3f, cy + s * 0.8f, t, Rgba.WithAlpha(colour, 0.6f));
+                    break;
+                }
+                case VT_PHOTOS:
+                {
+                    // A camera: body, lens, viewfinder bump
+                    _ui.Outline(cx - s * 0.85f, cy - s * 0.45f, s * 1.7f, s * 1.2f, t, colour);
+                    _ui.Rect(cx - s * 0.35f, cy - s * 0.7f, s * 0.7f, s * 0.25f, colour);
+                    _ui.Ring(cx, cy + s * 0.15f, s * 0.38f, t, colour, 16);
+                    break;
+                }
                 case VT_FULLSCREEN:
                 {
                     float a = s * 0.85f, l = s * 0.45f;

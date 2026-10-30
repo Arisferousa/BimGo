@@ -91,6 +91,11 @@ namespace BimGo.Format
                             pictureStream.Write(png);
                         }
                     }
+                    if (document.Photos != null && !document.Photos.IsEmpty) // site photos round
+                    {
+                        WriteJson(zip, BimGoFormat.ENTRY_PHOTOS, document.Photos, BimGoFormat.JSON_INDENTED);
+                        WritePhotoImages(zip, document.Photos, document.PhotoImages, progress);
+                    }
                     if (document.Measurements != null && !document.Measurements.IsEmpty) // Round Y-A
                     {
                         WriteJson(zip, BimGoFormat.ENTRY_MEASUREMENTS, document.Measurements, BimGoFormat.JSON_INDENTED);
@@ -453,6 +458,23 @@ namespace BimGo.Format
                     progress.Step(0.12 + 0.83 * (total <= 0 ? 1.0 : (double)done / total));
                     progress.ThrowIfCancelled();
                 }
+            }
+        }
+
+        /// <summary>The site photos' pictures and thumbnails (already JPEG: stored, not compressed again).</summary>
+        private static void WritePhotoImages(ZipArchive zip, PhotoDocument photos, Dictionary<string, byte[]> images, Utilities.OperationProgress progress)
+        {
+            if (images == null) { return; }
+            foreach (SitePhoto photo in photos.Photos)
+            {
+                foreach (string name in new[] { photo.Image, photo.Thumb })
+                {
+                    if (!PhotoDocument.IsSafeImageName(name) || !images.TryGetValue(name, out byte[] jpeg) || jpeg == null || jpeg.Length == 0) { continue; }
+                    ZipArchiveEntry entry = zip.CreateEntry(BimGoFormat.PHOTOS_FOLDER + name, CompressionLevel.NoCompression);
+                    using Stream stream = entry.Open();
+                    stream.Write(jpeg);
+                }
+                progress?.ThrowIfCancelled();
             }
         }
 
