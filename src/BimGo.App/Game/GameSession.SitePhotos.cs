@@ -85,6 +85,9 @@ namespace BimGo.Game
         private string _siteGroupFilter;
         private Vector4 _sitePhotoPanelRect, _sitePhotoMapRect;
 
+        private static readonly KeyHint HINT_SITE_STAND = new(() =>
+            $"Click the photo to stand where it was taken · Esc goes back to your view · {Key(InputAction.SiteMap)}: site map");
+
         // The SITE PHOTOS panel
         private bool _sitePhotosOpen;
         private readonly ScrollRegion _sitePhotoScroll = new();
@@ -525,14 +528,17 @@ namespace BimGo.Game
 
         #region Pins and thumbnails
 
-        /// <summary>The pins (3D, with the markers): a dot at each placed photo's eye, a heading tick and a stem to the floor.</summary>
+        /// <summary>
+        /// The pins (3D, with the markers): a dot at each placed photo's eye, a heading arrow and a stem to the floor, in its
+        /// group's colour (only the focused group's, when one is).
+        /// </summary>
         private void DrawSitePhotoPins(Overlay3D overlay)
         {
             if (SitePhotos == null || !SitePhotos.Document.ShowPins || SitePhotoViewOpen) { return; }
-            uint colour = UiTheme.BOOKMARK;
             foreach (SitePhoto photo in SitePhotos.Photos)
             {
-                if (!photo.IsPlaced) { continue; }
+                if (!photo.IsPlaced || !SitePhotoInFocus(photo)) { continue; }
+                uint colour = SitePhotoColour(photo); // its group's
                 Vector3 eye = photo.Local;
                 Vector3 ahead = new(MathF.Cos(photo.Yaw), MathF.Sin(photo.Yaw), 0f);
                 overlay.Line(eye, eye - new Vector3(0f, 0f, SITE_PHOTO_EYE), 1.5f, Rgba.WithAlpha(colour, 0.5f));
@@ -581,7 +587,7 @@ namespace BimGo.Game
             for (int i = 0; i < photos.Count; i++)
             {
                 SitePhoto photo = photos[i];
-                if (!photo.IsPlaced) { continue; }
+                if (!photo.IsPlaced || !SitePhotoInFocus(photo)) { continue; }
                 float distance = Vector3.Distance(eye, photo.Local);
                 if (distance < 0.6f || distance > far || Vector3.Dot(photo.Local - eye, Camera.Forward) <= 0f) { continue; }
                 _siteOrder[n] = i;
@@ -623,8 +629,10 @@ namespace BimGo.Game
                 float alpha = (blocked ? 0.35f : 1f) * Math.Clamp((far - _siteDistance[j]) / MathF.Max(far - fadeFrom, 1f), 0f, 1f); // far ones fade out
                 if (alpha < 0.02f) { continue; }
                 uint texture = SiteThumbTexture(photo, ref uploads);
-                _ui.Line(anchor.X, anchor.Y, anchor.X, y + h, MathF.Max(1f, S(1.5f)), Rgba.WithAlpha(UiTheme.BOOKMARK, 0.7f * alpha));
+                uint colour = SitePhotoColour(photo);
+                _ui.Line(anchor.X, anchor.Y, anchor.X, y + h, MathF.Max(1f, S(1.5f)), Rgba.WithAlpha(colour, 0.7f * alpha));
                 _ui.Rect(x - S(2), y - S(2), w + S(4), h + S(4), Rgba.Hex(0x0C0E12, 0.85f * alpha));
+                _ui.Rect(x - S(2), y - S(4), w + S(4), S(3), Rgba.WithAlpha(colour, alpha)); // its group's colour along the top
                 if (texture != 0) { _ui.Image(texture, x, y, w, h, _window.Width, _window.Height, Rgba.Hex(0xFFFFFF, alpha)); }
                 else { _ui.Rect(x, y, w, h, Rgba.WithAlpha(UiTheme.CONTROL, alpha)); }
 
@@ -642,7 +650,7 @@ namespace BimGo.Game
             string label = string.IsNullOrEmpty(hovered.Group) ? hovered.Name : hovered.Group;
             float lw = UiBatch.Measure(f.Small, label) + S(16);
             float lx = Math.Clamp(r.X + r.Z * 0.5f - lw * 0.5f, S(4), _window.Width - lw - S(4)), ly = r.Y - S(24);
-            _ui.Panel(lx, ly, lw, S(20), UiTheme.PANEL_STRONG, UiTheme.PANEL_BORDER);
+            _ui.Panel(lx, ly, lw, S(20), UiTheme.PANEL_STRONG, SitePhotoColour(hovered));
             _ui.Text(f.Small, lx + S(8), ly + S(3), label, UiTheme.TEXT);
 
             if (cursor && input.LeftPressed && _window.IsActive)
@@ -724,29 +732,41 @@ namespace BimGo.Game
             _player.TeleportTo(photo.Local - new Vector3(0f, 0f, _player.Controller.StandEye), photo.Yaw, photo.Pitch);
         }
 
-        /// <summary>Closes the photo view: the camera goes back to where it was before the first photo opened.</summary>
-        private void CloseSitePhoto()
+        /// <summary>
+        /// Closes the photo view: the camera goes back to where it was before the first photo opened (Esc, CLOSE), or,
+        /// with <paramref name="stay"/> (a click on the photo), stays where the photo was taken, looking its way. Either
+        /// way the viewer keeps orbiting, walking or passing through walls as it was.
+        /// </summary>
+        private void CloseSitePhoto(bool stay = false)
         {
-            if (_sitePhotoView == null) { return; }
+            SitePhoto photo = _sitePhotoView;
+            if (photo == null) { return; }
             _sitePhotoView = null;
             _sitePhotoAdjust = false;
             _siteGroupFilter = null;
             ReleaseSitePhotoPicture();
+            stay &= photo.IsPlaced;
 
             if (_player.Flying != _siteReturnFlying) { _player.ToggleFly(); }
-            _player.TeleportTo(_siteReturnFeet, _siteReturnYaw, _siteReturnPitch);
+            if (stay) { _player.TeleportTo(photo.Local - new Vector3(0f, 0f, _player.Controller.StandEye), photo.Yaw, photo.Pitch); }
+            else { _player.TeleportTo(_siteReturnFeet, _siteReturnYaw, _siteReturnPitch); }
             if (_viewer)
             {
                 _viewerWalk = _siteReturnWalk;
                 _viewerGhost = _siteReturnGhost;
                 if (!_viewerWalk)
                 {
-                    _orbitEye = _siteReturnOrbitEye;
-                    _orbitYaw = _siteReturnOrbitYaw;
-                    _orbitPitch = _siteReturnOrbitPitch;
+                    _orbitEye = stay ? photo.Local : _siteReturnOrbitEye;
+                    _orbitYaw = stay ? photo.Yaw : _siteReturnOrbitYaw;
+                    _orbitPitch = stay ? photo.Pitch : _siteReturnOrbitPitch;
                     _glideT = 1f;
-                    OrbitToPlayer(); // nothing to take up: the orbit is as it was
+                    OrbitToPlayer(); // nothing to take up: the orbit is where it was put
                 }
+            }
+            if (stay)
+            {
+                Sound.Play(SoundId.Teleport);
+                Toast("Standing where the photo was taken", 2.4f);
             }
             _window.Input.ReleaseAll();
             if (!_viewer && !_paused && _window.IsActive && !CursorModeOpen) { _window.SetCaptured(true); }
@@ -882,6 +902,11 @@ namespace BimGo.Game
             }
             if (input.Pressed(InputAction.Fullscreen)) { _window.ToggleFullscreen(); }
             if (input.Pressed(InputAction.Screenshot)) { RequestScreenshot(); }
+            if (input.Pressed(InputAction.SiteMap) && _sitePhotoView.IsPlaced && !_sitePhotoAdjust)
+            {
+                OpenSiteMap(_sitePhotoView.Local, _sitePhotoMapAcross * 2f); // expand the corner map
+                return;
+            }
 
             Vector2 mouse = input.MousePosition;
             bool overPanel = Inside(_sitePhotoPanelRect, mouse) || (_sitePhotoView.IsPlaced && Inside(_sitePhotoMapRect, mouse));
@@ -905,6 +930,13 @@ namespace BimGo.Game
                 // ← / → (the move keys left and right) step through the photos
                 if (input.Pressed(InputAction.MoveLeft)) { StepSitePhoto(-1); }
                 else if (input.Pressed(InputAction.MoveRight)) { StepSitePhoto(+1); }
+
+                // A click on the photo: stay there, where it was taken (Esc / CLOSE go back instead)
+                if (input.LeftPressed && !overPanel && _window.IsActive && _sitePhotoView.IsPlaced)
+                {
+                    input.ConsumeClicks();
+                    CloseSitePhoto(stay: true);
+                }
             }
         }
 
@@ -952,7 +984,7 @@ namespace BimGo.Game
             if (_sitePhotoView == null || _siteMapOpen) { return; } // a click on the map opened another photo or the big map
 
             // The dock
-            float dw = MathF.Min(S(820), width - S(32)), dh = S(_sitePhotoAdjust ? 176 : 128);
+            float dw = MathF.Min(S(820), width - S(32)), dh = S(_sitePhotoAdjust ? 176 : photo.IsPlaced ? 150 : 128);
             float dx = MathF.Round(width * 0.5f - dw * 0.5f), dy = height - S(20) - dh;
             _ui.Panel(dx, dy, dw, dh, UiTheme.PANEL_STRONG, UiTheme.PANEL_BORDER);
             _sitePhotoPanelRect = new Vector4(dx, dy, dw, dh);
@@ -988,6 +1020,11 @@ namespace BimGo.Game
                 if (_activeSlider == SITE_SLIDER_FOV) { _siteAdjustFov = MathF.Round(lens * 2f) * 0.5f; }
             }
             iy += S(46);
+            if (!_sitePhotoAdjust && photo.IsPlaced)
+            {
+                _ui.Text(f.Small, ix, iy, HINT_SITE_STAND.Text, UiTheme.TEXT_FAINT);
+                iy += S(22);
+            }
             if (_sitePhotoAdjust)
             {
                 _ui.TextWrapped(f.Small, ix, iy, iw, "Fly with the move keys (Space / Ctrl: up / down), right-drag to look, scroll for the lens: line the model up with the photo, then PIN HERE.", UiTheme.TEXT_FAINT, maxLines: 2);
@@ -1036,6 +1073,7 @@ namespace BimGo.Game
         private void OpenSitePhotosPanel()
         {
             _sitePhotosOpen = true;
+            _siteSearchPause = 2;
             _sitePhotoScroll.Reset();
             _siteDeleteArmed = null;
             _sitePhotosNotice = null;
@@ -1061,9 +1099,10 @@ namespace BimGo.Game
             InputState input = _window.Input;
             int count = SitePhotos.Photos.Count;
             Text.Clear().AppendGrouped(count).Append(count == 1 ? " photo · kept in " : " photos · kept in ").Append(SitePhotos.FileName);
-            const string FILES = "IMPORT PHOTOS…", FOLDER = "IMPORT FOLDERS…", MAP = "SITE MAP", GALLERY = "GALLERY";
+            const string FILES = "IMPORT PHOTOS…", FOLDER = "IMPORT FOLDERS…", MAP = "SITE MAP", GALLERY = "BROWSER";
             PanelFrame frame = BeginPanel(PanelSize.Standard, "SITE PHOTOS", UiTheme.BOOKMARK_LABEL, Text.Span,
-                headerControls: ShellButtonWidth(f, FILES) + ShellButtonWidth(f, FOLDER) + ShellButtonWidth(f, MAP) + ShellButtonWidth(f, GALLERY) + S(UiTheme.GAP_SMALL) * 3f);
+                headerControls: ShellButtonWidth(f, FILES) + ShellButtonWidth(f, FOLDER) + ShellButtonWidth(f, MAP) + ShellButtonWidth(f, GALLERY) + S(UiTheme.GAP_SMALL) * 3f,
+                overlays: true); // the group dropdowns
             if (HeaderButton(ref frame, GALLERY, enabled: count > 0))
             {
                 OpenSiteGallery(); // over this panel: BACK comes back here
@@ -1095,6 +1134,25 @@ namespace BimGo.Game
             {
                 SiteThumbSizeSlider(f, input, frame.Ix, y, MathF.Min(S(360), frame.Iw));
                 y += S(96);
+
+                // Find a photo: the search, the group, and which group the model shows
+                SiteGroupInfos();
+                RefreshSiteMatches();
+                float gap = S(UiTheme.GAP_SMALL), third = (frame.Iw - gap * 2f) / 3f;
+                _ui.Text(f.Small, frame.Ix, y, "SEARCH", UiTheme.TEXT_MUTED);
+                if (_siteGroupInfos.Count > 0)
+                {
+                    _ui.Text(f.Small, frame.Ix + third + gap, y, "LIST THE GROUP", UiTheme.TEXT_MUTED);
+                    _ui.Text(f.Small, frame.Ix + (third + gap) * 2f, y, "SHOW ON THE MODEL", UiTheme.TEXT_MUTED);
+                }
+                y += S(18);
+                float boxH = SiteSearchBox(f, input, frame.Ix, y, third, "Name, group or date");
+                if (_siteGroupInfos.Count > 0)
+                {
+                    SiteGroupDropdown(f, input, frame.Ix + third + gap, y, third, boxH, DROP_SITE_BROWSE);
+                    SiteGroupDropdown(f, input, frame.Ix + (third + gap) * 2f, y, third, boxH, DROP_SITE_FOCUS);
+                }
+                y += boxH + S(UiTheme.GAP_SMALL);
             }
             BuildSitePhotoRows(f, input, frame.Ix, y, frame.Iw, frame.BodyBottom);
             if (!_sitePhotosOpen) { return; } // OPEN left the panel
@@ -1110,8 +1168,14 @@ namespace BimGo.Game
 
         private void BuildSitePhotoRows(FontAtlas f, InputState input, float x, float y, float w, float bottom)
         {
-            List<SitePhoto> list = SitePhotos.Photos;
-            if (list.Count == 0) { return; }
+            List<SitePhoto> all = SitePhotos.Photos;
+            if (all.Count == 0) { return; }
+            List<SitePhoto> list = SitePhotoRowsShown();
+            if (list.Count == 0)
+            {
+                _ui.TextWrapped(f.Body, x, y + S(8), w, "No photos match.", UiTheme.TEXT_MUTED, maxLines: 1);
+                return;
+            }
             if (_siteDeleteArmed != null && _clock > _siteDeleteArmedUntil) { _siteDeleteArmed = null; }
 
             float rowH = S(70);
@@ -1130,6 +1194,7 @@ namespace BimGo.Game
                 float ry = top + i * rowH + S(4);
                 if ((i & 1) == 0) { _ui.Rect(listX, ry - S(4), cw, rowH - S(4), UiTheme.ROW_STRIPE); }
 
+                _ui.Rect(listX, ry - S(4), S(4), rowH - S(4), SitePhotoColour(photo)); // its group's colour
                 float thumbH = S(58), thumbW = MathF.Min(S(104), thumbH * Math.Clamp(photo.Aspect, 0.5f, 2f));
                 uint thumb = SiteThumbTexture(photo, ref uploads);
                 if (thumb != 0) { _ui.Image(thumb, x, ry, thumbW, thumbH, _window.Width, _window.Height); }
@@ -1233,6 +1298,27 @@ namespace BimGo.Game
             if (MathF.Abs(stepped - document.ThumbDistance) < 0.5f) { return; }
             document.ThumbDistance = stepped;
             _siteThumbScaleUnsaved = true;
+        }
+
+        // SITE PHOTOS' rows: the photos matching the search in the group picked (rebuilt when one of those changes)
+        private readonly List<SitePhoto> _siteRows = new();
+        private int _siteRowsRevision = -1, _siteRowsSearch = -1;
+        private string _siteRowsGroup;
+
+        private List<SitePhoto> SitePhotoRowsShown()
+        {
+            if (_siteSearchText.Length == 0 && _siteBrowseGroup == null) { return SitePhotos.Photos; }
+            if (_siteRowsRevision == SitePhotos.Revision && _siteRowsSearch == _siteSearchVersion && string.Equals(_siteRowsGroup, _siteBrowseGroup, StringComparison.Ordinal)) { return _siteRows; }
+            _siteRowsRevision = SitePhotos.Revision;
+            _siteRowsSearch = _siteSearchVersion;
+            _siteRowsGroup = _siteBrowseGroup;
+            _siteRows.Clear();
+            foreach (SitePhoto photo in SitePhotos.Photos)
+            {
+                if (_siteBrowseGroup != null && !string.Equals(photo.Group, _siteBrowseGroup, StringComparison.OrdinalIgnoreCase)) { continue; }
+                if (SiteSearchMatches(photo)) { _siteRows.Add(photo); }
+            }
+            return _siteRows;
         }
 
         /// <summary>The groups (the viewer's popover; rebuilt when the photos change).</summary>

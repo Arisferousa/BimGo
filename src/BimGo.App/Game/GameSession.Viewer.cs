@@ -153,6 +153,7 @@ namespace BimGo.Game
         private bool ViewerOverPanels(Vector2 p)
         {
             if (Inside(_viewerBarRect, p) || Inside(_viewerTitleRect, p) || Inside(_viewerMapRect, p)) { return true; }
+            if (_dropdown != null) { return true; } // an open dropdown takes every click
             if (_viewerPopup != VP_NONE && Inside(_viewerPopupRect, p)) { return true; }
             if (!_unarmed && Inside(_viewerPanelRect, p)) { return true; }
             return _sectionOpen && Inside(_sectionPanelRect, p);
@@ -544,7 +545,8 @@ namespace BimGo.Game
 
             if (input.Pressed(InputAction.Back))
             {
-                if (_viewerPopup != VP_NONE) { _viewerPopup = VP_NONE; }
+                if (CloseOverlay()) { } // a dropdown (the site photos popover's group)
+                else if (_viewerPopup != VP_NONE) { _viewerPopup = VP_NONE; }
                 else if (!_unarmed) { ViewerDisarm(); }
                 else { SetPaused(true); }
                 ViewerCancelDrag();
@@ -588,7 +590,7 @@ namespace BimGo.Game
                 _viewerMapShown = !_viewerMapShown;
                 Sound.Play(SoundId.UiClick);
             }
-            if (input.Pressed(InputAction.ViewerBigMap))
+            if (input.Pressed(InputAction.SiteMap))
             {
                 ViewerBarClick(VT_MAP);
                 return;
@@ -829,6 +831,7 @@ namespace BimGo.Game
             else if (_viewerPopup == VP_SUN) { BuildViewerSun(f, input); }
             else if (_viewerPopup == VP_PHOTOS && _viewerPhotosShown) { BuildViewerPhotos(f, input); }
             else { _viewerPopupRect = Vector4.Zero; }
+            if (_viewerPopup != VP_PHOTOS && _dropdown != null && ReferenceEquals(_dropdown.Owner, _siteGroupInfos)) { CloseOverlay(); } // its popover closed
 
             BuildToast(f, width);
         }
@@ -994,7 +997,7 @@ namespace BimGo.Game
                 VT_VIEWS => InputAction.ViewerViews,
                 VT_SUN => InputAction.ViewerSun,
                 VT_PHOTOS => InputAction.ViewerPhotos,
-                VT_MAP => InputAction.ViewerBigMap,
+                VT_MAP => InputAction.SiteMap,
                 VT_HOME => InputAction.GoHome,
                 VT_FULLSCREEN => InputAction.Fullscreen,
                 _ => InputAction.None
@@ -1131,11 +1134,11 @@ namespace BimGo.Game
         /// </summary>
         private void BuildViewerPhotos(FontAtlas f, InputState input)
         {
-            const int MAX_GROUPS = 8;
-            List<string> groups = SitePhotoGroups();
-            int rows = Math.Min(groups.Count, MAX_GROUPS);
-            float w = S(320), rowH = S(30), bh = S(UiTheme.SMALL_BUTTON_HEIGHT);
-            float h = S(UiTheme.PANEL_PAD_Y) * 2f + S(24) + S(30) + S(96) + (bh + S(UiTheme.GAP_SMALL)) * 2f + (rows > 0 ? S(22) + rows * (rowH + S(4)) : 0f);
+            BeginOverlays(input); // the group dropdown
+            bool groups = SiteGroupInfos().Count > 0;
+            bool focused = _siteFocusGroup != null;
+            float w = S(320), bh = S(UiTheme.SMALL_BUTTON_HEIGHT), step = bh + S(UiTheme.GAP_SMALL);
+            float h = S(UiTheme.PANEL_PAD_Y) * 2f + S(24) + S(30) + S(96) + (groups ? S(18) + S(30) + S(UiTheme.GAP) : 0f) + step * (focused ? 3 : 2);
             float x = Math.Clamp(ViewerButtonCentre(VT_PHOTOS, _viewerBarRect.X) - w * 0.5f, S(8), _window.Width - w - S(8));
             float y = _viewerBarRect.Y - S(10) - h;
             _ui.Panel(x, y, w, h, UiTheme.PANEL_STRONG, UiTheme.PANEL_BORDER);
@@ -1153,32 +1156,44 @@ namespace BimGo.Game
             iy += S(30);
             SiteThumbSizeSlider(f, input, ix, iy, iw); // and the distance under it
             iy += S(96);
-            if (MenuButton(f, ix, iy, iw, "BROWSE FROM THE NEAREST", primary: true, danger: false, height: bh, compact: true))
+
+            // Which group (building) the model shows: all, or one (in its colour)
+            if (groups)
+            {
+                _ui.Text(f.Small, ix, iy, "SHOW ON THE MODEL", UiTheme.TEXT_MUTED);
+                iy += S(18);
+                SiteGroupDropdown(f, input, ix + S(8), iy, iw - S(8), S(30), DROP_SITE_FOCUS);
+                iy += S(30) + S(UiTheme.GAP);
+            }
+
+            string group = _siteFocusGroup;
+            if (MenuButton(f, ix, iy, iw, focused ? "BROWSE THIS GROUP ›" : "BROWSE FROM THE NEAREST", primary: true, danger: false, height: bh, compact: true))
             {
                 _viewerPopup = VP_NONE;
-                BrowseSitePhotos(null);
+                CloseOverlay();
+                BrowseSitePhotos(group);
                 return;
             }
-            iy += bh + S(UiTheme.GAP_SMALL);
-            if (MenuButton(f, ix, iy, iw, "GALLERY…", false, false, height: bh, compact: true))
+            iy += step;
+            if (focused)
             {
+                if (MenuButton(f, ix, iy, iw, "SHOW IT ON THE MAP", false, false, height: bh, compact: true))
+                {
+                    _viewerPopup = VP_NONE;
+                    CloseOverlay();
+                    ShowSiteGroupOnMap(group);
+                    return;
+                }
+                iy += step;
+            }
+            if (MenuButton(f, ix, iy, iw, "PHOTO BROWSER…", false, false, height: bh, compact: true))
+            {
+                CloseOverlay();
+                _siteBrowseGroup = group;
                 ViewerOpenGallery();
                 return;
             }
-            iy += bh + S(UiTheme.GAP_SMALL);
-            if (rows == 0) { return; }
-            _ui.Text(f.Small, ix, iy, "BY GROUP", UiTheme.TEXT_MUTED);
-            iy += S(22);
-            for (int i = 0; i < rows; i++)
-            {
-                if (MenuButton(f, ix, iy, iw, groups[i], false, false, height: rowH, compact: true))
-                {
-                    _viewerPopup = VP_NONE;
-                    BrowseSitePhotos(groups[i]);
-                    return;
-                }
-                iy += rowH + S(4);
-            }
+            DrawOverlays(f, input, 0f, 0f, _window.Width, _window.Height);
         }
 
         /// <summary>The sun popover: shadows on / off, the time of day and the month.</summary>
@@ -1251,7 +1266,7 @@ namespace BimGo.Game
             _ui.Rect(0, 0, width, height, Rgba.Hex(0x000000, 0.5f));
 
             float w = S(380), bh = S(UiTheme.BUTTON_HEIGHT), step = bh + S(UiTheme.GAP_SMALL);
-            int buttons = IsFileMode ? 7 : 5;
+            int buttons = IsFileMode ? 8 : 5;
             float h = S(UiTheme.PANEL_PAD_Y) * 2f + S(62) + buttons * step + S(78);
             float x = MathF.Round(width * 0.5f - w * 0.5f), y = MathF.Round(MathF.Max(S(16), height * 0.5f - h * 0.5f));
             _ui.Panel(x, y, w, h, UiTheme.PANEL_STRONG, UiTheme.PANEL_BORDER);
@@ -1269,6 +1284,8 @@ namespace BimGo.Game
                 if (MenuButton(f, ix, iy, iw, IsDirty ? "SAVE *" : "SAVE", false, false, height: bh, compact: true)) { Save(saveAs: false); return; }
                 iy += step;
                 if (MenuButton(f, ix, iy, iw, "SAVE AS…", false, false, height: bh, compact: true)) { Save(saveAs: true); return; }
+                iy += step;
+                if (MenuButton(f, ix, iy, iw, "UPDATE FROM IFC…", false, false, height: bh, compact: true)) { ReloadFromIfc(); return; } // site photos round: a newer model, the review kept
                 iy += step;
             }
             if (MenuButton(f, ix, iy, iw, CountLabel(ref _viewerViewsLabel, ref _viewerViewsLabelFor, Bookmarks.Bookmarks.Count, "VIEWS (", ")…"), false, false, height: bh, compact: true))

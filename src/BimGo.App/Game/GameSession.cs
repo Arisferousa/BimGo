@@ -862,6 +862,11 @@ namespace BimGo.Game
             {
                 current.OnKeys(input);
                 if (input.Pressed(InputAction.Minimap)) { _showMap = !_showMap; }
+                if (input.Pressed(InputAction.SiteMap))
+                {
+                    OpenWalkthroughSiteMap(); // site photos round: the minimap expanded
+                    return;
+                }
                 UpdateMouseLook(input);
                 return;
             }
@@ -871,6 +876,11 @@ namespace BimGo.Game
             if (UpdateGunWheel(input)) { return; }
 
             if (input.Pressed(InputAction.Minimap)) { _showMap = !_showMap; }
+            if (input.Pressed(InputAction.SiteMap))
+            {
+                OpenWalkthroughSiteMap();
+                return;
+            }
             if (input.Pressed(InputAction.Fly))
             {
                 _player.ToggleFly();

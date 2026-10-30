@@ -432,22 +432,19 @@ namespace BimGo.Game
         }
 
         /// <summary>
-        /// What a save writes: the snapshot (or, reloading from IFC, the new model) and everything reviewed on it.
+        /// What a save writes: the snapshot and everything reviewed on it.
         /// </summary>
         /// <param name="path">Where it goes.</param>
         /// <param name="thumbnail">The start screen's picture.</param>
         /// <param name="viewerCopy">Viewer round: mark it for the simple viewer.</param>
-        /// <param name="newScene">Reloading from IFC: the new model (the journal and changed materials, which belong to
-        /// the old geometry, are left out), or null for this snapshot.</param>
-        private BimGoDocument DocumentForSave(string path, byte[] thumbnail, bool viewerCopy, SceneData newScene = null)
+        private BimGoDocument DocumentForSave(string path, byte[] thumbnail, bool viewerCopy)
         {
-            bool reload = newScene != null;
             return new BimGoDocument
             {
                 Thumbnail = thumbnail,
-                Scene = newScene ?? Scene,
+                Scene = Scene,
                 Comments = Comments.ToDocument(),
-                Journal = reload ? new EditJournal() : _journal,
+                Journal = _journal,
                 Bookmarks = Bookmarks.ToDocument(),
                 Paths = CameraPaths?.ToDocument(), // Round K-A
                 Entourage = Entourage?.ToDocument(), // Round X-B
@@ -458,10 +455,10 @@ namespace BimGo.Game
                 PhotoImages = SitePhotos?.ImagesForSave(),
                 Sun = _sun?.Copy(),
                 Visibility = ToVisibilitySettings(),
-                Materials = !reload && MaterialsChanged ? CurrentMaterials : null, // Textures panel: picked images are embedded
+                Materials = MaterialsChanged ? CurrentMaterials : null, // Textures panel: picked images are embedded
                 Clashes = ClashBytesForSave(), // Round C: as held when clash detection was never switched on
                 Viewer = viewerCopy || _viewerFile ? new ViewerDto { Start = viewerCopy ? ViewerStart.ORBIT : _viewerStart } : null, // viewer round: a viewer file stays one
-                CreatedUtc = reload ? DateTime.UtcNow : _options.Document?.CreatedUtc ?? Scene.Provenance?.ExtractedUtc ?? DateTime.UtcNow,
+                CreatedUtc = _options.Document?.CreatedUtc ?? Scene.Provenance?.ExtractedUtc ?? DateTime.UtcNow,
                 Path = path
             };
         }
@@ -494,11 +491,11 @@ namespace BimGo.Game
         }
 
         /// <summary>
-        /// Site photos round: pause menu → RELOAD FROM IFC…: imports a newer IFC of the same model and saves it into this
-        /// file in place of the old geometry, keeping everything reviewed on it (comments, views, site photos,
-        /// measurements, the sun, billboards, paths, light profiles, the cut and what is hidden, clashes, the viewer
-        /// flag; positions are in the model's own coordinates, so they stay put). Edits made in the walkthrough and
-        /// picked textures belong to the old geometry and are left out. The file then reopens where you stand.
+        /// Site photos round: menu → UPDATE FROM IFC… (the pause menu and the viewer's): imports a newer IFC of the same
+        /// model and saves it into this file in place of the old geometry, keeping everything reviewed on it
+        /// (<see cref="ModelUpdate.WithNewModel"/>: positions are in the model's own coordinates, so they stay put).
+        /// Edits made in the walkthrough and picked textures belong to the old geometry and are left out. Offers the
+        /// IFC the model came from first. The file then reopens where you stand.
         /// </summary>
         private void ReloadFromIfc()
         {
@@ -509,21 +506,40 @@ namespace BimGo.Game
             if (string.IsNullOrEmpty(DocumentPath))
             {
                 bool save = FileDialogs.AskYesNo(_window.Handle,
-                    "Reloading from IFC saves into this model's .bimgo file, and it has none yet.\n\nSave it as a .bimgo first?", "BimGo reload from IFC");
+                    "Updating from IFC saves into this model's .bimgo file, and it has none yet.\n\nSave it as a .bimgo first?", "BimGo update from IFC");
                 if (!save || !Save(saveAs: true)) { return; }
             }
-            string folder = Path.GetDirectoryName(DocumentPath);
-            string ifc = FileDialogs.ShowOpen(_window.Handle, "Reload the model from an IFC file", "IFC model (*.ifc;*.ifczip)|*.ifc;*.ifczip|All files (*.*)|*.*", folder);
-            if (ifc == null) { return; }
+            // The IFC it came from (if it's still there), else one picked
+            string ifc = ModelUpdate.SourceIfc(Scene.Provenance);
+            if (ifc != null && File.Exists(ifc))
+            {
+                DateTime saved = File.GetLastWriteTimeUtc(ifc);
+                string when = ModelUpdate.SourceChanged(Scene.Provenance, out _, out _) ? $"saved again {saved.ToLocalTime():d MMM yyyy HH:mm}" : "not changed since it was imported";
+                FileDialogs.Answer answer = FileDialogs.AskYesNoCancel(_window.Handle,
+                    $"Update from {Path.GetFileName(ifc)} ({when})?\n\nYes: that file.\nNo: choose another IFC file.", "BimGo update from IFC");
+                if (answer == FileDialogs.Answer.Cancel) { return; }
+                if (answer == FileDialogs.Answer.No) { ifc = null; }
+            }
+            else
+            {
+                ifc = null;
+            }
+            if (ifc == null)
+            {
+                string folder = Path.GetDirectoryName(ModelUpdate.SourceIfc(Scene.Provenance) ?? DocumentPath);
+                if (!Directory.Exists(folder)) { folder = Path.GetDirectoryName(DocumentPath); }
+                ifc = FileDialogs.ShowOpen(_window.Handle, "Update the model from an IFC file", "IFC model (*.ifc;*.ifczip)|*.ifc;*.ifczip|All files (*.*)|*.*", folder);
+                if (ifc == null) { return; }
+            }
             if (!IfcImporter.HasExtension(ifc))
             {
-                FileDialogs.ShowError(_window.Handle, $"{Path.GetFileName(ifc)} is not an .ifc or .ifczip file.", "BimGo reload from IFC");
+                FileDialogs.ShowError(_window.Handle, $"{Path.GetFileName(ifc)} is not an .ifc or .ifczip file.", "BimGo update from IFC");
                 return;
             }
             string dropped = _journal.Count > 0 ? $"\n\nThe {_journal.Count} edit{(_journal.Count == 1 ? "" : "s")} made in the walkthrough (moves, demolitions…) belong to the old geometry and are left out." : string.Empty;
             bool go = FileDialogs.AskYesNo(_window.Handle,
                 $"Replace the model in {DocumentName} with {Path.GetFileName(ifc)}?\n\nComments, views, site photos, measurements, the sun, billboards, camera paths and the section box are kept. The file is saved and reopens where you stand.{dropped}",
-                "BimGo reload from IFC");
+                "BimGo update from IFC");
             if (!go) { return; }
 
             // Import (Esc cancels; nothing changed then)
@@ -546,13 +562,13 @@ namespace BimGo.Game
             {
                 bool cancelled = progress.CancelRequested;
                 Sound.Play(cancelled ? SoundId.UiClick : SoundId.Error);
-                Toast(cancelled ? "Reload cancelled: nothing changed." : $"{Path.GetFileName(ifc)} could not be imported: {error}", 6f, important: !cancelled);
+                Toast(cancelled ? "Update cancelled: nothing changed." : $"{Path.GetFileName(ifc)} could not be imported: {error}", 6f, important: !cancelled);
                 return;
             }
 
             // Saved into this file with the review kept, then reopened from it
             string path = DocumentPath;
-            BimGoDocument document = DocumentForSave(path, _options.Document?.Thumbnail, viewerCopy: false, newScene: imported.Scene);
+            BimGoDocument document = ModelUpdate.WithNewModel(DocumentForSave(path, _options.Document?.Thumbnail, viewerCopy: false), imported.Scene);
             progress.Begin("Writing the .bimgo file", 0.85, 1.0);
             bool written = ProgressScreen.Run(_window, _ui, $"Saving {Path.GetFileName(path)}", progress,
                 () => BimGoWriter.Write(path, document, _options.Writer, FileKinds.SAVE, out error, progress: progress), cancelOnClose: false);
@@ -561,7 +577,7 @@ namespace BimGo.Game
             Utilities.Log_Utils.Write($"Reloaded {path} from {ifc} ({imported.Scene.Elements.Length} elements; {_journal.Count} walkthrough edits left out).");
             if (_options.OnReopen == null)
             {
-                Toast("Reloaded and saved: close and open the file again to see the new model", 6f, important: true);
+                Toast("Updated and saved: close and open the file again to see the new model", 6f, important: true);
                 return;
             }
             _options.OnReopen(path, CapturePose());

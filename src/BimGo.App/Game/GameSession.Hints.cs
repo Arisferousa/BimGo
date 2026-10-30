@@ -25,7 +25,7 @@ namespace BimGo.Game
         #region HUD, help
 
         private static readonly KeyHint HINT_HELP = new(() => $"{Key(InputAction.Help)}: Help");
-        private static readonly KeyHint HINT_MAP_KEY = new(() => KeyUpper(InputAction.Minimap));
+        private static readonly KeyHint HINT_MAP_KEY = new(() => $"{KeyUpper(InputAction.SiteMap)} EXPANDS"); // site photos round: was the hide key
         private static readonly KeyHint HINT_REFRESH_KEY = new(() => KeyUpper(InputAction.Refresh));
 
         // The gun bar's key labels (gun.Key) follow the bindings

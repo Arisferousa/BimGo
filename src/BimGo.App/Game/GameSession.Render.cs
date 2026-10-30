@@ -523,7 +523,8 @@ namespace BimGo.Game
 
             Text.Clear().Append("MAP · ").Append(_levelNamesUpper.Length > 0 ? _levelNamesUpper[LevelIndexAt(_player.Feet.Z)] : "\u2014");
             _ui.Text(f.Small, x + S(8), y + S(9), Text.Span, UiTheme.TEXT_MUTED, S(1f));
-            _ui.TextRight(f.Small, x + w - S(8), y + S(9), HINT_MAP_KEY.Text, UiTheme.TEXT_MUTED, S(1f));
+            float used = UiBatch.Measure(f.Small, Text.Span, S(1f)) + UiBatch.Measure(f.Small, HINT_MAP_KEY.Text, S(1f)) + S(28);
+            if (used <= w) { _ui.TextRight(f.Small, x + w - S(8), y + S(9), HINT_MAP_KEY.Text, UiTheme.TEXT_MUTED, S(1f)); } // (a long level name wins)
 
             float metresPerPixel = MapMetresAcross / mapW;
             float cx = mapX + mapW * 0.5f, cy = mapY + mapH * 0.5f;
@@ -556,10 +557,10 @@ namespace BimGo.Game
             {
                 foreach (SitePhoto photo in SitePhotos.Photos)
                 {
-                    if (!photo.IsPlaced || LevelIndexAt(photo.Local.Z - SITE_PHOTO_EYE) != levelIndex) { continue; }
+                    if (!photo.IsPlaced || !SitePhotoInFocus(photo) || LevelIndexAt(photo.Local.Z - SITE_PHOTO_EYE) != levelIndex) { continue; }
                     float px = cx + (photo.Local.X - _player.Feet.X) / metresPerPixel, py = cy - (photo.Local.Y - _player.Feet.Y) / metresPerPixel;
                     if (px < mapX + S(6) || px > mapX + mapW - S(6) || py < mapY + S(6) || py > mapY + mapH - S(6)) { continue; }
-                    DrawMapCamera(new Vector2(px, py), photo.Yaw, photo.Fov, S(4), UiTheme.BOOKMARK_LABEL);
+                    DrawMapCamera(new Vector2(px, py), photo.Yaw, photo.Fov, S(4), SitePhotoColour(photo)); // in its group's colour
                 }
             }
 

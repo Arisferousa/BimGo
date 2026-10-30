@@ -566,7 +566,7 @@ namespace BimGo.Game
                 y += step;
 
                 // Site photos round: a newer IFC of the model in place of this geometry, the review kept
-                if (MenuButton(f, x, y, stackW, "RELOAD FROM IFC…", false, false, height: buttonH, compact: true)) { ReloadFromIfc(); return; }
+                if (MenuButton(f, x, y, stackW, "UPDATE FROM IFC…", false, false, height: buttonH, compact: true)) { ReloadFromIfc(); return; }
                 y += step;
 
                 // Round Z-C: a desktop shortcut that opens the saved file in kiosk mode

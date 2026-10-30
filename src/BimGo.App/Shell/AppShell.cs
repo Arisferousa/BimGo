@@ -34,6 +34,9 @@ namespace BimGo.Shell
         private string _currentSessionId;
         private OpenTarget _next;
 
+        // Updates from a changed IFC turned down this run (file + the IFC's save time), not asked again
+        private readonly HashSet<string> _declinedUpdates = new(StringComparer.OrdinalIgnoreCase);
+
         #endregion
 
         /// <summary>
@@ -112,7 +115,7 @@ namespace BimGo.Shell
         /// <param name="pose">Where to put the player (a file reopened after a reload from IFC), or null.</param>
         private SessionEndReason RunFile(string path, bool kiosk = false, SessionPose pose = null)
         {
-            BimGoDocument document = LoadFile(path, out string notice);
+            BimGoDocument document = LoadFile(path, kiosk, out string notice);
             if (document == null) { return SessionEndReason.EndedByUser; }
 
             var options = new SessionOptions
@@ -134,14 +137,36 @@ namespace BimGo.Shell
 
         /// <summary>
         /// Reads a file (an IFC file is imported), showing a loading frame; on failure the reason goes to the home screen.
+        /// Keeps the review across new IFC exports: an IFC that a .bimgo was made from offers to update that .bimgo, and a
+        /// .bimgo whose IFC has been saved again since offers to update itself (comments, views, site photos… kept).
         /// </summary>
         /// <param name="path">The file.</param>
+        /// <param name="kiosk">A kiosk launch (never asks).</param>
         /// <param name="notice">For an import, what came in and the reminder to save (the start notice), else null.</param>
-        private BimGoDocument LoadFile(string path, out string notice)
+        private BimGoDocument LoadFile(string path, bool kiosk, out string notice)
         {
             notice = null;
+            if (IfcImporter.HasExtension(path))
+            {
+                string reviewed = kiosk ? null : FindModelMadeFrom(path);
+                if (reviewed == null) { return ImportIfc(path, out notice); }
+                FileDialogs.Answer answer = FileDialogs.AskYesNoCancel(_window.Handle,
+                    $"{Path.GetFileName(reviewed)} was made from this IFC and holds its review: comments, views, site photos, measurements.\n\n" +
+                    $"Update {Path.GetFileName(reviewed)} with {Path.GetFileName(path)}? Everything reviewed is kept and the file is saved with the new model " +
+                    "(edits made in the walkthrough, such as moves and demolitions, belong to the old model and are left out).\n\n" +
+                    "Yes: update it and open it.\nNo: open the IFC on its own, as a new model.",
+                    "BimGo update from IFC");
+                _window.Input.ReleaseAll();
+                if (answer == FileDialogs.Answer.Cancel) { return null; }
+                if (answer == FileDialogs.Answer.No) { return ImportIfc(path, out notice); }
+                if (!UpdateFromIfc(reviewed, null, path, out string failed))
+                {
+                    _home.SetMessage(failed, error: !failed.EndsWith("nothing changed.", StringComparison.Ordinal));
+                    return null;
+                }
+                path = reviewed;
+            }
             string name = Path.GetFileName(path);
-            if (IfcImporter.HasExtension(path)) { return ImportIfc(path, out notice); }
             if (!BimGoFormat.HasExtension(path))
             {
                 _home.SetMessage($"{name} is not a .bimgo or .ifc file.", error: true);
@@ -162,9 +187,104 @@ namespace BimGo.Shell
                 return null;
             }
 
+            // Its IFC has been saved again since it was imported: offer the new model, the review kept
+            if (!kiosk && ModelUpdate.SourceChanged(document.Scene?.Provenance, out string ifc, out DateTime ifcSaved)
+                && !_declinedUpdates.Contains($"{path}|{ifcSaved.Ticks}"))
+            {
+                bool update = FileDialogs.AskYesNo(_window.Handle,
+                    $"{Path.GetFileName(ifc)} has been saved again ({ifcSaved.ToLocalTime():d MMM yyyy HH:mm}) since {name} was imported from it.\n\n" +
+                    $"Update {name} with the new IFC? Comments, views, site photos, measurements and the rest of the review are kept, and the file is saved with the new model.\n\n" +
+                    "No: open it as it is (UPDATE FROM IFC… in the menu does it later).",
+                    "BimGo update from IFC");
+                _window.Input.ReleaseAll();
+                if (!update) { _declinedUpdates.Add($"{path}|{ifcSaved.Ticks}"); }
+                else if (!UpdateFromIfc(path, document, ifc, out string failed)) { notice = failed + " It opens as it was."; } // said when it opens
+                else
+                {
+                    progress = new Utilities.OperationProgress();
+                    progress.Begin("Reading the model", 0.0, 1.0);
+                    BimGoDocument updated = ProgressScreen.Run(_window, _ui, $"Opening {name}", progress,
+                        () => BimGoReader.Read(path, settings, out error, progress));
+                    if (updated == null)
+                    {
+                        _home.SetMessage($"{name} could not be opened: {error}", error: true);
+                        return null;
+                    }
+                    document = updated;
+                }
+            }
+
             _recent.Touch(path);
             _home.SetMessage(null, error: false);
             return document;
+        }
+
+        /// <summary>
+        /// The .bimgo made from an IFC file (beside it or in the recent files), or null.
+        /// </summary>
+        private string FindModelMadeFrom(string ifcPath)
+        {
+            try
+            {
+                return ModelUpdate.FindModelFor(ifcPath, _recent.Entries.Select(e => e.Path));
+            }
+            catch (Exception ex)
+            {
+                Utilities.Log_Utils.Write($"Looking for a model made from {ifcPath} failed: {ex.Message}");
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Updates a .bimgo with a newer IFC of its model, keeping its review (<see cref="ModelUpdate.WithNewModel"/>),
+        /// with progress (Esc cancels the import; the file is untouched then).
+        /// </summary>
+        /// <param name="bimgoPath">The .bimgo to update.</param>
+        /// <param name="reviewed">Its document if already read, else null (read here).</param>
+        /// <param name="ifcPath">The IFC file.</param>
+        /// <param name="failed">Why not, in plain words (when false).</param>
+        /// <returns>True if the file was written.</returns>
+        private bool UpdateFromIfc(string bimgoPath, BimGoDocument reviewed, string ifcPath, out string failed)
+        {
+            failed = null;
+            string name = Path.GetFileName(bimgoPath), ifcName = Path.GetFileName(ifcPath);
+            var progress = new Utilities.OperationProgress();
+            progress.Begin("Reading the IFC file", 0.0, reviewed == null ? 0.6 : 0.85);
+            LaunchSettings settings = LaunchSettings.LoadOrDefault();
+            string error = null;
+            BimGoDocument imported = ProgressScreen.Run(_window, _ui, $"Importing {ifcName}", progress,
+                () => IfcImporter.Import(ifcPath, settings, out error, out _, progress));
+            if (imported?.Scene == null)
+            {
+                failed = progress.CancelRequested ? $"Updating {name} was cancelled: nothing changed." : $"{ifcName} could not be imported: {error}";
+                return false;
+            }
+
+            if (reviewed == null)
+            {
+                progress.Begin("Reading the model", 0.6, 0.85);
+                reviewed = ProgressScreen.Run(_window, _ui, $"Opening {name}", progress,
+                    () => BimGoReader.Read(bimgoPath, settings, out error, progress));
+                if (reviewed == null)
+                {
+                    failed = progress.CancelRequested ? $"Updating {name} was cancelled: nothing changed." : $"{name} could not be opened: {error}";
+                    return false;
+                }
+            }
+
+            BimGoDocument updated = ModelUpdate.WithNewModel(reviewed, imported.Scene);
+            updated.Path = bimgoPath;
+            progress.Begin("Writing the .bimgo file", 0.85, 1.0);
+            bool written = ProgressScreen.Run(_window, _ui, $"Saving {name}", progress,
+                () => BimGoWriter.Write(bimgoPath, updated, Writer, FileKinds.SAVE, out error, progress: progress), cancelOnClose: false);
+            _window.Input.ReleaseAll();
+            if (!written)
+            {
+                failed = $"{name} could not be saved with the new model: {error}";
+                return false;
+            }
+            Utilities.Log_Utils.Write($"Updated {bimgoPath} from {ifcPath} ({imported.Scene.Elements.Length} elements; {reviewed.Journal?.Count ?? 0} walkthrough edits left out).");
+            return true;
         }
 
         /// <summary>

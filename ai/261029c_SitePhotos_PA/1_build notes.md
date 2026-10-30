@@ -99,3 +99,37 @@ viewer's tools; (7) pass through walls and (8) the walking speed (both in the vi
 - Keys (defaults version 11): P site photos popover, Shift+P gallery, Tab corner map, Shift+Tab site map; ← / → step
   photos in the photo view.
 - Tests: `ThumbDistance` round trip and clamping; the viewer situation's keys (in the viewer's PR).
+
+## Revision 4 (after testing revision 3)
+Asked: (1) update the model from a newer IFC without starting over (critical: the photos and comments must survive
+the model changing); (2) the corner map top right, the wheel zooming it, a key to expand it and close it again;
+(3) a colour per group (one folder per building); (4) a site of about 50 buildings: a dropdown, a search, a list view;
+(5) the same in the full walkthrough, with its map expandable; (6) a click on the photo in the photo view stays at the
+photo's camera, Esc / close goes back; (7) small white marks under text (fixed in the viewer's PR: the font atlas).
+
+- **Update from IFC** (Core `Format/ModelUpdate.cs`: `WithNewModel`, `SourceIfc`, `SourceChanged`, `MadeFrom`,
+  `FindModelFor`; tests `ModelUpdateTests`). The shell (`AppShell.LoadFile`) asks when an opened .bimgo's IFC
+  (provenance `modelPath`, an `ifc:` model key) was saved after the import (`extractedUtc` + 2 s), and when an opened
+  IFC has a .bimgo made from it beside it or in the recent files (most recently saved wins); `UpdateFromIfc` imports,
+  reads, swaps the model in and writes, with progress. Declined offers aren't asked again this run (file + IFC time).
+  The session's RELOAD FROM IFC… is now UPDATE FROM IFC… (also in the viewer's menu), offers the model's own IFC first
+  and uses `WithNewModel` (`DocumentForSave` lost its `newScene`).
+- **Maps**: the viewer's corner map is top right (under the tool panel or the section box's dock when open; hidden when
+  there's no room), the wheel over it or the photo view's small map zooms (`ZoomMiniMap`, `_viewerMapZoom`,
+  `_sitePhotoMapAcross`). `InputAction.ViewerBigMap` became `SiteMap` (General context, Shift+Tab, still defaults
+  version 11 as the PR is unreleased): opens the site map from the walkthrough (`OpenWalkthroughSiteMap`, 160 m
+  around the player), the viewer and the photo view (expand), and closes it. The walkthrough's minimap header says
+  "SHIFT+TAB EXPANDS" when the level name leaves room.
+- **Groups** (`GameSession.SiteGroups.cs`): `SiteGroupInfos` (natural name order, counts, placed bounds, colours: hues
+  a golden angle apart in three strengths), `SitePhotoColour` for pins, thumbnails (a colour bar along the top, the
+  stem), map cameras and labels, the minimap, list rows and tiles. The search box (`SiteSearchBox`, typed while the
+  browser or SITE PHOTOS is open; name, group, date) and `_siteFocusGroup` (only that group's pins and thumbnails;
+  the others faint on the maps; session only). `SiteGroupDropdown` (the panels' overlay dropdown) picks the group
+  listed or shown.
+- **Photo browser** (`GameSession.SiteGallery.cs`, was the gallery): search and the groups list on the left (colour,
+  count, the focused one outlined), the picked group's strip (SHOW ON MAP fits the map on its photos, BROWSE ›, only
+  this on the model), its photos as tiles or rows (GRID / LIST VIEW).
+- **SITE PHOTOS** gained the search, "list the group" and "show on the model" dropdowns; the viewer's popover lost the
+  per-group buttons for the "show on the model" dropdown, BROWSE THIS GROUP ›, SHOW IT ON THE MAP and PHOTO BROWSER….
+- **Photo view**: a click on the photo (not on the dock or the map) closes it standing at the photo's camera
+  (`CloseSitePhoto(stay: true)`; the viewer keeps orbiting / walking / passing through walls); Esc and CLOSE go back.

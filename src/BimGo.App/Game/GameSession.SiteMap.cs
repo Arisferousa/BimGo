@@ -28,8 +28,13 @@ namespace BimGo.Game
     {
         #region Fields
 
-        /// <summary>The small map's width across (m).</summary>
+        /// <summary>The photo view's small map: its width across at first (m); the wheel zooms it.</summary>
         private const float SITE_MINI_ACROSS = 150f;
+
+        /// <summary>One wheel notch on a map: this much nearer.</summary>
+        private const float SITE_MAP_WHEEL = 0.82f;
+
+        private float _sitePhotoMapAcross = SITE_MINI_ACROSS;
 
         private bool _siteMapOpen;
         private bool _siteMapAerial = true;
@@ -77,6 +82,12 @@ namespace BimGo.Game
             Aabb bounds = Scene.Bounds;
             OpenSiteMap(new Vector3(bounds.Center.X, bounds.Center.Y, eye.Z), SiteMapFitAcross());
             _siteMapLevel = Scene.Levels.Length > 0 ? LevelIndexAt(_player.Feet.Z) : 0;
+        }
+
+        /// <summary>The walkthrough's minimap expanded (Shift+Tab): the site map around you, on your level.</summary>
+        private void OpenWalkthroughSiteMap()
+        {
+            OpenSiteMap(_player.Feet + new Vector3(0f, 0f, SITE_PHOTO_EYE), 160f);
         }
 
         private void CloseSiteMap()
@@ -220,13 +231,17 @@ namespace BimGo.Game
             int hovered = -1;
             if (SitePhotos != null && SitePhotos.Photos.Count > 0)
             {
-                // Groups' names at their photos' middle
+                // Groups' names at their photos' middle, in their colours (faint when another group is the one shown)
                 foreach ((string group, Vector2 middle) in SiteGroupCentres())
                 {
                     Vector2 g = SiteMapPoint(new Vector3(middle, 0f), rect, centre, across);
+                    if (g.X < rect.X - S(80) || g.X > rect.X + rect.Z + S(80) || g.Y < rect.Y - S(30) || g.Y > rect.Y + rect.W + S(30)) { continue; }
+                    bool inFocus = _siteFocusGroup == null || string.Equals(group, _siteFocusGroup, StringComparison.OrdinalIgnoreCase);
                     float gw = UiBatch.Measure(f.Small, group) + S(10);
-                    _ui.Rect(g.X - gw * 0.5f, g.Y - S(26), gw, S(17), Rgba.Hex(0x0C0E12, 0.7f));
-                    _ui.TextCentred(f.Small, g.X, g.Y - S(25), group, UiTheme.BOOKMARK_LABEL);
+                    uint colour = SiteGroupColour(group);
+                    _ui.Rect(g.X - gw * 0.5f, g.Y - S(26), gw, S(17), Rgba.Hex(0x0C0E12, inFocus ? 0.75f : 0.35f));
+                    _ui.Rect(g.X - gw * 0.5f, g.Y - S(10), gw, MathF.Max(1.5f, S(2)), Rgba.WithAlpha(colour, inFocus ? 1f : 0.3f));
+                    _ui.TextCentred(f.Small, g.X, g.Y - S(25), group, Rgba.WithAlpha(colour, inFocus ? 1f : 0.35f));
                 }
 
                 // The photos: arrows the way they look; the nearest to the pointer within reach is hovered
@@ -239,7 +254,9 @@ namespace BimGo.Game
                     Vector2 at = SiteMapPoint(photo.Local, rect, centre, across);
                     if (at.X < rect.X - S(10) || at.X > rect.X + rect.Z + S(10) || at.Y < rect.Y - S(10) || at.Y > rect.Y + rect.W + S(10)) { continue; }
                     bool isCurrent = ReferenceEquals(photo, current);
-                    DrawMapCamera(at, photo.Yaw, photo.Fov, isCurrent ? S(8) : S(6), isCurrent ? UiTheme.ACCENT : UiTheme.BOOKMARK_LABEL);
+                    uint colour = isCurrent ? UiTheme.ACCENT : SitePhotoColour(photo);
+                    if (!isCurrent && !SitePhotoInFocus(photo)) { colour = Rgba.WithAlpha(colour, 0.3f); }
+                    DrawMapCamera(at, photo.Yaw, photo.Fov, isCurrent ? S(8) : S(6), colour);
                     if (isCurrent) { _ui.Ring(at.X, at.Y, S(13), MathF.Max(1.5f, S(1.5f)), UiTheme.ACCENT, 20); }
                     float d = Vector2.DistanceSquared(at, pointer);
                     if (pointable && d < best)
@@ -270,7 +287,7 @@ namespace BimGo.Game
                 float tw = S(150), th = tw / Math.Clamp(photo.Aspect, 0.5f, 2f);
                 string label = string.IsNullOrEmpty(photo.Group) ? photo.Name : photo.Group;
                 float tx = Math.Clamp(at.X + S(14), rect.X, rect.X + rect.Z - tw - S(12)), ty = Math.Clamp(at.Y - th - S(30), rect.Y, rect.Y + rect.W - th - S(30));
-                _ui.Panel(tx, ty, tw + S(12), th + S(32), UiTheme.PANEL_STRONG, UiTheme.ACCENT);
+                _ui.Panel(tx, ty, tw + S(12), th + S(32), UiTheme.PANEL_STRONG, SitePhotoColour(photo));
                 if (thumb != 0) { _ui.Image(thumb, tx + S(6), ty + S(6), tw, th, _window.Width, _window.Height); }
                 _ui.TextWrapped(f.Small, tx + S(6), ty + th + S(11), tw, label, UiTheme.TEXT, maxLines: 1);
             }
@@ -349,28 +366,39 @@ namespace BimGo.Game
             var rect = new Vector4(x + S(6), y + header, w - S(12), h - header - S(6));
             var centre = new Vector2(photo.Local.X, photo.Local.Y);
             int level = Scene.Levels.Length > 0 ? LevelIndexAt(photo.Local.Z - SITE_PHOTO_EYE) : 0;
+            Vector2 mouse = input.MousePosition;
+            bool inside = Inside(rect, mouse);
+            if (inside) { _sitePhotoMapAcross = ZoomMiniMap(input, _sitePhotoMapAcross); }
+            float across = _sitePhotoMapAcross;
 
             _ui.Panel(x, y, w, h, UiTheme.PANEL_STRONG, UiTheme.PANEL_BORDER);
             _ui.Text(f.Small, x + S(10), y + S(8), "MAP", UiTheme.TEXT_MUTED, S(1f));
-            bool expand = MenuButton(f, x + w - S(84), y + S(4), S(78), "EXPAND", false, false, height: S(20), compact: true);
-            DrawSiteMapPlan(rect.X, rect.Y, rect.Z, rect.W, centre, SITE_MINI_ACROSS, _siteMapAerial, level);
-
-            Vector2 mouse = input.MousePosition;
-            bool inside = Inside(rect, mouse);
-            int hovered = DrawSiteMapMarks(f, rect, centre, SITE_MINI_ACROSS, _siteMapAerial, level, photo, mouse, inside, showCamera: false);
+            float ew = MathF.Max(S(78), UiBatch.Measure(f.Body, HINT_MAP_EXPAND.Text) + S(16));
+            bool expand = MenuButton(f, x + w - S(6) - ew, y + S(4), ew, HINT_MAP_EXPAND.Text, false, false, height: S(20), compact: true);
+            DrawSiteMapPlan(rect.X, rect.Y, rect.Z, rect.W, centre, across, _siteMapAerial, level);
+            int hovered = DrawSiteMapMarks(f, rect, centre, across, _siteMapAerial, level, photo, mouse, inside, showCamera: false);
             _sitePhotoMapRect = new Vector4(x, y, w, h);
 
             if (expand)
             {
-                OpenSiteMap(photo.Local, SITE_MINI_ACROSS * 2f);
+                OpenSiteMap(photo.Local, across * 2f);
                 return;
             }
             if (inside && input.LeftPressed)
             {
                 input.ConsumeClicks();
                 if (hovered >= 0 && !ReferenceEquals(SitePhotos.Photos[hovered], photo)) { OpenSitePhoto(SitePhotos.Photos[hovered], adjust: false); }
-                else { OpenSiteMap(photo.Local, SITE_MINI_ACROSS * 2f); }
+                else { OpenSiteMap(photo.Local, across * 2f); }
             }
+        }
+
+        /// <summary>The wheel over a small map: nearer or farther (the width across, clamped to the site).</summary>
+        private float ZoomMiniMap(InputState input, float across)
+        {
+            if (input.Wheel == 0) { return across; }
+            across = Math.Clamp(across * MathF.Pow(SITE_MAP_WHEEL, input.Wheel), 15f, MathF.Max(SiteMapFitAcross() * 1.5f, 60f));
+            input.ConsumeWheel();
+            return across;
         }
 
         #endregion
@@ -380,21 +408,30 @@ namespace BimGo.Game
         private bool _viewerMapShown = true;
         private Vector4 _viewerMapRect;
 
+        // The wheel's zoom on the corner map (× the width it picks itself)
+        private float _viewerMapZoom = 1f;
+
         /// <summary>
-        /// The simple viewer's corner map (bottom right, clear of the toolbar): centred on what the camera looks at (orbiting)
-        /// or where you stand (walking), wider the higher the camera; the photos and where you are. A click on a photo
-        /// opens it; elsewhere, the site map there. Tab hides / shows it.
+        /// The simple viewer's corner map (top right; under the tool panel when one is open): centred on what the camera
+        /// looks at (orbiting) or where you stand (walking), wider the higher the camera, the wheel over it zooms; the
+        /// photos and where you are. A click on a photo opens it; elsewhere, the site map there. Tab hides / shows it,
+        /// Shift+Tab (or EXPAND) opens it as the site map.
         /// </summary>
         private void BuildViewerMiniMap(FontAtlas f, InputState input, int width, int height)
         {
-            if (!_viewerMapShown)
+            float w = S(290), h = S(230), header = S(26);
+            float x = width - S(UiTheme.COLUMN_MARGIN) - w, y = S(UiTheme.COLUMN_MARGIN);
+            if (_viewerPanelRect.W > 0f && _viewerPanelRect.X < x + w) { y = _viewerPanelRect.Y + _viewerPanelRect.W + S(UiTheme.GAP_SMALL); } // under the tool panel
+            if (_sectionOpen && _sectionPanelRect.W > 0f && _sectionPanelRect.X + _sectionPanelRect.Z > x && _sectionPanelRect.Y < y + h)
             {
-                _viewerMapRect = Vector4.Zero;
+                y = MathF.Max(y, _sectionPanelRect.Y + _sectionPanelRect.W + S(UiTheme.GAP_SMALL)); // under the section box's dock
+            }
+            float bottom = _viewerBarRect.W > 0f ? _viewerBarRect.Y - S(12) : height - S(24);
+            if (!_viewerMapShown || y + h > bottom || _viewerTitleRect.X + _viewerTitleRect.Z > x - S(8) && y < _viewerTitleRect.Y + _viewerTitleRect.W)
+            {
+                _viewerMapRect = Vector4.Zero; // hidden, or no room for it (a small window)
                 return;
             }
-            float w = S(250), h = S(210), header = S(26);
-            float x = width - S(UiTheme.COLUMN_MARGIN) - w, y = height - S(24) - h;
-            if (_viewerBarRect.Z > 0f && x < _viewerBarRect.X + _viewerBarRect.Z) { y = _viewerBarRect.Y - S(12) - h; } // a narrow window: above the toolbar
             _viewerMapRect = new Vector4(x, y, w, h);
 
             // What it shows: walking, around the player; orbiting, around what the middle of the view looks at
@@ -408,13 +445,20 @@ namespace BimGo.Game
             int level = Scene.Levels.Length > 0 ? LevelIndexAt(focus.Z - SITE_PHOTO_EYE) : 0;
             var rect = new Vector4(x + S(6), y + header, w - S(12), h - header - S(6));
             var centre = new Vector2(focus.X, focus.Y);
+            Vector2 mouse = input.MousePosition;
+            bool inside = Inside(rect, mouse) && _viewerPopup == VP_NONE;
+            if (inside && input.Wheel != 0)
+            {
+                float zoomed = ZoomMiniMap(input, across * _viewerMapZoom);
+                _viewerMapZoom = Math.Clamp(zoomed / across, 0.05f, 20f);
+            }
+            across = Math.Clamp(across * _viewerMapZoom, 15f, MathF.Max(SiteMapFitAcross() * 1.5f, 60f));
 
             _ui.Panel(x, y, w, h, UiTheme.PANEL_STRONG, UiTheme.PANEL_BORDER);
             _ui.Text(f.Small, x + S(10), y + S(7), HINT_VIEWER_MAP.Text, UiTheme.TEXT_MUTED);
-            bool expand = MenuButton(f, x + w - S(84), y + S(3), S(78), "EXPAND", false, false, height: S(20), compact: true);
+            float ew = MathF.Max(S(78), UiBatch.Measure(f.Body, HINT_MAP_EXPAND.Text) + S(16));
+            bool expand = MenuButton(f, x + w - S(6) - ew, y + S(3), ew, HINT_MAP_EXPAND.Text, false, false, height: S(20), compact: true);
             DrawSiteMapPlan(rect.X, rect.Y, rect.Z, rect.W, centre, across, _siteMapAerial, level);
-            Vector2 mouse = input.MousePosition;
-            bool inside = Inside(rect, mouse) && _viewerPopup == VP_NONE;
             int hovered = DrawSiteMapMarks(f, rect, centre, across, _siteMapAerial, level, null, mouse, inside, showCamera: true);
 
             if (expand)
@@ -435,6 +479,7 @@ namespace BimGo.Game
         }
 
         private static readonly KeyHint HINT_VIEWER_MAP = new(() => $"MAP ({Key(InputAction.ViewerMap)} hides)");
+        private static readonly KeyHint HINT_MAP_EXPAND = new(() => $"EXPAND {KeyUpper(InputAction.SiteMap)}");
 
         #endregion
 
@@ -447,7 +492,7 @@ namespace BimGo.Game
             Vector2 mouse = input.MousePosition;
             Vector2 delta = mouse - _siteMapMouse;
             _siteMapMouse = mouse;
-            if (input.Pressed(InputAction.Back))
+            if (input.Pressed(InputAction.Back) || input.Pressed(InputAction.SiteMap))
             {
                 CloseSiteMap();
                 return;
@@ -460,7 +505,7 @@ namespace BimGo.Game
             if (input.Wheel != 0 && onMap)
             {
                 Vector2 before = SiteMapWorld(mouse, _siteMapRect, _siteMapCentre, _siteMapAcross);
-                _siteMapAcross = Math.Clamp(_siteMapAcross * MathF.Pow(0.82f, input.Wheel), 15f, SiteMapFitAcross() * 2f);
+                _siteMapAcross = Math.Clamp(_siteMapAcross * MathF.Pow(SITE_MAP_WHEEL, input.Wheel), 15f, SiteMapFitAcross() * 2f);
                 Vector2 after = SiteMapWorld(mouse, _siteMapRect, _siteMapCentre, _siteMapAcross);
                 _siteMapCentre += before - after; // the point under the cursor stays put
                 input.ConsumeWheel();
@@ -570,7 +615,7 @@ namespace BimGo.Game
                 CloseSiteMap();
                 return;
             }
-            string hint = _viewer && !SitePhotoViewOpen
+            string hint = !SitePhotoViewOpen
                 ? "Drag to pan · scroll to zoom · click a photo to look through it · double-click to go there"
                 : "Drag to pan · scroll to zoom · click a photo to look through it";
             _ui.TextRight(f.Small, x + w - S(UiTheme.PANEL_PAD) - S(112), by + S(9), hint, UiTheme.TEXT_FAINT);
