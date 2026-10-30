@@ -631,6 +631,15 @@ namespace BimGo.Rendering
             if (HasMaterials) { RefreshReflectivePlanes(); } // Round X-C1: water no longer counts as glass, or does
         }
 
+        /// <summary>
+        /// Materials round: re-uploads the material table after its entries were changed in place (a slider in the
+        /// MATERIALS panel): no images are decoded. GL thread.
+        /// </summary>
+        public void RefreshMaterialTable()
+        {
+            if (_materialVbo != 0) { _materials.RefreshTable(); }
+        }
+
         /// <summary>Water materials in the current table (QOL round: shown under the override).</summary>
         public int WaterMaterialCount => _materials.Ready ? _materials.WaterCount : 0;
 

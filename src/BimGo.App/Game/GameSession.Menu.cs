@@ -484,6 +484,11 @@ namespace BimGo.Game
                 BuildSitePhotosPanel(); // site photos round
                 return;
             }
+            if (IsMaterialsPanelOpen)
+            {
+                BuildMaterialsPanel(); // materials round
+                return;
+            }
             if (_viewer)
             {
                 BuildViewerMenu(); // viewer round: the simple viewer's own short menu
@@ -535,7 +540,7 @@ namespace BimGo.Game
             // Button pitch: 54 px, tightened when a stack would run into END SESSION (small or high-DPI screens)
             float endY = height - pad - S(40);
             int hiddenThings = HiddenThingsCount();
-            bool texturesButton = HasTexturePanel;
+            bool texturesButton = HasTexturePanel || HasMaterialsPanel; // materials round: MATERIALS in its place for IFC models
             bool libraryButton = HasLibrary;
             bool roomsButton = Scene.Rooms.Length > 0;
             int sessionButtons = 5 + (IsFileMode ? 5 : 1) + (_live != null ? 2 : 0); // + CONTROLS (input round B2), + Revit views (X-E), + kiosk shortcut (Z-C), + viewer copy
@@ -618,7 +623,11 @@ namespace BimGo.Game
             y += step;
             if (texturesButton)
             {
-                if (MenuButton(f, x, y, stackW, TexturesMenuLabel(), false, false, height: buttonH, compact: true)) { OpenTextures(); return; }
+                if (HasMaterialsPanel)
+                {
+                    if (MenuButton(f, x, y, stackW, MaterialsMenuLabel(), false, false, height: buttonH, compact: true)) { OpenMaterials(); return; }
+                }
+                else if (MenuButton(f, x, y, stackW, TexturesMenuLabel(), false, false, height: buttonH, compact: true)) { OpenTextures(); return; }
                 y += step;
             }
             if (roomsButton)

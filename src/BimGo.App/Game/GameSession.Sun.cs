@@ -334,7 +334,7 @@ namespace BimGo.Game
             var hash = new HashCode();
             hash.Add(_whitecard);
             hash.Add(_realistic && _renderer.CutoutsWanted); // materials round: cutouts cast their holes in the Realistic mode
-            hash.Add(_materialsRevision); // and a material changed in the MATERIALS / TEXTURES panel may have holes now
+            hash.Add(_materialsShown); // and the materials drawn changed (MATERIALS / TEXTURES): holes may have come or gone
             hash.Add(_billboardKey); // Round X-B: billboards cast shadows
             foreach (Physics.DynamicInstance instance in Dynamics.Instances)
             {

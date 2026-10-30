@@ -492,7 +492,7 @@ namespace BimGo.Game
         /// <summary>True while one of the panels that replace the pause menu is open.</summary>
         private bool AnyBigPanelOpen => IsCommentsPanelOpen || IsBookmarksPanelOpen || IsTexturesPanelOpen || IsLibraryPanelOpen || IsRoomsPanelOpen
             || IsClashesPanelOpen || IsColourProfilesPanelOpen || IsGeometryPanelOpen || IsControlsPanelOpen || IsPushPanelOpen || IsMediaPanelOpen || IsEntouragePanelOpen || IsMarkupOpen
-            || IsSitePhotosPanelOpen || IsSiteGalleryOpen;
+            || IsSitePhotosPanelOpen || IsSiteGalleryOpen || IsMaterialsPanelOpen;
 
         /// <summary>
         /// One level back (Esc, the gamepad's B, ← BACK): an open dropdown or confirm, then the markup editor (Y-B: it
@@ -505,7 +505,7 @@ namespace BimGo.Game
             if (AnyBigPanelOpen && CloseOverlay()) { return true; }
             return CancelMarkupPanel() || CloseMenuPreview() || ClosePush() || CloseComments() || CloseBookmarks() || CloseTextures() || CloseLibrary() || CloseRooms()
                 || CloseClashes() || CloseColourProfiles() || CloseGeometry() || CloseControls() || CloseMedia() || CloseEntourage()
-                || CloseSiteGallery() || CloseSitePhotosPanel();
+                || CloseSiteGallery() || CloseSitePhotosPanel() || CloseMaterials();
         }
 
         /// <summary>

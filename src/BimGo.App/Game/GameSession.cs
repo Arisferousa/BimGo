@@ -278,6 +278,7 @@ namespace BimGo.Game
             _renderer.Initialise(Scene, _batches);
             _renderer.Probes.SetOccluders(_bvh, ProbeOccluderMask());
             InitialiseTextures();
+            InitialiseMaterialMatches(); // materials round (IFC models)
             if (_renderer.MaterialWarning != null) { Toast(_renderer.MaterialWarning, 6f); }
             else if (_realistic && !_renderer.HasMaterials)
             {
@@ -791,6 +792,11 @@ namespace BimGo.Game
                 ShowUi();
                 escape = false;
             }
+            if (escape && _matchPicking)
+            {
+                CancelMaterialPick(); // materials round: the eyedropper goes back to MATERIALS
+                escape = false;
+            }
             if (escape)
             {
                 if (_wheelOpen) { CloseGunWheel(pick: false); }
@@ -1095,6 +1101,13 @@ namespace BimGo.Game
             PumpSource(dt);
             foreach (Gun gun in _guns) { gun.Tick(dt); }
             if (_paused || IsEditingComment || _tourActive || SitePhotoViewOpen || _siteMapOpen) { return; }
+
+            // Materials round: the MATERIALS eyedropper takes the click (no gun fires)
+            if (_matchPicking)
+            {
+                if (_window.IsCaptured && _window.Input.Pressed(InputAction.GunPrimary)) { PickMaterialUnderCrosshair(); }
+                return;
+            }
 
             if (_unarmed)
             {

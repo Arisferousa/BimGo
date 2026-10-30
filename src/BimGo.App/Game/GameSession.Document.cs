@@ -455,7 +455,10 @@ namespace BimGo.Game
                 PhotoImages = SitePhotos?.ImagesForSave(),
                 Sun = _sun?.Copy(),
                 Visibility = ToVisibilitySettings(),
-                Materials = MaterialsChanged ? CurrentMaterials : null, // Textures panel: picked images are embedded
+                Materials = MaterialsForSave(), // Textures panel: picked images are embedded; materials round: the matches applied
+                MaterialMatches = MatchesForSave(),
+                MatchImages = MatchImagesForSave(),
+                MaterialBaseVertices = MatchBaseVerticesForSave(),
                 Clashes = ClashBytesForSave(), // Round C: as held when clash detection was never switched on
                 Viewer = viewerCopy || _viewerFile ? new ViewerDto { Start = viewerCopy ? ViewerStart.ORBIT : _viewerStart } : null, // viewer round: a viewer file stays one
                 CreatedUtc = _options.Document?.CreatedUtc ?? Scene.Provenance?.ExtractedUtc ?? DateTime.UtcNow,

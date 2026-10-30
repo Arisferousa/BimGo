@@ -85,8 +85,8 @@ namespace BimGo.Game
         /// <summary>True once the Textures panel changed a material (Save writes the changed set).</summary>
         private bool MaterialsChanged => _materialsRevision != 0;
 
-        /// <summary>True if the snapshot has materials (the TEXTURES button shows).</summary>
-        private bool HasTexturePanel => Scene.Materials != null && !Scene.Materials.IsEmpty;
+        /// <summary>True if the snapshot has materials (the TEXTURES button shows; materials round: not for IFC models, which have MATERIALS).</summary>
+        private bool HasTexturePanel => Scene.Materials != null && !Scene.Materials.IsEmpty && !HasMaterialsPanel;
 
         /// <summary>True while the Textures panel is showing (it replaces the pause menu).</summary>
         private bool IsTexturesPanelOpen => _texturesOpen;
@@ -612,6 +612,7 @@ namespace BimGo.Game
 
         private void ReloadRendererMaterials()
         {
+            _materialsShown++; // materials round: shadows, grass and probes follow what is drawn
             string warning = _renderer.ReloadMaterials(CurrentMaterials);
             if (warning != null) { Toast(warning, 5f); }
         }
