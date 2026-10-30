@@ -103,7 +103,15 @@ namespace BimGo.Rendering
         /// <param name="scale">UI scale (DPI / 96).</param>
         public void Build(float scale)
         {
+            // Smallest atlas that holds every font with its padding: a dry run of the packer measures each size
             Size = scale <= 1.01f ? 1024 : scale <= 2.01f ? 2048 : 4096;
+            using (var probe = new SD.Bitmap(1, 1, SDI.PixelFormat.Format32bppArgb))
+            using (SD.Graphics measure = SD.Graphics.FromImage(probe))
+            {
+                measure.TextRenderingHint = SDT.TextRenderingHint.AntiAliasGridFit;
+                while (Size < 8192 && !RasteriseAll(measure, scale, false)) { Size *= 2; }
+            }
+
             using var bitmap = new SD.Bitmap(Size, Size, SDI.PixelFormat.Format32bppArgb);
             using (SD.Graphics g = SD.Graphics.FromImage(bitmap))
             {
@@ -112,17 +120,26 @@ namespace BimGo.Rendering
                 g.FillRectangle(SD.Brushes.White, 0, 0, 4, 4);
                 WhiteU = 2f / Size;
                 WhiteV = 2f / Size;
-
-                var packer = new Packer { X = 6, Y = 0, RowHeight = 6 };
-                Small = Rasterise(g, ref packer, new[] { "Bahnschrift SemiBold", "Segoe UI Semibold" }, 11f * scale, SD.FontStyle.Regular);
-                Body = Rasterise(g, ref packer, new[] { "Bahnschrift", "Segoe UI" }, 14f * scale, SD.FontStyle.Regular);
-                Bold = Rasterise(g, ref packer, new[] { "Bahnschrift SemiBold", "Segoe UI Semibold" }, 16f * scale, SD.FontStyle.Regular);
-                Title = Rasterise(g, ref packer, new[] { "Bahnschrift", "Segoe UI" }, 40f * scale, SD.FontStyle.Bold);
-                Mono = Rasterise(g, ref packer, new[] { "Consolas", "Courier New" }, 13f * scale, SD.FontStyle.Regular);
-                MonoLarge = Rasterise(g, ref packer, new[] { "Consolas", "Courier New" }, 26f * scale, SD.FontStyle.Bold);
+                RasteriseAll(g, scale, true);
             }
 
             Upload(bitmap);
+        }
+
+        /// <summary>
+        /// Packs (and, with <paramref name="draw"/>, draws) every font.
+        /// </summary>
+        /// <returns>True if every glyph fitted in the atlas.</returns>
+        private bool RasteriseAll(SD.Graphics g, float scale, bool draw)
+        {
+            var packer = new Packer { X = 6, Y = 0, RowHeight = 6, Fits = true };
+            Small = Rasterise(g, ref packer, new[] { "Bahnschrift SemiBold", "Segoe UI Semibold" }, 11f * scale, SD.FontStyle.Regular, draw);
+            Body = Rasterise(g, ref packer, new[] { "Bahnschrift", "Segoe UI" }, 14f * scale, SD.FontStyle.Regular, draw);
+            Bold = Rasterise(g, ref packer, new[] { "Bahnschrift SemiBold", "Segoe UI Semibold" }, 16f * scale, SD.FontStyle.Regular, draw);
+            Title = Rasterise(g, ref packer, new[] { "Bahnschrift", "Segoe UI" }, 40f * scale, SD.FontStyle.Bold, draw);
+            Mono = Rasterise(g, ref packer, new[] { "Consolas", "Courier New" }, 13f * scale, SD.FontStyle.Regular, draw);
+            MonoLarge = Rasterise(g, ref packer, new[] { "Consolas", "Courier New" }, 26f * scale, SD.FontStyle.Bold, draw);
+            return packer.Fits;
         }
 
         /// <summary>
@@ -131,19 +148,27 @@ namespace BimGo.Rendering
         private struct Packer
         {
             public int X, Y, RowHeight;
+            public bool Fits;
         }
 
         /// <summary>
         /// Rasterises one font into the atlas.
         /// </summary>
-        private UiFont Rasterise(SD.Graphics g, ref Packer packer, string[] families, float pixelSize, SD.FontStyle style)
+        /// <remarks>
+        /// Each glyph gets a padded cell and is clipped to it. Accents on capitals (É, Å) and tails reach past the
+        /// font's line box; unclipped they spilled into the row above and showed as small white marks under other text.
+        /// </remarks>
+        private UiFont Rasterise(SD.Graphics g, ref Packer packer, string[] families, float pixelSize, SD.FontStyle style, bool draw)
         {
             using SD.Font font = CreateFont(families, pixelSize, style);
             using var format = (SD.StringFormat)SD.StringFormat.GenericTypographic.Clone();
             format.FormatFlags |= SD.StringFormatFlags.MeasureTrailingSpaces | SD.StringFormatFlags.NoClip;
 
             float lineHeight = MathF.Ceiling(font.GetHeight(g));
-            int cellHeight = (int)lineHeight + 2;
+            int padTop = (int)MathF.Ceiling(pixelSize * 0.25f) + 1;
+            int padBottom = (int)MathF.Ceiling(pixelSize * 0.15f) + 1;
+            int padSide = (int)MathF.Ceiling(pixelSize * 0.1f) + 2;
+            int cellHeight = (int)lineHeight + padTop + padBottom;
             var latin = new Glyph[256];
             var extra = new Glyph[EXTRA.Length];
 
@@ -151,12 +176,17 @@ namespace BimGo.Rendering
             {
                 string text = c.ToString();
                 float advance = g.MeasureString(text, font, SD.PointF.Empty, format).Width;
-                int cellWidth = (int)MathF.Ceiling(advance) + 5;
+                int cellWidth = (int)MathF.Ceiling(advance) + 2 * padSide;
 
                 if (p.X + cellWidth >= Size) { p.X = 0; p.Y += p.RowHeight + 1; p.RowHeight = 0; }
-                if (p.Y + cellHeight >= Size) { return default; }
+                if (p.Y + cellHeight >= Size) { p.Fits = false; return default; }
 
-                g.DrawString(text, font, SD.Brushes.White, p.X + 2, p.Y + 1, format);
+                if (draw)
+                {
+                    g.SetClip(new SD.Rectangle(p.X, p.Y, cellWidth, cellHeight));
+                    g.DrawString(text, font, SD.Brushes.White, p.X + padSide, p.Y + padTop, format);
+                    g.ResetClip();
+                }
                 var glyph = new Glyph
                 {
                     U0 = (float)p.X / Size,
@@ -166,8 +196,8 @@ namespace BimGo.Rendering
                     Width = cellWidth,
                     Height = cellHeight,
                     Advance = advance,
-                    OffsetX = -2f,
-                    OffsetY = -1f,
+                    OffsetX = -padSide,
+                    OffsetY = -padTop,
                     Valid = true
                 };
                 p.X += cellWidth + 1;

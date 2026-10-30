@@ -59,3 +59,9 @@ icons read well.
 - The views popover's buttons are full width, one under another (labels didn't fit side by side).
 - The walk flag is reset on entering the viewer (it could stay set from an earlier visit), and the title's room label is
   made once per room instead of every frame.
+
+## Revision 3
+- **Small white marks under text** (all UI text, not only the viewer): accented capitals and tails (É, Å, Ç) reach
+  past the font's line box, and the atlas drew them with `NoClip` into the glyphs of the row above, so those glyphs
+  carried a stray dot at their bottom. Each glyph now has a padded cell (top 25 %, bottom 15 %, sides 10 % of the size)
+  and is clipped to it; a dry run of the packer picks the smallest atlas (1024 → 8192) that holds everything.
