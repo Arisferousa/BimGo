@@ -143,7 +143,8 @@ namespace BimGo.Format
                     MaterialData materials = document.Materials ?? scene.Materials;
                     if (materials != null && !materials.IsEmpty && materials.VertexMaterial.Length == scene.Vertices.Length)
                     {
-                        WriteMaterials(zip, materials, geometryCompression);
+                        HashSet<string> written = WriteMaterials(zip, materials, geometryCompression);
+                        WriteMaterialMatches(zip, document, written, scene.Vertices.Length); // materials round
                     }
                 }
 
@@ -363,7 +364,8 @@ namespace BimGo.Format
         /// materials.json (the table), material.bin (index + surface coordinate per vertex) and the referenced images
         /// under textures/ (stored as-is: they are already JPEG / PNG).
         /// </summary>
-        private static void WriteMaterials(ZipArchive zip, MaterialData materials, CompressionLevel compression)
+        /// <returns>The image entries written (so the material matches' own images aren't written twice).</returns>
+        private static HashSet<string> WriteMaterials(ZipArchive zip, MaterialData materials, CompressionLevel compression)
         {
             var dto = new MaterialsDto { TextureMaxSize = materials.TextureMaxSize, Materials = materials.Materials.ToList() };
             WriteJson(zip, BimGoFormat.ENTRY_MATERIALS, dto, BimGoFormat.JSON_COMPACT);
@@ -386,14 +388,48 @@ namespace BimGo.Format
             var written = new HashSet<string>(StringComparer.Ordinal);
             foreach (SceneMaterial material in materials.Materials)
             {
-                string name = material?.Texture;
-                if (name == null || !written.Add(name)) { continue; }
-                if (!name.StartsWith(BimGoFormat.TEXTURE_FOLDER, StringComparison.Ordinal)) { continue; }
-                if (!materials.Textures.TryGetValue(name, out byte[] bytes) || bytes == null || bytes.Length == 0) { continue; }
-                ZipArchiveEntry image = zip.CreateEntry(name, CompressionLevel.NoCompression);
-                using Stream stream = image.Open();
-                stream.Write(bytes);
+                if (material == null) { continue; }
+                foreach (string name in material.Images()) // materials round: the bump and cutout images too
+                {
+                    WriteTexture(zip, written, name, materials.Textures.TryGetValue(name, out byte[] bytes) ? bytes : null);
+                }
             }
+            return written;
+        }
+
+        /// <summary>
+        /// Materials round: the matches (with the model's own table), their images not already written, and the
+        /// per-vertex indices before overrides when there are overrides.
+        /// </summary>
+        private static void WriteMaterialMatches(ZipArchive zip, BimGoDocument document, HashSet<string> written, int vertexCount)
+        {
+            MaterialMatchDocument matches = document.MaterialMatches;
+            if (matches == null || (matches.IsEmpty && matches.BaseMaterials == null)) { return; }
+            WriteJson(zip, BimGoFormat.ENTRY_MATERIAL_MATCHES, matches, BimGoFormat.JSON_COMPACT);
+            foreach (string image in matches.Images())
+            {
+                WriteTexture(zip, written, image, document.MatchImages != null && document.MatchImages.TryGetValue(image, out byte[] bytes) ? bytes : null);
+            }
+            ushort[] baseVertices = document.MaterialBaseVertices;
+            if (baseVertices == null || baseVertices.Length != vertexCount) { return; }
+            ZipArchiveEntry entry = zip.CreateEntry(BimGoFormat.ENTRY_MATERIAL_BASE, CompressionLevel.Optimal);
+            using Stream stream = entry.Open();
+            using (var header = new BinaryWriter(stream, System.Text.Encoding.UTF8, leaveOpen: true))
+            {
+                header.Write(BimGoFormat.MATERIAL_MAGIC);
+                header.Write(baseVertices.Length);
+            }
+            stream.Write(MemoryMarshal.AsBytes(baseVertices.AsSpan()));
+        }
+
+        /// <summary>One image under textures/ (stored: already JPEG / PNG), once.</summary>
+        private static void WriteTexture(ZipArchive zip, HashSet<string> written, string name, byte[] bytes)
+        {
+            if (name == null || bytes == null || bytes.Length == 0 || !name.StartsWith(BimGoFormat.TEXTURE_FOLDER, StringComparison.Ordinal)) { return; }
+            if (!written.Add(name)) { return; }
+            ZipArchiveEntry image = zip.CreateEntry(name, CompressionLevel.NoCompression);
+            using Stream stream = image.Open();
+            stream.Write(bytes);
         }
 
         /// <summary>

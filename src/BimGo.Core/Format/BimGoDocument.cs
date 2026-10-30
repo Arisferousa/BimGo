@@ -37,6 +37,21 @@ namespace BimGo.Format
         /// <summary>Site photos round: the photos' pictures and thumbnails by file name (JPEG bytes), or null.</summary>
         public Dictionary<string, byte[]> PhotoImages { get; set; }
 
+        /// <summary>
+        /// Materials round: the material matches (material-matches.json: how an IFC model's materials should look, with
+        /// its own table before matching), or null. <see cref="Materials"/> (else the scene's) holds them applied.
+        /// </summary>
+        public MaterialMatchDocument MaterialMatches { get; set; }
+
+        /// <summary>Materials round: the matches' images by entry name ("textures/…"), or null.</summary>
+        public Dictionary<string, byte[]> MatchImages { get; set; }
+
+        /// <summary>
+        /// Materials round: the per-vertex material indices before category / element overrides, or null when there are
+        /// none (the applied indices are then the model's own).
+        /// </summary>
+        public ushort[] MaterialBaseVertices { get; set; }
+
         /// <summary>Round X-D1: per fixture type light profiles and imported .ies files (light-profiles.json), or null. Optional: older readers ignore it.</summary>
         public LightProfileDocument LightProfiles { get; set; }
 

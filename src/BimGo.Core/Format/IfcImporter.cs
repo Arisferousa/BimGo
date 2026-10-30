@@ -271,7 +271,13 @@ namespace BimGo.Format
             private string _lengthSymbol = "m", _areaSymbol = "m²", _volumeSymbol = "m³";
 
             private IfcGeometry _geometry;
-            private readonly Dictionary<int, uint> _itemColours = new();
+
+            // The geometry carries a surface token per triangle instead of a colour (1-based into _surfaces): the colour
+            // and the material name it was styled with (null: the element's material), resolved when the element's
+            // triangles go into the scene. Materials round: the names become the material table.
+            private readonly List<(uint Colour, string Material)> _surfaces = new();
+            private readonly Dictionary<(uint, string), uint> _surfaceTokens = new();
+            private readonly Dictionary<int, uint> _itemColours = new();      // styled item → surface token
             private readonly Dictionary<int, uint> _materialColours = new();
             private readonly Dictionary<int, int> _materialOf = new();         // object (element or type) → IfcRelAssociatesMaterial's material select
             private readonly Dictionary<int, int> _container = new();          // element → spatial structure element
@@ -285,6 +291,10 @@ namespace BimGo.Format
 
             // Output
             private readonly List<SceneVertex> _vertices = new(1 << 16);
+            private readonly List<ushort> _vertexMaterial = new(1 << 16);       // materials round: per vertex, as the Revit export
+            private readonly List<Vector2> _vertexUv = new(1 << 16);
+            private readonly List<SceneMaterial> _materials = new();
+            private readonly Dictionary<string, ushort> _materialIndex = new(StringComparer.OrdinalIgnoreCase);
             private readonly List<uint> _indices = new(1 << 17);
             private readonly List<ElementRecord> _elements = new();
             private readonly Dictionary<int, long> _elementIdOf = new();       // IFC instance → ElementRecord.ElementId (= the instance number)
@@ -369,6 +379,13 @@ namespace BimGo.Format
                 var scene = new SceneData
                 {
                     Vertices = _vertices.ToArray(),
+                    Materials = _materials.Count == 0 ? MaterialData.Empty : new MaterialData
+                    {
+                        Materials = _materials.ToArray(),
+                        VertexMaterial = _vertexMaterial.ToArray(),
+                        VertexUv = _vertexUv.ToArray(),
+                        TextureMaxSize = MaterialData.IFC_TEXTURE_SIZE
+                    },
                     Indices = _indices.ToArray(),
                     Elements = _elements.ToArray(),
                     Levels = levels,
@@ -494,8 +511,8 @@ namespace BimGo.Format
                     object[] a = _file.Args(styled);
                     int item = StepFile.Ref(StepFile.Arg(a, 0));
                     if (item == 0) { continue; }
-                    uint colour = StyleColour(StepFile.List(StepFile.Arg(a, 1)), 0);
-                    if (colour != 0) { _itemColours[item] = colour; }
+                    uint colour = StyleColour(StepFile.List(StepFile.Arg(a, 1)), 0, out string name);
+                    if (colour != 0) { _itemColours[item] = Surface(colour, name); }
                 }
 
                 foreach (int definition in _file.OfType("IFCMATERIALDEFINITIONREPRESENTATION"))
@@ -507,16 +524,20 @@ namespace BimGo.Format
                         foreach (object item in StepFile.List(StepFile.Arg(_file.Args(StepFile.Ref(r)), 3)))
                         {
                             object[] styled = _file.Args(StepFile.Ref(item));
-                            uint colour = StyleColour(StepFile.List(StepFile.Arg(styled, 1)), 0);
+                            uint colour = StyleColour(StepFile.List(StepFile.Arg(styled, 1)), 0, out _);
                             if (colour != 0 && material != 0 && !_materialColours.ContainsKey(material)) { _materialColours[material] = colour; }
                         }
                     }
                 }
             }
 
-            /// <summary>The first surface colour found in a list of styles (presentation style assignments followed).</summary>
-            private uint StyleColour(object[] styles, int depth)
+            /// <summary>
+            /// The first surface colour found in a list of styles (presentation style assignments followed), and the surface
+            /// style's name: Revit names it after the material, so it is the material's name (null when it has none).
+            /// </summary>
+            private uint StyleColour(object[] styles, int depth, out string name)
             {
+                name = null;
                 if (depth > 4) { return 0; }
                 foreach (object s in styles)
                 {
@@ -526,7 +547,7 @@ namespace BimGo.Format
                     {
                         case "IFCPRESENTATIONSTYLEASSIGNMENT":
                         {
-                            uint colour = StyleColour(StepFile.List(StepFile.Arg(a, 0)), depth + 1);
+                            uint colour = StyleColour(StepFile.List(StepFile.Arg(a, 0)), depth + 1, out name);
                             if (colour != 0) { return colour; }
                             break;
                         }
@@ -541,6 +562,8 @@ namespace BimGo.Format
                                 if (rgb.Length < 4) { continue; }
                                 double transparency = StepFile.Number(StepFile.Arg(shading, 1), 0);
                                 if (!double.IsFinite(transparency)) { transparency = 0; }
+                                string styleName = StepFile.Text(StepFile.Arg(a, 0))?.Trim();
+                                name = string.IsNullOrEmpty(styleName) ? null : styleName;
                                 return Pack(StepFile.Number(rgb[1], 0.8), StepFile.Number(rgb[2], 0.8), StepFile.Number(rgb[3], 0.8), transparency);
                             }
                             break;
@@ -558,6 +581,63 @@ namespace BimGo.Format
             }
 
             private static uint Rgb(byte r, byte g, byte b, byte a = 255) => r | ((uint)g << 8) | ((uint)b << 16) | ((uint)a << 24);
+
+            /// <summary>The token for a colour and material name (made on first use; never 0).</summary>
+            private uint Surface(uint colour, string material)
+            {
+                var key = (colour, material);
+                if (_surfaceTokens.TryGetValue(key, out uint token)) { return token; }
+                _surfaces.Add(key);
+                token = (uint)_surfaces.Count;
+                _surfaceTokens[key] = token;
+                return token;
+            }
+
+            /// <summary>The name of an element's first material (else its type's), or null.</summary>
+            private string MaterialNameOf(int element)
+            {
+                foreach (int material in MaterialsOf(element))
+                {
+                    string name = StepFile.Text(StepFile.Arg(_file.Args(material), 0))?.Trim();
+                    if (!string.IsNullOrEmpty(name)) { return name; }
+                }
+                return null;
+            }
+
+            /// <summary>
+            /// The material table's index for a name (added on first use with this colour: RGB display 0–1; see-through
+            /// below 250 alpha), or <see cref="MaterialData.NONE"/> when the table is full.
+            /// </summary>
+            private ushort MaterialIndex(string name, uint colour)
+            {
+                if (_materialIndex.TryGetValue(name, out ushort index)) { return index; }
+                if (_materials.Count >= MaterialData.MAX_MATERIALS) { return MaterialData.NONE; }
+                index = (ushort)_materials.Count;
+                _materials.Add(new SceneMaterial
+                {
+                    Name = name,
+                    MaterialId = index + 1,
+                    Schema = MaterialData.IFC_SCHEMA,
+                    Colour = new Vector3((colour & 0xFF) / 255f, ((colour >> 8) & 0xFF) / 255f, ((colour >> 16) & 0xFF) / 255f),
+                    TextureState = TextureState.None,
+                    SeeThrough = (colour >> 24) < 250
+                });
+                _materialIndex[name] = index;
+                return index;
+            }
+
+            /// <summary>
+            /// A vertex's surface coordinate (m), world-anchored as the Revit export's planar faces: plan X / Y on floors and
+            /// roofs (a normal within 45° of vertical), else U along the face horizontally and V up.
+            /// </summary>
+            private static Vector2 SurfaceCoordinate(Vector3 p, Vector3 normal)
+            {
+                if (MathF.Abs(normal.Z) >= 0.7071f) { return new Vector2(p.X, p.Y); }
+                var across = new Vector2(-normal.Y, normal.X);
+                float length = across.Length();
+                across = length > 1e-6f ? across / length : Vector2.UnitX;
+                return new Vector2(p.X * across.X + p.Y * across.Y, p.Z);
+            }
 
             /// <summary>The materials associated with an element (else its type), first with a colour first.</summary>
             private List<int> MaterialsOf(int element)
@@ -604,12 +684,21 @@ namespace BimGo.Format
                 }
             }
 
-            /// <summary>The colour an element's unstyled geometry gets: its material's, else one for its category.</summary>
-            private uint FallbackColour(int element, string category, string name)
+            /// <summary>
+            /// The surface token an element's unstyled geometry gets: its material's colour and name, else a colour for its
+            /// category (the material name left to the element's).
+            /// </summary>
+            private uint FallbackColour(int element, string category, string name) => Surface(FallbackRgba(element, category, name, out string material), material);
+
+            private uint FallbackRgba(int element, string category, string name, out string material)
             {
-                foreach (int material in MaterialsOf(element))
+                material = null;
+                foreach (int m in MaterialsOf(element))
                 {
-                    if (_materialColours.TryGetValue(material, out uint colour)) { return colour; }
+                    if (!_materialColours.TryGetValue(m, out uint colour)) { continue; }
+                    string own = StepFile.Text(StepFile.Arg(_file.Args(m), 0))?.Trim();
+                    material = string.IsNullOrEmpty(own) ? null : own;
+                    return colour;
                 }
                 bool glassy = name != null && (name.Contains("glass", StringComparison.OrdinalIgnoreCase) || name.Contains("glaz", StringComparison.OrdinalIgnoreCase));
                 return category switch
@@ -822,7 +911,8 @@ namespace BimGo.Format
                 }
                 CutOpenings(product, mesh);
 
-                if (!BuildGeometry(mesh, out int opaqueStart, out int opaqueCount, out int transparentStart, out int transparentCount, out Aabb bounds))
+                string elementMaterial = MaterialNameOf(product) ?? $"{def.Label} (no material)";
+                if (!BuildGeometry(mesh, elementMaterial, out int opaqueStart, out int opaqueCount, out int transparentStart, out int transparentCount, out Aabb bounds))
                 {
                     Summary.EmptyElements++;
                     return;
@@ -1155,9 +1245,11 @@ namespace BimGo.Format
 
             /// <summary>
             /// Moves an element's triangles into the scene buffers: scene-local metres, normals smoothed between triangles
-            /// closer than the crease angle, shared vertices merged, opaque triangles then transparent ones.
+            /// closer than the crease angle, shared vertices merged, opaque triangles then transparent ones. Each triangle's
+            /// surface token gives its colour and material (unnamed: <paramref name="elementMaterial"/>); each vertex gets
+            /// the material's index and a surface coordinate.
             /// </summary>
-            private bool BuildGeometry(IfcMesh mesh, out int opaqueStart, out int opaqueCount, out int transparentStart, out int transparentCount, out Aabb bounds)
+            private bool BuildGeometry(IfcMesh mesh, string elementMaterial, out int opaqueStart, out int opaqueCount, out int transparentStart, out int transparentCount, out Aabb bounds)
             {
                 opaqueStart = opaqueCount = transparentStart = transparentCount = 0;
                 bounds = Aabb.Empty;
@@ -1209,7 +1301,9 @@ namespace BimGo.Format
                 for (int t = 0; t < n; t++)
                 {
                     if (!keep[t]) { continue; }
-                    uint colour = mesh.Colours[t] != 0 ? mesh.Colours[t] : DEFAULT_COLOUR;
+                    uint token = mesh.Colours[t];
+                    (uint colour, string named) = token != 0 && token <= _surfaces.Count ? _surfaces[(int)token - 1] : (DEFAULT_COLOUR, null);
+                    ushort material = MaterialIndex(named ?? elementMaterial, colour);
                     List<uint> target = (colour >> 24) < 250 ? transparent : opaque;
                     Vector3 own = faceNormals[t];
                     for (int k = 0; k < 3; k++)
@@ -1223,12 +1317,14 @@ namespace BimGo.Format
                             if (Vector3.Dot(own, other) >= CREASE_COS) { sum += other; }
                         }
                         Vector3 normal = sum.LengthSquared() > 1e-12f ? Vector3.Normalize(sum) : own;
-                        var key = (w, (int)MathF.Round(normal.X * 512f), (int)MathF.Round(normal.Y * 512f), (int)MathF.Round(normal.Z * 512f), colour);
+                        var key = (w, (int)MathF.Round(normal.X * 512f), (int)MathF.Round(normal.Y * 512f), (int)MathF.Round(normal.Z * 512f), token);
                         if (!vertexIndex.TryGetValue(key, out int index))
                         {
                             index = _vertices.Count - vertexBase;
                             vertexIndex[key] = index;
                             _vertices.Add(new SceneVertex(corners[corner], normal, colour));
+                            _vertexMaterial.Add(material);
+                            _vertexUv.Add(material == MaterialData.NONE ? Vector2.Zero : SurfaceCoordinate(corners[corner], normal));
                             bounds.Include(corners[corner]);
                         }
                         target.Add((uint)(vertexBase + index));

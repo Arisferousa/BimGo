@@ -155,6 +155,9 @@ namespace BimGo.Format
                 progress?.ThrowIfCancelled();
 
                 MaterialData materialData = ReadMaterials(zip, materials, vertices.Length);
+                MaterialMatchDocument matches = ReadOptionalJson<MaterialMatchDocument>(zip, BimGoFormat.ENTRY_MATERIAL_MATCHES)?.Clean(); // materials round
+                Dictionary<string, byte[]> matchImages = ReadMatchImages(zip, matches);
+                ushort[] baseVertices = matches == null ? null : ReadBaseVertices(zip, vertices.Length);
                 SceneData scene = BuildScene(path, manifest, model, elements, parameters, vertices, indices, settings ?? new LaunchSettings(), lighting, materialData,
                     records => BuildLibrary(zip, library, records, vertices.Length), grids, slots, roomData);
                 comments.Comments ??= new List<CommentRecord>();
@@ -186,6 +189,9 @@ namespace BimGo.Format
                     EntourageImages = entourageImages,
                     Photos = photos,
                     PhotoImages = photoImages,
+                    MaterialMatches = matches,
+                    MatchImages = matchImages,
+                    MaterialBaseVertices = baseVertices,
                     LightProfiles = lightProfiles,
                     Measurements = measurements,
                     Sun = sun,
@@ -585,6 +591,9 @@ namespace BimGo.Format
                 var textures = new Dictionary<string, byte[]>(StringComparer.Ordinal);
                 foreach (SceneMaterial material in table)
                 {
+                    // Materials round: bump and cutout images (a missing one is simply dropped)
+                    material.Bump = ReadTexture(zip, textures, material.Bump);
+                    material.Cutout = ReadTexture(zip, textures, material.Cutout);
                     if (material.Texture == null) { continue; }
                     if (!textures.ContainsKey(material.Texture))
                     {
@@ -614,6 +623,47 @@ namespace BimGo.Format
                 Utilities.Log_Utils.Write($"Materials ignored (damaged): {ex.Message}");
                 return MaterialData.Empty;
             }
+        }
+
+        /// <summary>Materials round: the match images in the file (missing ones left out), or null.</summary>
+        private static Dictionary<string, byte[]> ReadMatchImages(ZipArchive zip, MaterialMatchDocument matches)
+        {
+            if (matches == null) { return null; }
+            var images = new Dictionary<string, byte[]>(StringComparer.Ordinal);
+            foreach (string image in matches.Images()) { ReadTexture(zip, images, image); }
+            return images;
+        }
+
+        /// <summary>Materials round: the per-vertex indices before overrides, or null (absent, damaged or another model's).</summary>
+        private static ushort[] ReadBaseVertices(ZipArchive zip, int vertexCount)
+        {
+            ZipArchiveEntry entry = zip.GetEntry(BimGoFormat.ENTRY_MATERIAL_BASE);
+            if (entry == null) { return null; }
+            try
+            {
+                using Stream stream = entry.Open();
+                using var header = new BinaryReader(stream, System.Text.Encoding.UTF8, leaveOpen: true);
+                if (header.ReadUInt32() != BimGoFormat.MATERIAL_MAGIC || header.ReadInt32() != vertexCount) { return null; }
+                var vertices = new ushort[vertexCount];
+                stream.ReadExactly(MemoryMarshal.AsBytes(vertices.AsSpan()));
+                return vertices;
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                Utilities.Log_Utils.Write($"material-base.bin ignored (damaged): {ex.Message}");
+                return null;
+            }
+        }
+
+        /// <summary>An image under textures/ into the set (once); its name, or null when it isn't in the file.</summary>
+        private static string ReadTexture(ZipArchive zip, Dictionary<string, byte[]> textures, string name)
+        {
+            if (name == null || !name.StartsWith(BimGoFormat.TEXTURE_FOLDER, StringComparison.Ordinal)) { return null; }
+            if (textures.ContainsKey(name)) { return name; }
+            byte[] bytes = ReadBytes(zip, name);
+            if (bytes == null) { return null; }
+            textures[name] = bytes;
+            return name;
         }
 
         /// <summary>An entry's bytes (capped at 64 MB), or null if absent or unreadable.</summary>

@@ -26,6 +26,12 @@ namespace BimGo.Scene
         /// <summary>Most materials a snapshot can index (one value is reserved for <see cref="NONE"/>).</summary>
         public const int MAX_MATERIALS = 0xFFFF;
 
+        /// <summary>Materials round: the schema IFC imports give their materials (no Revit appearance behind them).</summary>
+        public const string IFC_SCHEMA = "IFC";
+
+        /// <summary>Materials round: the size cap for images matched to an IFC model's materials (longest side, px).</summary>
+        public const int IFC_TEXTURE_SIZE = 1024;
+
         /// <summary>Texture size caps offered at extraction (longest side, px).</summary>
         public static readonly int[] TEXTURE_SIZES = { 256, 512, 1024, 2048 };
 
@@ -69,7 +75,8 @@ namespace BimGo.Scene
             var referenced = new HashSet<string>(StringComparer.Ordinal);
             foreach (SceneMaterial material in materials)
             {
-                if (material?.Texture != null) { referenced.Add(material.Texture); }
+                if (material == null) { continue; }
+                foreach (string image in material.Images()) { referenced.Add(image); } // materials round: bump and cutout images too
             }
 
             var textures = new Dictionary<string, byte[]>(StringComparer.Ordinal);
@@ -279,6 +286,54 @@ namespace BimGo.Scene
         /// <summary>Which Revit property the reflection values came from (diagnostics), or null.</summary>
         public string ReflectSource { get; set; }
 
+        /// <summary>Materials round: grass blades grow on it (Realistic), as on materials named by the grass keywords.</summary>
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+        public bool Grass { get; set; }
+
+        /// <summary>
+        /// Materials round: a bump (height) image's entry name ("textures/…"), or null. Light areas stand out, dark ones
+        /// sink. Placed like the colour image (same scale, offset and angle).
+        /// </summary>
+        public string Bump { get; set; }
+
+        /// <summary>Materials round: the colour image's own lightness is the bump (no separate image).</summary>
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+        public bool BumpFromTexture { get; set; }
+
+        /// <summary>Materials round: how strongly the bump tilts the surface (0–2; 1 = a fair relief).</summary>
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+        public float BumpStrength { get; set; }
+
+        /// <summary>
+        /// Materials round: a cutout image's entry name ("textures/…"), or null: black (or transparent) areas are holes.
+        /// Placed like the colour image.
+        /// </summary>
+        public string Cutout { get; set; }
+
+        /// <summary>Materials round: the colour image's own transparency (a PNG's alpha) cuts the holes.</summary>
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+        public bool CutoutFromTexture { get; set; }
+
+        /// <summary>Materials round: below this (0–1) the cutout is a hole. 0 reads as the default 0.5.</summary>
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+        public float CutoutThreshold { get; set; }
+
+        /// <summary>Materials round: true when the material has a bump (an image, or the colour image's lightness).</summary>
+        [JsonIgnore]
+        public bool HasBump => BumpStrength > 0f && (Bump != null || (BumpFromTexture && Texture != null));
+
+        /// <summary>Materials round: true when the material has holes (a cutout image, or the colour image's alpha).</summary>
+        [JsonIgnore]
+        public bool HasCutout => Cutout != null || (CutoutFromTexture && Texture != null);
+
+        /// <summary>Materials round: the images the material draws with (colour, bump, cutout), nulls skipped.</summary>
+        public IEnumerable<string> Images()
+        {
+            if (Texture != null) { yield return Texture; }
+            if (Bump != null) { yield return Bump; }
+            if (Cutout != null) { yield return Cutout; }
+        }
+
         /// <summary>
         /// Creates a defensive copy with values clamped into range (guards against hand-edited or damaged files).
         /// </summary>
@@ -315,7 +370,14 @@ namespace BimGo.Scene
                 Water = Water,
                 SeeThrough = SeeThrough,
                 WaterBump = float.IsFinite(WaterBump) ? Math.Clamp(WaterBump, 0f, 1f) : 0f,
-                ReflectSource = string.IsNullOrWhiteSpace(ReflectSource) ? null : ReflectSource
+                ReflectSource = string.IsNullOrWhiteSpace(ReflectSource) ? null : ReflectSource,
+                Grass = Grass,
+                Bump = string.IsNullOrWhiteSpace(Bump) ? null : Bump,
+                BumpFromTexture = BumpFromTexture,
+                BumpStrength = float.IsFinite(BumpStrength) ? Math.Clamp(BumpStrength, 0f, 2f) : 0f,
+                Cutout = string.IsNullOrWhiteSpace(Cutout) ? null : Cutout,
+                CutoutFromTexture = CutoutFromTexture,
+                CutoutThreshold = float.IsFinite(CutoutThreshold) ? Math.Clamp(CutoutThreshold, 0f, 1f) : 0f
             };
 
             static float Finite(float v) => float.IsFinite(v) ? v : 0f;
