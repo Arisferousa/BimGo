@@ -183,7 +183,7 @@ namespace BimGo.Rendering
                         continue;
                     }
 
-                    byte[] pixels = Decode(bytes, BUCKETS[bucket]);
+                    byte[] pixels = DecodeCached(name, bytes, BUCKETS[bucket]);
                     if (pixels == null) { continue; }
                     if (proxyName != null) { averages[name] = Average(pixels); }
                     placements[name] = (bucket, pending[bucket].Count);
@@ -470,6 +470,46 @@ namespace BimGo.Rendering
 
         #endregion
 
+        // Materials round: decoded layers kept between rebuilds (the MATERIALS panel rebuilds on every change), by entry
+        // name and size (names are content hashes or fixed proxies), up to DECODED_CAP bytes
+        private const long DECODED_CAP = 192L * 1024 * 1024;
+        private readonly Dictionary<(string Name, int Size, int Length), byte[]> _decoded = new();
+        private long _decodedBytes;
+
+        /// <summary>
+        /// Materials round: keep decoded images between rebuilds (on while the MATERIALS panel is open; off frees them).
+        /// </summary>
+        public bool KeepDecoded
+        {
+            get => _keepDecoded;
+            set
+            {
+                _keepDecoded = value;
+                if (value) { return; }
+                _decoded.Clear();
+                _decodedBytes = 0;
+            }
+        }
+
+        private bool _keepDecoded;
+
+        private byte[] DecodeCached(string name, byte[] bytes, int size)
+        {
+            if (!_keepDecoded) { return Decode(bytes, size); }
+            var key = (name, size, bytes.Length);
+            if (_decoded.TryGetValue(key, out byte[] pixels)) { return pixels; }
+            pixels = Decode(bytes, size);
+            if (pixels == null) { return null; }
+            if (_decodedBytes + pixels.Length > DECODED_CAP)
+            {
+                _decoded.Clear();
+                _decodedBytes = 0;
+            }
+            _decoded[key] = pixels;
+            _decodedBytes += pixels.Length;
+            return pixels;
+        }
+
         /// <summary>The last table's inputs, so a water override change rebuilds only the table (no image decoding).</summary>
         private (SceneMaterial[] Materials, string[] Keys, string[] ProxyOf, ProxyPack Proxies,
             Dictionary<string, (int Bucket, int Layer)> Placements, Dictionary<string, Vector3> Averages)? _lastTable;
@@ -504,6 +544,11 @@ namespace BimGo.Rendering
         }
 
         /// <inheritdoc/>
-        public void Dispose() => Release();
+        public void Dispose()
+        {
+            Release();
+            _decoded.Clear();
+            _decodedBytes = 0;
+        }
     }
 }

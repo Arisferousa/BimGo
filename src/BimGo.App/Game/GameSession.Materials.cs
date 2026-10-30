@@ -225,6 +225,7 @@ namespace BimGo.Game
             _matchListScroll.Reset();
             _matchEditScroll.Reset();
             _matchRowsFor = (-1, 0, null);
+            _renderer.KeepDecodedMaterials = true; // each change rebuilds the textures: decode each image once
             MatchLibrary();
         }
 
@@ -240,6 +241,7 @@ namespace BimGo.Game
             }
             _materialsOpen = false;
             ReleaseMatchPreviews();
+            _renderer.KeepDecodedMaterials = false;
             return true;
         }
 

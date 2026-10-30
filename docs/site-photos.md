@@ -107,7 +107,8 @@ folder, or anywhere) and:
   or another one.
 
 The new model goes into the `.bimgo` and everything reviewed on it stays: site photos and their placement, comments,
-views, measurements, the sun, billboards, camera paths, the section box and what's hidden. They're kept in the model's
+views, measurements, the sun, billboards, camera paths, the section box, what's hidden and the
+[material matches](materials.md). They're kept in the model's
 own coordinates, so they stay where they were as long as the IFC is exported from the same project. Edits made in the
 walkthrough (moves, demolitions) belong to the old geometry and are left out. The file is saved and opens with the new
 model. Files made by this version open in later ones: what's in a `.bimgo` is only ever added to, never taken away.

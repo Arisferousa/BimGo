@@ -640,6 +640,13 @@ namespace BimGo.Rendering
             if (_materialVbo != 0) { _materials.RefreshTable(); }
         }
 
+        /// <summary>Materials round: decoded images kept between rebuilds while the MATERIALS panel is open.</summary>
+        public bool KeepDecodedMaterials
+        {
+            get => _materials.KeepDecoded;
+            set => _materials.KeepDecoded = value;
+        }
+
         /// <summary>Water materials in the current table (QOL round: shown under the override).</summary>
         public int WaterMaterialCount => _materials.Ready ? _materials.WaterCount : 0;
 
