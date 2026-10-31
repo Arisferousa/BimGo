@@ -126,12 +126,13 @@ namespace BimGo.Game
             SceneData scene = Scene;
             bool[] visible = GrassVisibility();
             List<(int Element, System.Numerics.Matrix4x4 Model)> instances = GrassInstances();
+            MaterialData materials = CurrentMaterials; // materials round: as matched (grass marked in MATERIALS); a change re-keys ShadowSceneKey
             _grassCancel = new CancellationTokenSource();
             CancellationToken token = _grassCancel.Token;
             _grassTaskFor = key;
             _grassTaskScene = sceneKey;
             _grassSceneChangedAt = -1f;
-            _grassTask = Task.Run(() => GrassField.Build(scene, keywords, token, visible, instances), token);
+            _grassTask = Task.Run(() => GrassField.Build(scene, keywords, token, visible, instances, materials), token);
         }
 
         /// <summary>P-C: per element, shown in the walkthrough now (category, link, hidden, demolished, moved, profile).</summary>

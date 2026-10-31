@@ -127,6 +127,7 @@ namespace BimGo.Rendering
 
         private SceneData _scene;
         private List<ShinyPoint> _shiny;
+        private MaterialData _materials; // materials round: as drawn (matched / changed in a panel), else the scene's
         private readonly List<Probe> _probes = new();
         private readonly Vector4[] _planes = new Vector4[6];
 
@@ -209,7 +210,7 @@ namespace BimGo.Rendering
                 {
                     _scene = scene;
                     _nothingToBake = false;
-                    _shiny = GatherShiny(scene);
+                    _shiny = GatherShiny(scene, _materials);
                 }
 
                 long perProbe = BytesPerProbe(size);
@@ -371,10 +372,10 @@ namespace BimGo.Rendering
         /// <summary>
         /// The reflective surfaces (shine tier 25 % + or water), as voxel centres with the room they lie in.
         /// </summary>
-        private static List<ShinyPoint> GatherShiny(SceneData scene)
+        private static List<ShinyPoint> GatherShiny(SceneData scene, MaterialData drawn)
         {
             var points = new List<ShinyPoint>();
-            MaterialData materials = scene.Materials;
+            MaterialData materials = drawn != null && drawn.VertexMaterial.Length == scene.Vertices.Length ? drawn : scene.Materials;
             if (materials == null || materials.IsEmpty || materials.VertexMaterial.Length != scene.Vertices.Length) { return points; }
 
             var shinyMaterial = new bool[materials.Materials.Length];
@@ -807,6 +808,19 @@ namespace BimGo.Rendering
         #endregion
 
         #region Baking
+
+        /// <summary>
+        /// Materials round: the materials as drawn now (a panel changed them); the probes are placed again from the
+        /// surfaces that shine now. GL thread.
+        /// </summary>
+        public void UseMaterials(MaterialData materials)
+        {
+            if (ReferenceEquals(materials, _materials)) { return; }
+            _materials = materials;
+            _shiny = null; // placed again from the shiny surfaces as they are now
+            _nothingToBake = false;
+            Release();
+        }
 
         /// <summary>
         /// Marks every probe stale (sun, lights, colour mode or the model changed). Stale probes keep showing their old

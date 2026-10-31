@@ -18,8 +18,10 @@ namespace BimGo.Rendering
     /// number of materials fits on GL 3.3):
     /// t0 (colour, fade) · t1 (image tint, glass reflectivity) · t2 (scale U, scale V, offset U, offset V) ·
     /// t3 (cos angle, sin angle, bucket or -1, layer) · t4 (appearance tint, flags: 1 = invert the image) ·
-    /// t5 (shine 0–1, roughness 0–1, flags: 1 = metallic, 2 = water; ripple strength).
-    /// Keep in step with <see cref="Shaders.MATERIALS_GLSL"/>.</item>
+    /// t5 (shine 0–1, roughness 0–1, flags: 1 = metallic, 2 = water; ripple strength) ·
+    /// t6 (materials round: bump bucket or -1, layer, strength (0 = none), flags: 1 = bump from the colour image,
+    /// 2 = cutout from the colour image's alpha) · t7 (cutout bucket or -1, layer, threshold, 0).
+    /// Keep in step with <see cref="Shaders.MATERIAL_SAMPLE_GLSL"/> and <see cref="Shaders.MATERIALS_GLSL"/>.</item>
     /// <item><b>Proxies:</b> a material with no embedded image but a proxy keyword (<see cref="ProxyPack"/>) gets the
     /// pack's image as one more layer, drawn fully (fade 1, no image tint) at the proxy's real-world size.</item>
     /// </list>
@@ -41,7 +43,13 @@ namespace BimGo.Rendering
         public static readonly int[] BUCKETS = { 256, 512, 1024, 2048 };
 
         /// <summary>Texels per material in the table (see the class remarks).</summary>
-        private const int TEXELS = 6;
+        private const int TEXELS = 8;
+
+        /// <summary>t6.w flag: the colour image's lightness is the bump.</summary>
+        private const float FLAG_BUMP_FROM_COLOUR = 1f;
+
+        /// <summary>t6.w flag: the colour image's alpha cuts the holes.</summary>
+        private const float FLAG_CUTOUT_FROM_COLOUR = 2f;
 
         /// <summary>t5.z flag: a metal (its reflection takes its colour).</summary>
         private const float FLAG_METALLIC = 1f;
@@ -101,6 +109,12 @@ namespace BimGo.Rendering
         /// <summary>Water materials in the table.</summary>
         public int WaterCount { get; private set; }
 
+        /// <summary>Materials round: materials with a bump in the table.</summary>
+        public int BumpCount { get; private set; }
+
+        /// <summary>Materials round: materials with a cutout in the table (the depth and shadow passes then cut too).</summary>
+        public int CutoutCount { get; private set; }
+
         #endregion
 
         /// <summary>
@@ -146,14 +160,21 @@ namespace BimGo.Rendering
                     }
                 }
 
-                for (int i = 0; i < keys.Length; i++)
+                // Materials round: bump and cutout images are layers like any other (by entry name)
+                var images = new List<(string Name, string Proxy)>();
+                for (int i = 0; i < keys.Length; i++) { images.Add((keys[i], proxyOf[i])); }
+                foreach (SceneMaterial material in materials.Materials)
                 {
-                    string name = keys[i];
+                    if (material.Bump != null && materials.Textures.ContainsKey(material.Bump)) { images.Add((material.Bump, null)); }
+                    if (material.Cutout != null && materials.Textures.ContainsKey(material.Cutout)) { images.Add((material.Cutout, null)); }
+                }
+                foreach ((string name, string proxyName) in images)
+                {
                     if (name == null || placements.ContainsKey(name)) { continue; }
-                    byte[] bytes = proxyOf[i] != null ? proxies.ImageBytes(proxyOf[i]) : materials.Textures[name];
+                    byte[] bytes = proxyName != null ? proxies.ImageBytes(proxyName) : materials.Textures[name];
                     if (bytes == null) { continue; }
 
-                    int cap = proxyOf[i] != null ? Math.Min(PROXY_CAP, maxSize) : Math.Min(materials.TextureMaxSize, maxSize);
+                    int cap = proxyName != null ? Math.Min(PROXY_CAP, maxSize) : Math.Min(materials.TextureMaxSize, maxSize);
                     int bucket = BucketFor(bytes, cap);
                     while (bucket >= 0 && pending[bucket].Count >= maxLayers) { bucket--; }
                     if (bucket < 0)
@@ -162,9 +183,9 @@ namespace BimGo.Rendering
                         continue;
                     }
 
-                    byte[] pixels = Decode(bytes, BUCKETS[bucket]);
+                    byte[] pixels = DecodeCached(name, bytes, BUCKETS[bucket]);
                     if (pixels == null) { continue; }
-                    if (proxyOf[i] != null) { averages[name] = Average(pixels); }
+                    if (proxyName != null) { averages[name] = Average(pixels); }
                     placements[name] = (bucket, pending[bucket].Count);
                     pending[bucket].Add((bucket, pixels));
                 }
@@ -207,7 +228,7 @@ namespace BimGo.Rendering
                     return "Not enough graphics memory for the textures: Realistic mode shows colours only. Try a smaller texture size.";
                 }
 
-                Utilities.Log_Utils.Write($"Materials: {MaterialCount} in the table ({ProxyCount} on proxies, {ShinyCount} shiny, {WaterCount} water), {ImageCount} images in " +
+                Utilities.Log_Utils.Write($"Materials: {MaterialCount} in the table ({ProxyCount} on proxies, {ShinyCount} shiny, {WaterCount} water, {BumpCount} bump, {CutoutCount} cutout), {ImageCount} images in " +
                     $"{string.Join(", ", BUCKETS.Select((s, b) => (s, n: pending[b].Count)).Where(x => x.n > 0).Select(x => $"{x.n}×{x.s}²"))}, ≈ {GpuBytes / (1024 * 1024)} MB.");
                 return warning;
             }
@@ -248,6 +269,8 @@ namespace BimGo.Rendering
             ProxyCount = 0;
             ShinyCount = 0;
             WaterCount = 0;
+            BumpCount = 0;
+            CutoutCount = 0;
             for (int i = 0; i < count; i++)
             {
                 SceneMaterial m = materials[i];
@@ -298,6 +321,23 @@ namespace BimGo.Rendering
                 data[o + 23] = water ? (bump > 0f ? bump : MaterialOverrides.KEYWORD_WATER_BUMP) : 0f;
                 if (shine > 0f) { ShinyCount++; }
                 if (water) { WaterCount++; }
+
+                // Materials round: bump and cutout (their own image's layer, or the colour image's)
+                bool bumpImage = m.Bump != null && placements.ContainsKey(m.Bump), bumpColour = m.BumpFromTexture && textured && !proxy;
+                (int bumpBucket, int bumpLayer) = bumpImage ? placements[m.Bump] : (-1, 0);
+                float bumpStrength = (bumpImage || bumpColour) && m.BumpStrength > 0f ? m.BumpStrength : 0f;
+                bool cutoutImage = m.Cutout != null && placements.ContainsKey(m.Cutout), cutoutColour = m.CutoutFromTexture && textured && !proxy;
+                (int cutoutBucket, int cutoutLayer) = cutoutImage ? placements[m.Cutout] : (-1, 0);
+                data[o + 24] = bumpBucket;
+                data[o + 25] = bumpLayer;
+                data[o + 26] = bumpStrength;
+                data[o + 27] = (bumpColour && !bumpImage ? FLAG_BUMP_FROM_COLOUR : 0f) + (cutoutColour && !cutoutImage ? FLAG_CUTOUT_FROM_COLOUR : 0f);
+                data[o + 28] = cutoutBucket;
+                data[o + 29] = cutoutLayer;
+                data[o + 30] = m.CutoutThreshold > 0f ? m.CutoutThreshold : 0.5f;
+                data[o + 31] = 0f;
+                if (bumpStrength > 0f) { BumpCount++; }
+                if (cutoutImage || cutoutColour) { CutoutCount++; }
             }
 
             _table = Gl.GenTexture();
@@ -386,10 +426,11 @@ namespace BimGo.Rendering
                 using var layer = new SD.Bitmap(size, size, SDI.PixelFormat.Format32bppArgb);
                 using (var g = SD.Graphics.FromImage(layer))
                 {
-                    g.Clear(SD.Color.White);
+                    // Materials round: drawn as-is (alpha kept for cutouts), then put over white below as before
+                    g.Clear(SD.Color.Transparent);
                     g.InterpolationMode = SD.Drawing2D.InterpolationMode.HighQualityBicubic;
                     g.PixelOffsetMode = SD.Drawing2D.PixelOffsetMode.HighQuality;
-                    g.CompositingMode = SD.Drawing2D.CompositingMode.SourceOver;
+                    g.CompositingMode = SD.Drawing2D.CompositingMode.SourceCopy;
                     using var wrap = new SDI.ImageAttributes();
                     wrap.SetWrapMode(SD.Drawing2D.WrapMode.Tile); // tiling texture: edge samples wrap round
                     g.DrawImage(image, new SD.Rectangle(0, 0, size, size), 0, 0, image.Width, image.Height, SD.GraphicsUnit.Pixel, wrap);
@@ -404,7 +445,15 @@ namespace BimGo.Rendering
                     {
                         System.Runtime.InteropServices.Marshal.Copy(data.Scan0 + y * data.Stride, pixels, y * size * 4, size * 4);
                     }
-                    for (int i = 3; i < pixels.Length; i += 4) { pixels[i] = 255; } // opaque (cutouts are out of scope)
+                    // The colour as if over white (as the textures always were), the alpha kept for cutouts
+                    for (int i = 0; i + 3 < pixels.Length; i += 4)
+                    {
+                        int a = pixels[i + 3];
+                        if (a == 255) { continue; }
+                        pixels[i] = (byte)((pixels[i] * a + 255 * (255 - a) + 127) / 255);
+                        pixels[i + 1] = (byte)((pixels[i + 1] * a + 255 * (255 - a) + 127) / 255);
+                        pixels[i + 2] = (byte)((pixels[i + 2] * a + 255 * (255 - a) + 127) / 255);
+                    }
                     return pixels;
                 }
                 finally
@@ -420,6 +469,46 @@ namespace BimGo.Rendering
         }
 
         #endregion
+
+        // Materials round: decoded layers kept between rebuilds (the MATERIALS panel rebuilds on every change), by entry
+        // name and size (names are content hashes or fixed proxies), up to DECODED_CAP bytes
+        private const long DECODED_CAP = 192L * 1024 * 1024;
+        private readonly Dictionary<(string Name, int Size, int Length), byte[]> _decoded = new();
+        private long _decodedBytes;
+
+        /// <summary>
+        /// Materials round: keep decoded images between rebuilds (on while the MATERIALS panel is open; off frees them).
+        /// </summary>
+        public bool KeepDecoded
+        {
+            get => _keepDecoded;
+            set
+            {
+                _keepDecoded = value;
+                if (value) { return; }
+                _decoded.Clear();
+                _decodedBytes = 0;
+            }
+        }
+
+        private bool _keepDecoded;
+
+        private byte[] DecodeCached(string name, byte[] bytes, int size)
+        {
+            if (!_keepDecoded) { return Decode(bytes, size); }
+            var key = (name, size, bytes.Length);
+            if (_decoded.TryGetValue(key, out byte[] pixels)) { return pixels; }
+            pixels = Decode(bytes, size);
+            if (pixels == null) { return null; }
+            if (_decodedBytes + pixels.Length > DECODED_CAP)
+            {
+                _decoded.Clear();
+                _decodedBytes = 0;
+            }
+            _decoded[key] = pixels;
+            _decodedBytes += pixels.Length;
+            return pixels;
+        }
 
         /// <summary>The last table's inputs, so a water override change rebuilds only the table (no image decoding).</summary>
         private (SceneMaterial[] Materials, string[] Keys, string[] ProxyOf, ProxyPack Proxies,
@@ -450,11 +539,16 @@ namespace BimGo.Rendering
                 Gl.DeleteTexture(_arrays[b]);
                 _arrays[b] = 0;
             }
-            MaterialCount = ImageCount = ProxyCount = 0;
+            MaterialCount = ImageCount = ProxyCount = BumpCount = CutoutCount = 0;
             GpuBytes = 0;
         }
 
         /// <inheritdoc/>
-        public void Dispose() => Release();
+        public void Dispose()
+        {
+            Release();
+            _decoded.Clear();
+            _decodedBytes = 0;
+        }
     }
 }

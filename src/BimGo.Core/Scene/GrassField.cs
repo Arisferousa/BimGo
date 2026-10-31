@@ -89,11 +89,15 @@ namespace BimGo.Scene
         /// <param name="instances">
         /// Polish round P-C: moved, cloned and placed copies: the source element and its transform (scene-local).
         /// </param>
+        /// <param name="materials">
+        /// Materials round: the materials as drawn (matched in the MATERIALS panel), or null for the scene's own.
+        /// </param>
         public static GrassField Build(SceneData scene, IReadOnlyList<string> keywords, CancellationToken cancel = default,
-            IReadOnlyList<bool> visible = null, IReadOnlyList<(int Element, Matrix4x4 Model)> instances = null)
+            IReadOnlyList<bool> visible = null, IReadOnlyList<(int Element, Matrix4x4 Model)> instances = null, MaterialData materials = null)
         {
-            MaterialData materials = scene?.Materials;
-            if (materials == null || materials.IsEmpty || keywords == null || keywords.Count == 0) { return Empty; }
+            materials ??= scene?.Materials;
+            keywords ??= Array.Empty<string>();
+            if (materials == null || materials.IsEmpty || (keywords.Count == 0 && !materials.Materials.Any(m => m?.Grass == true))) { return Empty; }
             if (materials.VertexMaterial.Length != scene.Vertices.Length) { return Empty; }
 
             // Grass materials and their palette slots
@@ -102,7 +106,7 @@ namespace BimGo.Scene
             for (int m = 0; m < materials.Materials.Length; m++)
             {
                 SceneMaterial material = materials.Materials[m];
-                if (material == null || !MaterialOverrides.Matches(material.Name, keywords)) { continue; }
+                if (material == null || !(material.Grass || MaterialOverrides.Matches(material.Name, keywords))) { continue; } // materials round: or marked grass
                 if (colours.Count >= MAX_PALETTE) { slot[m] = colours.Count; continue; } // share the last colour
                 colours.Add(GrassColour(material.RenderColour ?? material.Colour));
                 slot[m] = colours.Count;

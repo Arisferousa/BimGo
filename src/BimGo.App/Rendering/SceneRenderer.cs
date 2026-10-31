@@ -128,6 +128,18 @@ namespace BimGo.Rendering
         /// <summary>True if the snapshot has materials and they loaded (the Realistic mode can be shown).</summary>
         public bool HasMaterials => _materialVbo != 0 && _materials.Ready;
 
+        /// <summary>
+        /// Materials round: cutout materials cut their holes (set each frame: the Realistic mode, not white card). The
+        /// depth pre-pass, AO geometry and shadow passes then cut the same holes as the scene pass.
+        /// </summary>
+        public bool CutoutsWanted { get; set; }
+
+        private bool CutoutsOn => CutoutsWanted && HasMaterials && _materials.CutoutCount > 0;
+
+        // Materials round: uCutouts in the passes that cut holes; the per-vertex material indices as uploaded
+        private int _depthCutouts = -1, _geometryCutouts = -1;
+        private ushort[] _uploadedVertexMaterial;
+
         /// <summary>Why some or all textures couldn't be shown (once, after <see cref="Initialise"/>), or null.</summary>
         public string MaterialWarning { get; private set; }
 
@@ -339,6 +351,7 @@ namespace BimGo.Rendering
             public int ProbesOn, ProbeGridOrigin, ProbeGridCell, ProbeGridSize, ProbeMaxLod;
             public int ClipCount, ClipPlanes;
             public int ProfilePass, ProfileDetail;
+            public int Cutouts;
 
             public static SceneUniforms From(ShaderProgram p)
             {
@@ -359,6 +372,7 @@ namespace BimGo.Rendering
 
             private static SceneUniforms Locations(ShaderProgram p) => new()
             {
+                Cutouts = p.Uniform("uCutouts"), // materials round
                 ViewProj = p.Uniform("uViewProj"),
                 Model = p.Uniform("uModel"),
                 Eye = p.Uniform("uEye"),
@@ -430,6 +444,8 @@ namespace BimGo.Rendering
             _geometryUniforms = GeometryUniforms.From(_geometryProgram);
             _geometryProgram.Use();
             Gl.Uniform1(_geometryProgram.Uniform("uProfileTex"), PROFILE_UNIT); // colour round A (its own unit, as every sampler)
+            _geometryCutouts = SetMaterialSamplers(_geometryProgram); // materials round
+            _depthCutouts = SetMaterialSamplers(_shadowDepthProgram);
             _groundGeometryUniforms = GeometryUniforms.From(_groundGeometryProgram);
             _groundGeometryCenter = _groundGeometryProgram.Uniform("uCenter");
             _groundGeometryHalf = _groundGeometryProgram.Uniform("uHalf");
@@ -571,6 +587,7 @@ namespace BimGo.Rendering
             {
                 Gl.BufferData(Gl.ARRAY_BUFFER, (nint)materials.VertexMaterial.Length * sizeof(ushort), data, Gl.STATIC_DRAW);
             }
+            _uploadedVertexMaterial = materials.VertexMaterial;
             Vector2[] uv = materials.VertexUv.Length == scene.Vertices.Length ? materials.VertexUv : new Vector2[scene.Vertices.Length];
             _uvVbo = Gl.GenBuffer();
             Gl.BindBuffer(Gl.ARRAY_BUFFER, _uvVbo);
@@ -614,6 +631,22 @@ namespace BimGo.Rendering
             if (HasMaterials) { RefreshReflectivePlanes(); } // Round X-C1: water no longer counts as glass, or does
         }
 
+        /// <summary>
+        /// Materials round: re-uploads the material table after its entries were changed in place (a slider in the
+        /// MATERIALS panel): no images are decoded. GL thread.
+        /// </summary>
+        public void RefreshMaterialTable()
+        {
+            if (_materialVbo != 0) { _materials.RefreshTable(); }
+        }
+
+        /// <summary>Materials round: decoded images kept between rebuilds while the MATERIALS panel is open.</summary>
+        public bool KeepDecodedMaterials
+        {
+            get => _materials.KeepDecoded;
+            set => _materials.KeepDecoded = value;
+        }
+
         /// <summary>Water materials in the current table (QOL round: shown under the override).</summary>
         public int WaterMaterialCount => _materials.Ready ? _materials.WaterCount : 0;
 
@@ -625,16 +658,55 @@ namespace BimGo.Rendering
         }
 
         /// <summary>
-        /// Rebuilds the material table and texture arrays from a changed material set (the Textures panel). The
-        /// per-vertex streams are unchanged: surface coordinates don't depend on the material. GL thread.
+        /// Rebuilds the material table and texture arrays from a changed material set (the Textures and Materials
+        /// panels). Surface coordinates never change; the per-vertex material indices are uploaded again when they did
+        /// (materials round: a category or element override). GL thread.
         /// </summary>
         /// <returns>Null, or a short reason the textures couldn't all be shown.</returns>
         public string ReloadMaterials(MaterialData materials)
         {
             if (_materialVbo == 0 || materials == null || materials.IsEmpty) { return null; }
+            if (!ReferenceEquals(materials.VertexMaterial, _uploadedVertexMaterial) && _uploadedVertexMaterial != null
+                && materials.VertexMaterial.Length == _uploadedVertexMaterial.Length)
+            {
+                Gl.BindBuffer(Gl.ARRAY_BUFFER, _materialVbo);
+                fixed (ushort* data = materials.VertexMaterial)
+                {
+                    Gl.BufferSubData(Gl.ARRAY_BUFFER, 0, (nint)materials.VertexMaterial.Length * sizeof(ushort), data);
+                }
+                Gl.BindBuffer(Gl.ARRAY_BUFFER, 0);
+                _uploadedVertexMaterial = materials.VertexMaterial;
+            }
             MaterialWarning = _materials.Initialise(materials, ProxyPack.Shared, AutoProxy);
             RefreshReflectivePlanes(materials); // Round X-C1
+            _probes.UseMaterials(materials); // materials round: a surface made shiny gets probes
             return MaterialWarning;
+        }
+
+        /// <summary>
+        /// Materials round: a program's material samplers on their fixed units (every sampler needs a unit of its own
+        /// type), leaving the program in use.
+        /// </summary>
+        /// <returns>The program's uCutouts location.</returns>
+        private static int SetMaterialSamplers(ShaderProgram p)
+        {
+            p.Use();
+            Gl.Uniform1(p.Uniform("uMaterialTable"), MaterialTextures.TABLE_UNIT);
+            for (int b = 0; b < MaterialTextures.BUCKETS.Length; b++)
+            {
+                Gl.Uniform1(p.Uniform($"uTex{b}"), MaterialTextures.BUCKET_UNIT + b);
+            }
+            int cutouts = p.Uniform("uCutouts");
+            Gl.Uniform1(cutouts, 0);
+            return cutouts;
+        }
+
+        /// <summary>Materials round: holes on or off in the program in use (the material images bound when on).</summary>
+        private void ApplyCutouts(int location)
+        {
+            bool on = CutoutsOn;
+            Gl.Uniform1(location, on ? 1 : 0);
+            if (on) { _materials.Bind(); }
         }
 
         /// <summary>
@@ -862,6 +934,7 @@ namespace BimGo.Rendering
             Gl.Enable(Gl.POLYGON_OFFSET_FILL);
             Gl.PolygonOffset(1.5f, 3f);
             _shadowDepthProgram.Use();
+            ApplyCutouts(_depthCutouts); // materials round: holes let the sun through
             Gl.UniformMatrix4(_depthViewProj, matrix);
             Gl.UniformMatrix4(_depthModel, Matrix4x4.Identity);
             DrawBatches(planes, groupVisible, transparent: false, countStats: false);
@@ -971,6 +1044,7 @@ namespace BimGo.Rendering
             _effects.BeginGeometry(glow);
 
             _geometryProgram.Use();
+            ApplyCutouts(_geometryCutouts); // materials round: no occlusion from holes
             ApplyGeometry(_geometryUniforms, camera.ViewProjection, eye, right, up, forward);
             Gl.Uniform1(_geometryGlow, glow ? 1f : 0f);
             ApplyClip(_geometryUniforms.ClipCount, _geometryUniforms.ClipPlanes, true);
@@ -1067,6 +1141,7 @@ namespace BimGo.Rendering
                 Gl.Enable(Gl.POLYGON_OFFSET_FILL);
                 Gl.PolygonOffset(1.5f, 3f);
                 _shadowDepthProgram.Use();
+                ApplyCutouts(_depthCutouts);
                 foreach (int k in _lightsToRender)
                 {
                     Vector4 light = a.Position[k];
@@ -1531,6 +1606,7 @@ namespace BimGo.Rendering
             ApplyScreenReflections(_sceneSsr, realistic ? p : default); // Round X-C1 (off outside the Realistic mode)
             ApplyPlanarReflections(_scenePlanar, realistic ? p : default);
             Gl.Uniform1(u.Realistic, realistic ? 1 : 0);
+            Gl.Uniform1(u.Cutouts, realistic && CutoutsOn ? 1 : 0); // materials round (the material images are bound below)
             if (!realistic) { return; }
             _materials.Bind();
             Gl.Uniform1(u.Reflections, p.Reflections ? 1 : 0);

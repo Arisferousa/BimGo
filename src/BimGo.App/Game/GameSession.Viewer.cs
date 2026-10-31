@@ -197,6 +197,13 @@ namespace BimGo.Game
             _viewerGhost = false;
             _player.SpeedScale = _viewerSpeed;
 
+            // Materials round: a file with matched materials opens in the Realistic colour mode, so their images show
+            if (!fromWalkthrough && MatchesForSave() != null && _renderer.HasMaterials)
+            {
+                _realistic = true;
+                _whitecard = false;
+            }
+
             if (fromWalkthrough)
             {
                 if (_player.Flying) { OrbitFromPlayer(); }

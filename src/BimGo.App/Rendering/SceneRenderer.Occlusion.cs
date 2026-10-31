@@ -186,6 +186,7 @@ namespace BimGo.Rendering
             Gl.FrontFace(Gl.CCW);
             Gl.Disable(Gl.BLEND);
             _shadowDepthProgram.Use();
+            Gl.Uniform1(_depthCutouts, 0); // materials round: the query boxes have no materials
             Gl.UniformMatrix4(_depthViewProj, viewProjection);
             Gl.UniformMatrix4(_depthModel, Matrix4x4.Identity);
             Gl.BindVertexArray(_occlusionVao);

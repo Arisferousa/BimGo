@@ -238,13 +238,63 @@ vec4 cloudLayer(vec3 dir, vec3 sunDir, vec3 light, vec3 sky)
 }
 ";
 
-        public const string MATERIALS_GLSL = @"
-uniform int uRealistic;
+        /// <summary>
+        /// Materials round: the material table and image arrays, where a material's image is at a surface coordinate,
+        /// and its cutout (holes). Shared by the scene pass and the passes that must cut the same holes (the depth
+        /// pre-pass, the AO geometry pre-pass and the shadow depth pass). uCutouts = 1 only in the Realistic mode with
+        /// cutout materials. Keep in step with <see cref="MaterialTextures"/>.
+        /// </summary>
+        public const string MATERIAL_SAMPLE_GLSL = @"
 uniform sampler2D uMaterialTable;
 uniform sampler2DArray uTex0;
 uniform sampler2DArray uTex1;
 uniform sampler2DArray uTex2;
 uniform sampler2DArray uTex3;
+uniform int uCutouts;
+
+vec4 materialTexture(int bucket, vec3 uvl, vec2 gx, vec2 gy)
+{
+    if (bucket == 0) return textureGrad(uTex0, uvl, gx, gy);
+    if (bucket == 1) return textureGrad(uTex1, uvl, gx, gy);
+    if (bucket == 2) return textureGrad(uTex2, uvl, gx, gy);
+    return textureGrad(uTex3, uvl, gx, gy);
+}
+
+// Where a material's images are at a metric surface coordinate (st) and how fast that moves per pixel (gx, gy);
+// returns t3 (cos, sin, colour bucket or -1, colour layer). Images run top-down, V up the surface: V is flipped.
+vec4 materialPlace(int id, vec2 uv, vec2 dx, vec2 dy, out vec2 st, out vec2 gx, out vec2 gy)
+{
+    vec4 t2 = texelFetch(uMaterialTable, ivec2(2, id), 0);
+    vec4 t3 = texelFetch(uMaterialTable, ivec2(3, id), 0);
+    mat2 turn = mat2(t3.x, t3.y, -t3.y, t3.x);
+    vec2 inv = vec2(1.0, -1.0) / t2.xy;
+    st = (turn * (uv - t2.zw)) * inv;
+    gx = (turn * dx) * inv;
+    gy = (turn * dy) * inv;
+    return t3;
+}
+
+// True where a material has a hole: its cutout image dark or see-through, or its colour image see-through (t6, t7)
+bool materialCutout(int id, vec2 uv, vec2 dx, vec2 dy)
+{
+    if (uCutouts == 0 || id < 0 || id >= 65535) return false;
+    vec4 t6 = texelFetch(uMaterialTable, ivec2(6, id), 0);
+    vec4 t7 = texelFetch(uMaterialTable, ivec2(7, id), 0);
+    bool fromColour = mod(floor(t6.w * 0.5), 2.0) >= 1.0;
+    if (!fromColour && t7.x < 0.0) return false;
+    vec2 st, gx, gy;
+    vec4 t3 = materialPlace(id, uv, dx, dy, st, gx, gy);
+    if (t7.x >= 0.0)
+    {
+        vec4 m = materialTexture(int(t7.x + 0.5), vec3(st, t7.y), gx, gy);
+        return dot(m.rgb, vec3(0.299, 0.587, 0.114)) * m.a < t7.z;
+    }
+    return t3.z >= 0.0 && materialTexture(int(t3.z + 0.5), vec3(st, t3.w), gx, gy).a < t7.z;
+}
+";
+
+        public const string MATERIALS_GLSL = MATERIAL_SAMPLE_GLSL + @"
+uniform int uRealistic;
 uniform int uReflections;
 uniform vec4 uWaterTint;
 uniform float uWaterReflect;
@@ -276,14 +326,6 @@ vec3 applyTint(vec3 c, vec3 tint)
     return uTintMode == 0 ? c : c * toLinear(tint);
 }
 
-vec3 materialTexture(int bucket, vec3 uvl, vec2 gx, vec2 gy)
-{
-    if (bucket == 0) return textureGrad(uTex0, uvl, gx, gy).rgb;
-    if (bucket == 1) return textureGrad(uTex1, uvl, gx, gy).rgb;
-    if (bucket == 2) return textureGrad(uTex2, uvl, gx, gy).rgb;
-    return textureGrad(uTex3, uvl, gx, gy).rgb;
-}
-
 // Realistic base colour (rgb) and head-on reflectivity (a) of a material at a metric surface coordinate
 vec4 realisticColour(int id, vec2 uv, vec2 dx, vec2 dy)
 {
@@ -294,12 +336,9 @@ vec4 realisticColour(int id, vec2 uv, vec2 dx, vec2 dy)
     vec3 colour = toLinear(t0.rgb);
     if (t3.z >= 0.0)
     {
-        vec4 t2 = texelFetch(uMaterialTable, ivec2(2, id), 0);
-        mat2 turn = mat2(t3.x, t3.y, -t3.y, t3.x);
-        // Image rows run top-down, V runs up the surface: flip V so images stand upright
-        vec2 inv = vec2(1.0, -1.0) / t2.xy;
-        vec2 st = (turn * (uv - t2.zw)) * inv;
-        vec3 image = materialTexture(int(t3.z + 0.5), vec3(st, t3.w), (turn * dx) * inv, (turn * dy) * inv);
+        vec2 st, gx, gy;
+        materialPlace(id, uv, dx, dy, st, gx, gy);
+        vec3 image = materialTexture(int(t3.z + 0.5), vec3(st, t3.w), gx, gy).rgb;
         bool proxy = mod(floor(t4.a * 0.5), 2.0) >= 1.0;
         if (proxy)
         {
@@ -331,6 +370,41 @@ vec3 skyColour(vec3 dir)
 vec4 reflectionInfo(int id)
 {
     return texelFetch(uMaterialTable, ivec2(5, id), 0);
+}
+
+// Materials round: a material's bump as the height change (metres) one pixel right and one pixel up the screen, or
+// zero. The height is the bump image's lightness (or the colour image's), BUMP_DEPTH metres at strength 1; forward
+// differences along the image's own per-pixel steps, so no tangents are needed.
+const float BUMP_DEPTH = 0.015;
+float bumpHeight(int bucket, vec3 uvl, vec2 gx, vec2 gy)
+{
+    vec4 c = materialTexture(bucket, uvl, gx, gy);
+    return dot(c.rgb, vec3(0.299, 0.587, 0.114));
+}
+vec2 materialBump(int id, vec2 uv, vec2 dx, vec2 dy)
+{
+    vec4 t6 = texelFetch(uMaterialTable, ivec2(6, id), 0);
+    if (t6.z <= 0.0) return vec2(0.0);
+    vec2 st, gx, gy;
+    vec4 t3 = materialPlace(id, uv, dx, dy, st, gx, gy);
+    int bucket = t6.x >= 0.0 ? int(t6.x + 0.5) : int(t3.z + 0.5);
+    float layer = t6.x >= 0.0 ? t6.y : t3.w;
+    if (t6.x < 0.0 && (t3.z < 0.0 || mod(t6.w, 2.0) < 1.0)) return vec2(0.0);
+    float h0 = bumpHeight(bucket, vec3(st, layer), gx, gy);
+    float hx = bumpHeight(bucket, vec3(st + gx, layer), gx, gy);
+    float hy = bumpHeight(bucket, vec3(st + gy, layer), gx, gy);
+    return vec2(hx - h0, hy - h0) * (t6.z * BUMP_DEPTH);
+}
+
+// Tilts a normal by a height change per screen pixel (Mikkelsen, 'Bump mapping unparametrized surfaces on the GPU')
+vec3 bumpNormal(vec3 n, vec3 dpdx, vec3 dpdy, vec2 dh)
+{
+    vec3 r1 = cross(dpdy, n);
+    vec3 r2 = cross(n, dpdx);
+    float det = dot(dpdx, r1);
+    if (abs(det) < 1e-14) return n;
+    vec3 grad = sign(det) * (dh.x * r1 + dh.y * r2);
+    return normalize(abs(det) * n - grad);
 }
 
 // Shine rounded to the nearest quarter: 0, 1 (25 %), 2 (50 %), 3 (75 % +)
@@ -914,8 +988,11 @@ void main()
     // Texture gradients first: derivatives are only defined outside the per-material branches
     vec2 uvDx = dFdx(vUv);
     vec2 uvDy = dFdy(vUv);
+    vec3 posDx = dFdx(vWorld);
+    vec3 posDy = dFdy(vWorld);
     if (vWorld.z < uClipZ.x || vWorld.z > uClipZ.y) discard;
     if (sectionCut(vWorld)) discard;
+    if (materialCutout(vMaterial, vUv, uvDx, uvDy)) discard; // materials round: holes (uCutouts is 0 outside Realistic)
 
     // Colour round A: the profile code. Pass 1 (the normal passes) leaves ghosted and (round B) see-through coloured
     // elements to pass 2 (the blended pass, which draws nothing else); the plan minimap draws them in place instead.
@@ -930,12 +1007,14 @@ void main()
     vec4 base = vColor;
     float reflectivity = 0.0;
     vec4 shine = vec4(0.0, 1.0, 0.0, 0.0);
+    vec2 bump = vec2(0.0);
     if (uRealistic == 1 && uWhitecard == 0 && vMaterial >= 0 && vMaterial < 65535)
     {
         vec4 r = realisticColour(vMaterial, vUv, uvDx, uvDy);
         base.rgb = r.rgb;
         reflectivity = r.a;
         shine = reflectionInfo(vMaterial);
+        bump = materialBump(vMaterial, vUv, uvDx, uvDy); // materials round
         // Grass round: water's body colour (rgb, a = how much) when one is picked
         if ((int(shine.z + 0.5) & 2) != 0 && uWaterTint.a > 0.0) base.rgb = mix(base.rgb, uWaterTint.rgb, uWaterTint.a);
         if (uReflectDebug == 1) base.rgb = reflectionDebugColour(shine, reflectivity);
@@ -969,6 +1048,7 @@ void main()
     }
 
     if (!gl_FrontFacing) n = -n;
+    if (bump != vec2(0.0)) n = bumpNormal(n, posDx, posDy, bump);
     int shineFlags = int(shine.z + 0.5);
     float dist = length(vWorld - uEye);
     bool reflecting = uRealistic == 1 && uReflections == 1 && uReflectDebug == 0;
@@ -1149,20 +1229,29 @@ void main()
         public const string SHADOW_VS = @"#version 330 core
 layout(location = 0) in vec3 aPos;
 layout(location = 2) in vec4 aColor;
+layout(location = 4) in float aMaterial;
+layout(location = 5) in vec2 aUv;
 uniform mat4 uViewProj;
 uniform mat4 uModel;
 out vec4 vColor;
+flat out int vMaterial;
+out vec2 vUv;
 void main()
 {
     vColor = aColor;
+    vMaterial = int(aMaterial + 0.5);
+    vUv = aUv;
     gl_Position = uViewProj * (uModel * vec4(aPos, 1.0));
 }";
 
-        /// <summary>Opaque casters: depth only (colour writes are masked off).</summary>
-        public const string SHADOW_DEPTH_FS = @"#version 330 core
+        /// <summary>Opaque casters: depth only (colour writes are masked off). Materials round: cutouts cast their holes.</summary>
+        public const string SHADOW_DEPTH_FS = "#version 330 core\n" + MATERIAL_SAMPLE_GLSL + @"
+flat in int vMaterial;
+in vec2 vUv;
 out vec4 oColor;
 void main()
 {
+    if (materialCutout(vMaterial, vUv, dFdx(vUv), dFdy(vUv))) discard;
     oColor = vec4(1.0);
 }";
 
@@ -2030,15 +2119,20 @@ void writeGeometry(vec3 world, vec3 n)
         /// Geometry pre-pass for scene batches (vertex shader: <see cref="SCENE_VS"/>). Colour round A: ghosted and hidden
         /// profile elements are left out (they don't occlude what is behind them).
         /// </summary>
-        public const string GEOMETRY_FS = GEOMETRY_GLSL + @"
+        public const string GEOMETRY_FS = GEOMETRY_GLSL + MATERIAL_SAMPLE_GLSL + @"
 in vec3 vWorld;
 in vec3 vNormal;
 in vec3 vEmissive;
 flat in vec4 vProfile;
+flat in int vMaterial;
+in vec2 vUv;
 uniform int uProfilePass;
 void main()
 {
+    vec2 uvDx = dFdx(vUv);
+    vec2 uvDy = dFdy(vUv);
     if (sectionCut(vWorld)) discard;
+    if (materialCutout(vMaterial, vUv, uvDx, uvDy)) discard; // materials round
     if (uProfilePass > 0)
     {
         int code = int(vProfile.a * 255.0 + 0.5);
@@ -2053,14 +2147,19 @@ void main()
         /// pass exactly). Drops exactly what the scene pass's opaque draw drops: section cuts, hidden profile elements and
         /// (pass 1) ghosted / see-through coloured ones; colour writes are masked off.
         /// </summary>
-        public const string DEPTH_PREPASS_FS = "#version 330 core\n" + CLIP_GLSL + @"
+        public const string DEPTH_PREPASS_FS = "#version 330 core\n" + CLIP_GLSL + MATERIAL_SAMPLE_GLSL + @"
 in vec3 vWorld;
 flat in vec4 vProfile;
+flat in int vMaterial;
+in vec2 vUv;
 uniform int uProfilePass;
 out vec4 oColor;
 void main()
 {
+    vec2 uvDx = dFdx(vUv);
+    vec2 uvDy = dFdy(vUv);
     if (sectionCut(vWorld)) discard;
+    if (materialCutout(vMaterial, vUv, uvDx, uvDy)) discard; // materials round: as the scene pass
     if (uProfilePass > 0)
     {
         int code = int(vProfile.a * 255.0 + 0.5);

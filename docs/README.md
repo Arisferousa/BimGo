@@ -20,6 +20,7 @@ detail.
 - [Photos, tours, paths and video](media.md)
 - [Clash detection](clash-detection.md)
 - [Site photos](site-photos.md): photos of the site placed by GPS, floating thumbnails, looking through a photo, finding a building among many; updating from a newer IFC
+- [Materials for IFC models](materials.md): match an IFC's materials to textures (BimGo's, Autodesk's or your own), bump, cutouts, a library
 - [Simple viewer](simple-viewer.md): a copy that opens with a clean toolbar (orbit, measure, section box, comments, views)
 - [Kiosk mode](kiosk-mode.md): a model on a screen for visitors
 

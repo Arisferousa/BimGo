@@ -24,6 +24,7 @@
 | Logs | `%LocalAppData%\BimGo\Logs\` |
 | A live model's comments, bookmarks, paths, measurements, clashes… | `%LocalAppData%\BimGo\Models\<model>_<id>\` (Options → Player can share them beside the model) |
 | A `.bimgo` file's | inside the file |
+| Your material library ([materials for IFC models](materials.md)) | `%LocalAppData%\BimGo\Material library.bimgo-materials` |
 | Pictures and videos | `Pictures\BimGo`, `Videos\BimGo` |
 
 Uninstalling BimGo always keeps your per-model data, and asks whether to remove settings and logs too.

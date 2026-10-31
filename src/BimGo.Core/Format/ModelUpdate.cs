@@ -25,10 +25,24 @@ namespace BimGo.Format
         /// <param name="reviewed">The document as it would be saved now.</param>
         /// <param name="scene">The newly imported model.</param>
         /// <returns>A new document (the inputs are not changed).</returns>
+        /// <remarks>
+        /// Materials round: material matches are applied to the new model's materials (by name; overrides by element
+        /// GlobalId and category), so a new export looks as matched; the new model's own table becomes their base.
+        /// </remarks>
         public static BimGoDocument WithNewModel(BimGoDocument reviewed, SceneData scene)
         {
             ArgumentNullException.ThrowIfNull(reviewed);
             ArgumentNullException.ThrowIfNull(scene);
+            MaterialMatchDocument matches = null;
+            MaterialData materials = null;
+            ushort[] baseVertices = null;
+            if (reviewed.MaterialMatches != null && !reviewed.MaterialMatches.IsEmpty && scene.Materials != null && !scene.Materials.IsEmpty)
+            {
+                matches = reviewed.MaterialMatches.Copy();
+                matches.BaseMaterials = scene.Materials.Materials.ToList();
+                materials = MaterialMatcher.Apply(scene.Materials, matches, reviewed.MatchImages, scene);
+                if (!ReferenceEquals(materials.VertexMaterial, scene.Materials.VertexMaterial)) { baseVertices = scene.Materials.VertexMaterial; }
+            }
             return new BimGoDocument
             {
                 Scene = scene,
@@ -44,7 +58,10 @@ namespace BimGo.Format
                 Measurements = reviewed.Measurements,
                 Sun = reviewed.Sun,
                 Visibility = reviewed.Visibility,
-                Materials = null,
+                Materials = materials,
+                MaterialMatches = matches,
+                MatchImages = matches == null ? null : reviewed.MatchImages,
+                MaterialBaseVertices = baseVertices,
                 Thumbnail = reviewed.Thumbnail,
                 Clashes = reviewed.Clashes,
                 Viewer = reviewed.Viewer,

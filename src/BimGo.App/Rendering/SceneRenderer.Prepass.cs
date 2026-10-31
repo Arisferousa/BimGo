@@ -15,6 +15,7 @@ namespace BimGo.Rendering
     internal sealed unsafe partial class SceneRenderer
     {
         private ShaderProgram _prepassProgram;
+        private int _prepassCutouts = -1;
         private int _prepassViewProj, _prepassModel, _prepassClipCount, _prepassClipPlanes, _prepassProfilePass;
         private bool _prepassFailed;
         private bool _prepassActive;
@@ -47,10 +48,12 @@ namespace BimGo.Rendering
                 _prepassProfilePass = _prepassProgram.Uniform("uProfilePass");
                 _prepassProgram.Use();
                 Gl.Uniform1(_prepassProgram.Uniform("uProfileTex"), PROFILE_UNIT);
+                _prepassCutouts = SetMaterialSamplers(_prepassProgram); // materials round
             }
 
             FlushDynamic();
             _prepassProgram.Use();
+            ApplyCutouts(_prepassCutouts); // the scene pass's holes, so its EQUAL depth test finds them
             Gl.UniformMatrix4(_prepassViewProj, p.ViewProjection);
             Gl.UniformMatrix4(_prepassModel, Matrix4x4.Identity);
             ApplyClip(_prepassClipCount, _prepassClipPlanes, p.Section);

@@ -92,6 +92,15 @@ namespace BimGo.Format
         internal const string ENTRY_LIGHTING = "lighting.json";
         internal const string ENTRY_MATERIALS = "materials.json";
         internal const string ENTRY_MATERIAL_STREAMS = "material.bin";
+
+        /// <summary>Materials round: the material matches (optional; older readers ignore it).</summary>
+        internal const string ENTRY_MATERIAL_MATCHES = "material-matches.json";
+
+        /// <summary>Materials round: the per-vertex material indices before category / element overrides (optional).</summary>
+        internal const string ENTRY_MATERIAL_BASE = "material-base.bin";
+
+        /// <summary>Materials round: most bytes read for one image of a material match or library.</summary>
+        public const long MAX_TEXTURE_BYTES = 32L * 1024 * 1024;
         internal const string ENTRY_LIBRARY = "library.json";
 
         /// <summary>Optional (grids round A): the host's and extracted links' grids (<see cref="GridsDto"/>).</summary>

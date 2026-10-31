@@ -199,6 +199,8 @@ DATA;
 #227=IFCGRIDAXIS('1',#225,.T.);
 #228=IFCGRID('{G}',$,$,$,$,#30,$,(#226),(#227),$);
 #230=IFCRELCONTAINEDINSPATIALSTRUCTURE('{G}',$,$,$,(#37,#100,#131,#139,#151,#176,#184,#228),#19);
+#240=IFCMATERIAL('Concrete - Cast-in-Place');
+#241=IFCRELASSOCIATESMATERIAL('{G}',$,$,$,(#151),#240);
 ENDSEC;
 END-ISO-10303-21;
 ";
@@ -300,6 +302,68 @@ END-ISO-10303-21;
             Assert.AreEqual(1.75f, deskMin.Y, 1e-3f);
             Assert.AreEqual(3.0f, deskMin.Z, 1e-3f);
             Assert.AreEqual(0f, (desk.Bounds.Size - new Vector3(0.5f, 0.5f, 0.8f)).Length(), 1e-3f);
+        }
+
+        [TestMethod]
+        public void Import_Materials_TableVerticesAndSurfaceCoordinates()
+        {
+            using var folder = new TempFolder();
+            BimGoDocument document = Import(WriteModel(folder, out _), out _);
+            SceneData scene = document.Scene;
+            MaterialData materials = scene.Materials;
+
+            // One material per name: styles named after their material (Revit's way), else the element's IFC material,
+            // else the category; every vertex indexed, with a surface coordinate
+            Assert.IsFalse(materials.IsEmpty);
+            Assert.AreEqual(scene.Vertices.Length, materials.VertexMaterial.Length);
+            Assert.AreEqual(scene.Vertices.Length, materials.VertexUv.Length);
+            string[] names = materials.Materials.Select(m => m.Name).ToArray();
+            CollectionAssert.Contains(names, "Red");
+            CollectionAssert.Contains(names, "Glass");
+            CollectionAssert.Contains(names, "Concrete - Cast-in-Place");
+            CollectionAssert.Contains(names, "Walls (no material)");
+            Assert.AreEqual(names.Length, names.Distinct(StringComparer.OrdinalIgnoreCase).Count());
+            Assert.IsTrue(materials.Materials.All(m => m.Schema == MaterialData.IFC_SCHEMA));
+
+            SceneMaterial red = materials.Materials.First(m => m.Name == "Red");
+            Assert.AreEqual(1f, red.Colour.X, 1e-3f);
+            Assert.AreEqual(0f, red.Colour.Y, 1e-3f);
+            Assert.IsFalse(red.SeeThrough);
+            Assert.IsTrue(materials.Materials.First(m => m.Name == "Glass").SeeThrough);
+
+            // The red wall's vertices are "Red"; the concrete wall's are "Concrete - Cast-in-Place"
+            ushort redIndex = (ushort)Array.IndexOf(names, "Red"), concrete = (ushort)Array.IndexOf(names, "Concrete - Cast-in-Place");
+            ElementRecord wall = ByTag(scene, "1001");
+            uint first = scene.Indices[wall.OpaqueStart];
+            Assert.AreEqual(redIndex, materials.VertexMaterial[first]);
+            ElementRecord concreteWall = ByTag(scene, "1005");
+            Assert.AreEqual(concrete, materials.VertexMaterial[scene.Indices[concreteWall.OpaqueStart]]);
+
+            // Surface coordinates: plan X / Y on the wall's top, along the face and up on its sides (metres)
+            for (int i = 0; i < wall.OpaqueCount; i++)
+            {
+                uint v = scene.Indices[wall.OpaqueStart + i];
+                SceneVertex vertex = scene.Vertices[v];
+                Vector2 uv = materials.VertexUv[v];
+                if (vertex.Normal.Z > 0.9f)
+                {
+                    Assert.AreEqual(vertex.Position.X, uv.X, 1e-4f);
+                    Assert.AreEqual(vertex.Position.Y, uv.Y, 1e-4f);
+                }
+                else if (MathF.Abs(vertex.Normal.Y) > 0.9f)
+                {
+                    Assert.AreEqual(MathF.Abs(vertex.Position.X), MathF.Abs(uv.X), 1e-4f); // along the wall
+                    Assert.AreEqual(vertex.Position.Z, uv.Y, 1e-4f); // up
+                }
+            }
+
+            // Kept through a .bimgo
+            string path = folder.File("materials.bimgo");
+            Assert.IsTrue(BimGoWriter.Write(path, document, TestData.Writer, FileKinds.SAVE, out string error), error);
+            BimGoDocument read = BimGoReader.Read(path, new LaunchSettings(), out error);
+            Assert.IsNotNull(read, error);
+            CollectionAssert.AreEqual(names, read.Scene.Materials.Materials.Select(m => m.Name).ToArray());
+            CollectionAssert.AreEqual(materials.VertexMaterial, read.Scene.Materials.VertexMaterial);
         }
 
         [TestMethod]

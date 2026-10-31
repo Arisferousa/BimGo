@@ -57,3 +57,4 @@ Adding a new picture: put it here, link it from the page as `![What it shows](im
 | `site-photos-panel.png` | [site-photos](../site-photos.md) | The SITE PHOTOS panel with a dozen photos (thumbnails, groups, placed / pinned) and the alignment line |
 | `site-photo-view.png` | [site-photos](../site-photos.md) | A photo at about 55 % over the model while adjusting: the lens slider and PIN HERE in the dock |
 | `site-map.png` | [site-photos](../site-photos.md) | The SITE MAP, aerial, zoomed to a few buildings: photo arrows, a group name, room names, a hovered photo's thumbnail |
+| `materials-panel.png` | [materials](../materials.md) | MATERIALS on an IFC model: the list (some matched, with image swatches) and a brick material's page: its image, size sliders, bump and cutout |
