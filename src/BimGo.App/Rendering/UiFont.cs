@@ -73,6 +73,21 @@ namespace BimGo.Rendering
         /// <summary>Atlas size in pixels.</summary>
         public int Size { get; private set; }
 
+        /// <summary>UI round: the corner disc and ring (DISC_SIZE px each, at the top of the atlas, after the white block).</summary>
+        private const int DISC_X = 6, RING_X = DISC_X + DISC_SIZE + 2, DISC_SIZE = 32;
+
+        /// <summary>The ring's line width (px, at DISC_SIZE): about one pixel at the corner radii the UI uses.</summary>
+        private const float RING_WIDTH = 2f;
+
+        /// <summary>UI round: U of the disc's and the ring's left edge (V is 0 for both).</summary>
+        public float DiscU { get; private set; }
+
+        /// <summary>UI round: U of the ring's left edge.</summary>
+        public float RingU { get; private set; }
+
+        /// <summary>UI round: the disc's (and the ring's) size in texture coordinates.</summary>
+        public float CornerSize { get; private set; }
+
         /// <summary>UV of the solid white block.</summary>
         public float WhiteU { get; private set; }
 
@@ -120,6 +135,20 @@ namespace BimGo.Rendering
                 g.FillRectangle(SD.Brushes.White, 0, 0, 4, 4);
                 WhiteU = 2f / Size;
                 WhiteV = 2f / Size;
+
+                // UI round: an anti-aliased disc and ring, whose quarters are rounded corners (filled and outlined)
+                g.SmoothingMode = SD.Drawing2D.SmoothingMode.AntiAlias;
+                g.PixelOffsetMode = SD.Drawing2D.PixelOffsetMode.HighQuality;
+                g.FillEllipse(SD.Brushes.White, DISC_X, 0, DISC_SIZE, DISC_SIZE);
+                using (var pen = new SD.Pen(SD.Color.White, RING_WIDTH))
+                {
+                    float inset = RING_WIDTH * 0.5f;
+                    g.DrawEllipse(pen, RING_X + inset, inset, DISC_SIZE - RING_WIDTH, DISC_SIZE - RING_WIDTH);
+                }
+                g.SmoothingMode = SD.Drawing2D.SmoothingMode.None;
+                DiscU = DISC_X / (float)Size;
+                RingU = RING_X / (float)Size;
+                CornerSize = DISC_SIZE / (float)Size;
                 RasteriseAll(g, scale, true);
             }
 
@@ -140,7 +169,7 @@ namespace BimGo.Rendering
             var segoeSemi = ("Segoe UI Semibold", SD.FontStyle.Regular);
             var courier = ("Courier New", SD.FontStyle.Regular);
 
-            var packer = new Packer { X = 6, Y = 0, RowHeight = 6, Fits = true };
+            var packer = new Packer { X = RING_X + DISC_SIZE + 2, Y = 0, RowHeight = DISC_SIZE + 1, Fits = true }; // after the white block, disc and ring
             Small = Rasterise(g, ref packer, 11f * t, draw, text.SemiBold, segoeSemi);
             Body = Rasterise(g, ref packer, 14f * t, draw, text.Regular, segoe);
             Bold = Rasterise(g, ref packer, 16f * t, draw, text.SemiBold, segoeSemi);

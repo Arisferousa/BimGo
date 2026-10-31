@@ -57,7 +57,7 @@ namespace BimGo.Game
         private static readonly string[] UNIT_OPTIONS = { "Metric", "Imperial" };
 
         /// <summary>The pause menu's settings tabs.</summary>
-        private static readonly string[] RIGHT_TABS = { "DISPLAY", "REFLECTIONS", "APPEARANCE", "LIGHTS" }; // X-D1: LIGHTS
+        private static readonly string[] RIGHT_TABS = { "DISPLAY", "REFLECTIONS", "APPEARANCE", "LIGHTS", "INTERFACE" }; // X-D1: LIGHTS; UI round: INTERFACE
 
         /// <summary>
         /// Height of the right column's card (unscaled): fits the Display tab, the tallest. Polish round P-A1: the card is
@@ -516,159 +516,24 @@ namespace BimGo.Game
             }
 
             _ui.Rect(0, 0, width, height, UiTheme.MENU_BACKGROUND);
+            BeginOverlays(input); // UI round: the INTERFACE tab's font dropdowns
+            TypeIntoMenuSearch(input);
 
-            // Layout (review tools round, to keep the menu inside a 720 px high window): the buttons in two stacks
-            // (session · review) when the window is wide enough, else one; the settings in two columns (profile, eye
-            // height, units · the Display / Reflections / Debug tabs) when they fit, else stacked. The category cards
-            // moved to their own panel (CATEGORIES & LINKS).
-            float pad = S(48);
-            float leftX = S(56), stackW = S(196), stackGap = S(20); // QOL round: slimmer buttons (were 220 px, 54 px pitch)
-            float columnW = S(280), columnGap = S(24);
-            float rightEdge = width - S(56);
-            bool twoStacks = width >= leftX + stackW * 2f + stackGap + S(40) + columnW * 2f + columnGap + S(56);
-            float stacksRight = leftX + stackW + (twoStacks ? stackGap + stackW : 0f);
-            bool twoColumns = rightEdge - (columnW * 2f + columnGap) >= stacksRight + S(40);
+            // UI round: a sidebar (the model, RESUME, a search, the sections) and the settings beside it
+            float sideW = MathF.Min(S(300), width * 0.42f);
+            if (!BuildPauseSidebar(f, input, sideW, height)) { return; }
 
-            // ---- Buttons
-            float y = pad;
-            _ui.Text(f.Small, leftX, y, "BIMGO", UiTheme.TEXT_MUTED, S(2.6f));
-            y += S(20);
-            _ui.Text(f.Title, leftX, y, "PAUSED", UiTheme.TEXT, S(2.4f));
-            y += S(56);
-            float buttonsTop = y;
-
-            // Button pitch: 54 px, tightened when a stack would run into END SESSION (small or high-DPI screens)
-            float endY = height - pad - S(40);
-            int hiddenThings = HiddenThingsCount();
-            bool texturesButton = HasTexturePanel || HasMaterialsPanel; // materials round: MATERIALS in its place for IFC models
-            bool libraryButton = HasLibrary;
-            bool roomsButton = Scene.Rooms.Length > 0;
-            int sessionButtons = 5 + (IsFileMode ? 5 : 1) + (_live != null ? 2 : 0); // + CONTROLS (input round B2), + Revit views (X-E), + kiosk shortcut (Z-C), + viewer copy
-            int reviewButtons = 8 + (hiddenThings > 0 ? 1 : 0) + (texturesButton ? 1 : 0) + (libraryButton ? 1 : 0) + (roomsButton ? 1 : 0);
-            int rows = twoStacks ? Math.Max(sessionButtons, reviewButtons) : sessionButtons + reviewButtons;
-            float step = Math.Clamp((endY - S(12) - buttonsTop) / rows, S(32), S(44));
-            float buttonH = step - S(6);
-
-            // Stack 1: the session
-            float x = leftX;
-            if (MenuButton(f, x, y, stackW, "RESUME", primary: true, danger: false, height: buttonH, compact: true)) { SetPaused(false); return; }
-            y += step;
-            if (MenuButton(f, x, y, stackW, "RETURN HOME", false, false, height: buttonH, compact: true)) { _player.GoHome(); SetPaused(false); return; }
-            y += step;
-            if (MenuButton(f, x, y, stackW, _clock < _homeSetUntil ? "HOME SAVED HERE" : "SET HOME HERE", false, false, height: buttonH, compact: true)) { SetHomeHere(); }
-            y += step;
-
-            // Saving: back to the open file, or (Revit) a snapshot + session journal as a new .bimgo
-            if (IsFileMode)
-            {
-                if (MenuButton(f, x, y, stackW, IsDirty ? "SAVE *" : "SAVE", false, false, height: buttonH, compact: true)) { Save(saveAs: false); return; }
-                y += step;
-                if (MenuButton(f, x, y, stackW, "SAVE AS…", false, false, height: buttonH, compact: true)) { Save(saveAs: true); return; }
-                y += step;
-
-                // Edits made offline go into the Revit model they came from
-                if (MenuButton(f, x, y, stackW, PushMenuLabel(), false, false, height: buttonH, compact: true)) { OpenPush(); return; }
-                y += step;
-
-                // Site photos round: a newer IFC of the model in place of this geometry, the review kept
-                if (MenuButton(f, x, y, stackW, "UPDATE FROM IFC…", false, false, height: buttonH, compact: true)) { ReloadFromIfc(); return; }
-                y += step;
-
-                // Round Z-C: a desktop shortcut that opens the saved file in kiosk mode
-                if (MenuButton(f, x, y, stackW, "MAKE KIOSK SHORTCUT", false, false, height: buttonH, compact: true)) { MakeKioskShortcut(); return; }
-                y += step;
-            }
-            else
-            {
-                if (MenuButton(f, x, y, stackW, "SAVE AS .BIMGO…", false, false, height: buttonH, compact: true)) { Save(saveAs: true); return; }
-                y += step;
-            }
-
-            // Viewer round: a copy that opens in the simple viewer (a viewer file goes back to it instead)
-            if (_viewerFile)
-            {
-                if (MenuButton(f, x, y, stackW, "SIMPLE VIEWER", false, false, height: buttonH, compact: true)) { EnterViewer(fromWalkthrough: true); SetPaused(false); return; }
-            }
-            else if (MenuButton(f, x, y, stackW, "SAVE VIEWER COPY…", false, false, height: buttonH, compact: true)) { SaveViewerCopy(); return; }
-            y += step;
-
-            // Round X-E: Revit views from here (live sessions), as Shift+F5 / Alt+F5
-            if (_live != null)
-            {
-                if (MenuButton(f, x, y, stackW, "NEW REVIT VIEW HERE", false, false, enabled: _live.Connected, height: buttonH, compact: true)) { SendRevitView(BimGo.Live.RevitViewAction.Create, sound: false); }
-                y += step;
-                if (MenuButton(f, x, y, stackW, "UPDATE REVIT VIEW", false, false, enabled: _live.Connected, height: buttonH, compact: true)) { SendRevitView(BimGo.Live.RevitViewAction.Update, sound: false); }
-                y += step;
-            }
-
-            // Keys, mouse buttons and the wheel: every binding, rebindable (input round B2)
-            if (MenuButton(f, x, y, stackW, "CONTROLS", false, false, height: buttonH, compact: true)) { OpenControls(); return; }
-            y += step;
-
-            // Stack 2: review tools and panels (beside the first, or below it)
-            if (twoStacks)
-            {
-                x = leftX + stackW + stackGap;
-                y = buttonsTop;
-            }
-            if (MenuButton(f, x, y, stackW, CommentsMenuLabel(), false, false, height: buttonH, compact: true)) { OpenComments(); return; }
-            y += step;
-            if (MenuButton(f, x, y, stackW, BookmarksMenuLabel(), false, false, height: buttonH, compact: true)) { OpenBookmarks(); return; }
-            y += step;
-            if (MenuButton(f, x, y, stackW, "MEDIA", false, false, height: buttonH, compact: true)) { OpenMedia(_mediaTab); return; } // Round K-A
-            y += step;
-            if (MenuButton(f, x, y, stackW, EntourageMenuLabel(), false, false, height: buttonH, compact: true)) { OpenEntourage(); return; } // Round X-B
-            y += step;
-            if (MenuButton(f, x, y, stackW, SitePhotosMenuLabel(), false, false, height: buttonH, compact: true)) { OpenSitePhotosPanel(); return; } // site photos round
-            y += step;
-            if (texturesButton)
-            {
-                if (HasMaterialsPanel)
-                {
-                    if (MenuButton(f, x, y, stackW, MaterialsMenuLabel(), false, false, height: buttonH, compact: true)) { OpenMaterials(); return; }
-                }
-                else if (MenuButton(f, x, y, stackW, TexturesMenuLabel(), false, false, height: buttonH, compact: true)) { OpenTextures(); return; }
-                y += step;
-            }
-            if (roomsButton)
-            {
-                if (MenuButton(f, x, y, stackW, "FIND ROOM", false, false, height: buttonH, compact: true)) { OpenRooms(); return; }
-                y += step;
-            }
-            if (MenuButton(f, x, y, stackW, "SUN HOURS STUDY", false, false, height: buttonH, compact: true)) { OpenSunHours(); return; }
-            y += step;
-            if (MenuButton(f, x, y, stackW, ClashesMenuLabel(), false, false, height: buttonH, compact: true)) { OpenClashes(); return; }
-            y += step;
-            if (libraryButton)
-            {
-                if (MenuButton(f, x, y, stackW, LibraryMenuLabel(), false, false, height: buttonH, compact: true)) { OpenLibrary(); return; }
-                y += step;
-            }
-            if (MenuButton(f, x, y, stackW, GeometryMenuLabel(), false, false, height: buttonH, compact: true)) { OpenGeometry(); return; }
-            y += step;
-
-            // Walkthrough-only hiding (Scan I / Shift+I, category and link toggles)
-            if (hiddenThings > 0)
-            {
-                if (_showAllCount != hiddenThings)
-                {
-                    _showAllCount = hiddenThings;
-                    _showAllLabel = $"SHOW ALL ({hiddenThings} HIDDEN)";
-                }
-                if (MenuButton(f, x, y, stackW, _showAllLabel, false, false, height: buttonH, compact: true)) { ShowAll(); }
-                y += step;
-            }
-
-            // Round W-A: CLEAR MARKERS left the menu (each gun clears its own markers with the clear key; comments are
-            // issues, managed in COMMENTS)
-
-            if (MenuButton(f, leftX, endY, stackW, _live != null ? "LEAVE SESSION" : _options.InApp ? "CLOSE MODEL" : "END SESSION", false, danger: true, height: S(40), compact: true)) { _endRequested = true; return; }
-
-            // ---- Settings: quality profile, eye height and units · Display / Reflections / Appearance
-            float tabsX = rightEdge - columnW;
+            // ---- Settings: quality profile, eye height and units · Display / Reflections / Appearance / Lights / Interface
+            float pad = S(40);
+            float columnW = S(320), columnGap = S(24);
+            float mainX = sideW + S(40), mainRight = width - S(40);
+            bool twoColumns = mainRight - mainX >= columnW * 2f + columnGap;
+            float columnsW = twoColumns ? columnW * 2f + columnGap : MathF.Min(columnW, mainRight - mainX);
+            float tabsX = MathF.Round(mainX + MathF.Max(0f, (mainRight - mainX - columnsW) * 0.5f)) + (twoColumns ? columnW + columnGap : 0f);
+            _ui.Text(f.Small, tabsX - (twoColumns ? columnW + columnGap : 0f), S(22), "SETTINGS", UiTheme.TEXT_FAINT, S(2f));
 
             // QOL round: PREVIEW hides the backdrop and everything but the graphics settings (Esc returns)
-            if (MenuButton(f, rightEdge - S(150), S(10), S(150), _previewButtonLabel ??= $"PREVIEW ({Hotkeys.Label(InputAction.MenuPreview)})", false, false, height: S(28), compact: true))
+            if (MenuButton(f, mainRight - S(150), S(14), S(150), _previewButtonLabel ??= $"PREVIEW ({Hotkeys.Label(InputAction.MenuPreview)})", false, false, height: S(28), compact: true))
             {
                 _menuPreview = true;
                 _activeSlider = -1;
@@ -676,19 +541,20 @@ namespace BimGo.Game
             }
             if (twoColumns)
             {
-                BuildSettingsColumn(f, input, tabsX - columnGap - columnW, pad, columnW);
-                BuildSettingsTabs(f, input, tabsX, pad, columnW, reserve: S(32)); // the file footer stays clear
+                BuildSettingsColumn(f, input, tabsX - columnGap - columnW, pad + S(14), columnW);
+                BuildSettingsTabs(f, input, tabsX, pad + S(14), columnW, reserve: S(32)); // the file footer stays clear
             }
             else
             {
-                float used = BuildSettingsColumn(f, input, tabsX, pad, columnW);
-                BuildSettingsTabs(f, input, tabsX, pad + used + S(12), columnW, reserve: S(32));
+                float used = BuildSettingsColumn(f, input, tabsX, pad + S(14), columnsW);
+                BuildSettingsTabs(f, input, tabsX, pad + S(14) + used + S(12), columnsW, reserve: S(32));
             }
 
             // Version / file footer
             Text.Clear().Append(DocumentName).Append(" · ").AppendGrouped(Scene.Elements.Length).Append(" elements · ").AppendGrouped(Scene.TriangleCount).Append(" tris · ")
                 .Append(_journal.Count).Append(_journal.Count == 1 ? " edit" : " edits");
-            _ui.TextRight(f.Small, width - S(56), height - S(28), Text.Span, UiTheme.TEXT_FAINT, S(0.5f));
+            _ui.TextRight(f.Small, mainRight, height - S(28), Text.Span, UiTheme.TEXT_FAINT, S(0.5f));
+            DrawOverlays(f, input, sideW, 0f, width - sideW, height);
         }
 
         /// <summary>
@@ -901,6 +767,7 @@ namespace BimGo.Game
                 case 1: BuildReflectionsTab(f, input, ix, y, iw); break;
                 case 2: BuildAppearanceTab(f, input, ix, y, iw); break;
                 case 3: bottom = MathF.Max(bottom, BuildLightsTab(f, input, ix, y, iw) + S(12)); break; // X-D1: a list, so it can run long
+                case 4: bottom = MathF.Max(bottom, BuildInterfaceTab(f, input, ix, y, iw) + S(12)); break; // UI round
                 default: bottom = MathF.Max(bottom, BuildDisplayTab(f, input, ix, y, iw) + S(12)); break; // Y-D1: it can run long
             }
             EndScroll(_settingsScroll, input, bottom);
@@ -1170,14 +1037,15 @@ namespace BimGo.Game
             bool hover = enabled && Hover(input, x, y, w, h);
             float alpha = enabled ? 1f : 0.4f;
 
+            float r = S(UiTheme.RADIUS_SMALL); // UI round: rounded
             if (primary)
             {
-                _ui.Rect(x, y, w, h, Fade(hover ? UiTheme.ACCENT_SOFT : UiTheme.ACCENT, alpha));
+                _ui.RoundRect(x, y, w, h, r, Fade(hover ? UiTheme.ACCENT_SOFT : UiTheme.ACCENT, alpha));
             }
             else
             {
-                _ui.Rect(x, y, w, h, hover ? UiTheme.Ink(0.08f) : UiTheme.Ink(0.0f));
-                _ui.Outline(x, y, w, h, MathF.Max(1f, UiScale), Fade(danger ? Rgba.Hex(0xFCA5A5, 0.45f) : UiTheme.Ink(0.2f), alpha));
+                if (hover) { _ui.RoundRect(x, y, w, h, r, UiTheme.Ink(0.08f)); }
+                _ui.RoundOutline(x, y, w, h, r, MathF.Max(1f, UiScale), Fade(danger ? Rgba.WithAlpha(UiTheme.DANGER, 0.55f) : UiTheme.Ink(0.2f), alpha));
             }
 
             uint textColour = primary ? UiTheme.ON_ACCENT : danger ? UiTheme.DANGER : UiTheme.TEXT;
@@ -1225,8 +1093,8 @@ namespace BimGo.Game
             }
 
             float fraction = Math.Clamp((value - min) / (max - min), 0f, 1f);
-            _ui.Rect(x, trackY - S(2), w, S(4), UiTheme.Ink(0.15f));
-            _ui.Rect(x, trackY - S(2), w * fraction, S(4), UiTheme.ACCENT);
+            _ui.RoundRect(x, trackY - S(2), w, S(4), S(2), UiTheme.Ink(0.15f));
+            _ui.RoundRect(x, trackY - S(2), w * fraction, S(4), S(2), UiTheme.ACCENT);
             _ui.Circle(x + w * fraction, trackY, knobR, hover || _activeSlider == id ? UiTheme.ACCENT_SOFT : UiTheme.ACCENT, 16);
             return value;
         }
@@ -1238,14 +1106,19 @@ namespace BimGo.Game
         {
             float h = S(32);
             float segment = w / options.Length;
+            float r = S(UiTheme.RADIUS_SMALL), inset = S(3);
+            _ui.RoundRect(x, y, w, h, r, UiTheme.CONTROL); // UI round: a rounded track, the choice a pill inside it
+            _ui.RoundOutline(x, y, w, h, r, MathF.Max(1f, UiScale), UiTheme.CONTROL_BORDER);
             for (int i = 0; i < options.Length; i++)
             {
                 float sx = x + i * segment;
                 bool on = i == selected;
                 bool hover = Hover(input, sx, y, segment, h);
-                _ui.Rect(sx, y, segment, h, on ? UiTheme.ACCENT : hover ? UiTheme.Ink(0.08f) : UiTheme.CONTROL);
-                _ui.Outline(sx, y, segment, h, MathF.Max(1f, UiScale), UiTheme.CONTROL_BORDER);
+                if (on || hover) { _ui.RoundRect(sx + inset, y + inset, segment - inset * 2f, h - inset * 2f, r - S(1), on ? UiTheme.ACCENT : UiTheme.Ink(0.08f)); }
+                else if (i > 0 && i - 1 != selected) { _ui.Rect(sx, y + S(8), MathF.Max(1f, UiScale), h - S(16), UiTheme.DIVIDER); }
+                _ui.PushClip(sx + inset, y, segment - inset * 2f, h);
                 _ui.TextCentred(f.Body, sx + segment * 0.5f, y + h * 0.5f - f.Body.LineHeight * 0.5f, options[i], on ? UiTheme.ON_ACCENT : UiTheme.TEXT);
+                _ui.PopClip();
                 if (hover && input.LeftPressed && !on)
                 {
                     selected = i;
@@ -1262,8 +1135,8 @@ namespace BimGo.Game
         {
             float box = S(16);
             bool hover = Hover(input, x, y - S(3), w, S(24));
-            _ui.Rect(x, y, box, box, value ? UiTheme.ACCENT : UiTheme.CONTROL);
-            _ui.Outline(x, y, box, box, MathF.Max(1f, UiScale), value ? UiTheme.ACCENT : UiTheme.CONTROL_BORDER);
+            _ui.RoundRect(x, y, box, box, S(4), value ? UiTheme.ACCENT : UiTheme.CONTROL);
+            _ui.RoundOutline(x, y, box, box, S(4), MathF.Max(1f, UiScale), value ? UiTheme.ACCENT : UiTheme.CONTROL_BORDER);
             if (value)
             {
                 _ui.Line(x + box * 0.22f, y + box * 0.52f, x + box * 0.42f, y + box * 0.72f, S(2), UiTheme.ON_ACCENT);

@@ -70,6 +70,31 @@ namespace BimGo.Rendering
         /// <summary>UI scale factor (DPI / 96).</summary>
         public float Scale { get; private set; } = 1f;
 
+        /// <summary>UI round: bumped each time the atlas is rebuilt (cached text measurements go stale).</summary>
+        public int Generation { get; private set; }
+
+        /// <summary>
+        /// UI round: an opacity on everything drawn while it is below 1 (HUD panels fading while the player moves).
+        /// </summary>
+        public float Opacity { get; set; } = 1f;
+
+        /// <summary>UI round: the corner radius of <see cref="Panel"/> (px; 0 = square).</summary>
+        public float Radius { get; set; }
+
+        /// <summary>
+        /// UI round: the font atlas again at a new scale (the fonts or text size changed: <see cref="UiFonts.Current"/>).
+        /// </summary>
+        public void Rebuild(float scale)
+        {
+            Scale = scale;
+            Atlas?.Dispose();
+            Atlas = new FontAtlas();
+            Atlas.Build(scale);
+            _wu = Atlas.WhiteU;
+            _wv = Atlas.WhiteV;
+            Generation++;
+        }
+
         /// <summary>
         /// Creates GL objects and the font atlas.
         /// </summary>
@@ -127,11 +152,60 @@ namespace BimGo.Rendering
             Rect(x + w - t, y + t, t, h - 2 * t, colour);
         }
 
-        /// <summary>A panel: translucent fill with a hairline border.</summary>
+        /// <summary>A panel: translucent fill with a hairline border (UI round: rounded by <see cref="Radius"/>).</summary>
         public void Panel(float x, float y, float w, float h, uint fill, uint border)
         {
+            if (Radius > 0.5f)
+            {
+                RoundRect(x, y, w, h, Radius, fill);
+                RoundOutline(x, y, w, h, Radius, MathF.Max(1f, MathF.Round(Scale)), border);
+                return;
+            }
             Rect(x, y, w, h, fill);
             Outline(x, y, w, h, MathF.Max(1f, MathF.Round(Scale)), border);
+        }
+
+        /// <summary>
+        /// UI round: a filled rectangle with rounded corners (anti-aliased: the corners are quarters of the atlas's disc).
+        /// </summary>
+        public void RoundRect(float x, float y, float w, float h, float r, uint colour)
+        {
+            r = MathF.Min(r, MathF.Min(w, h) * 0.5f);
+            if (r < 0.75f || (colour >> 24) == 0)
+            {
+                Rect(x, y, w, h, colour);
+                return;
+            }
+            Rect(x + r, y, w - 2f * r, h, colour);
+            Rect(x, y + r, r, h - 2f * r, colour);
+            Rect(x + w - r, y + r, r, h - 2f * r, colour);
+            Corners(x, y, w, h, r, Atlas.DiscU, colour);
+        }
+
+        /// <summary>UI round: a rounded rectangle's outline (anti-aliased corners from the atlas's ring).</summary>
+        public void RoundOutline(float x, float y, float w, float h, float r, float t, uint colour)
+        {
+            r = MathF.Min(r, MathF.Min(w, h) * 0.5f);
+            if (r < 0.75f || (colour >> 24) == 0)
+            {
+                Outline(x, y, w, h, t, colour);
+                return;
+            }
+            Rect(x + r, y, w - 2f * r, t, colour);
+            Rect(x + r, y + h - t, w - 2f * r, t, colour);
+            Rect(x, y + r, t, h - 2f * r, colour);
+            Rect(x + w - t, y + r, t, h - 2f * r, colour);
+            Corners(x, y, w, h, r, Atlas.RingU, colour);
+        }
+
+        /// <summary>The four corner quads, each a quarter of the disc or ring at <paramref name="u"/>.</summary>
+        private void Corners(float x, float y, float w, float h, float r, float u, uint colour)
+        {
+            float c = Atlas.CornerSize, half = c * 0.5f;
+            Quad(x, y, x + r, y + r, u, 0f, u + half, half, colour);
+            Quad(x + w - r, y, x + w, y + r, u + half, 0f, u + c, half, colour);
+            Quad(x, y + h - r, x + r, y + h, u, half, u + half, c, colour);
+            Quad(x + w - r, y + h - r, x + w, y + h, u + half, half, u + c, c, colour);
         }
 
         /// <summary>A thick line.</summary>
@@ -519,6 +593,7 @@ namespace BimGo.Rendering
 
         private void Push(float x, float y, float u, float v, uint colour)
         {
+            if (Opacity < 0.999f) { colour = (colour & 0x00FFFFFFu) | ((uint)MathF.Round((colour >> 24) * Math.Clamp(Opacity, 0f, 1f)) << 24); }
             if (_count == _vertices.Length) { Array.Resize(ref _vertices, _vertices.Length * 2); }
             ref UiVertex vertex = ref _vertices[_count++];
             vertex.X = x;

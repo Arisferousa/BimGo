@@ -503,6 +503,7 @@ namespace BimGo.Game
         {
             if (!_paused) { return false; }
             if (AnyBigPanelOpen && CloseOverlay()) { return true; }
+            if (!AnyBigPanelOpen && (CloseOverlay() || ClearMenuSearch())) { return true; } // UI round: the menu's dropdown, then its search
             return CancelMarkupPanel() || CloseMenuPreview() || ClosePush() || CloseComments() || CloseBookmarks() || CloseTextures() || CloseLibrary() || CloseRooms()
                 || CloseClashes() || CloseColourProfiles() || CloseGeometry() || CloseControls() || CloseMedia() || CloseEntourage()
                 || CloseSiteGallery() || CloseSitePhotosPanel() || CloseMaterials();
@@ -540,16 +541,17 @@ namespace BimGo.Game
             bool hover = enabled && Hover(input, x, y, w, h);
             float alpha = enabled ? 1f : 0.4f;
             uint text;
+            float r = S(UiTheme.RADIUS_SMALL); // UI round: rounded
             if (style == ShellStyle.Primary)
             {
-                _ui.Rect(x, y, w, h, Fade(hover ? UiTheme.FOCUS : UiTheme.ACCENT, alpha));
+                _ui.RoundRect(x, y, w, h, r, Fade(hover ? UiTheme.FOCUS : UiTheme.ACCENT, alpha));
                 text = UiTheme.ON_ACCENT;
             }
             else
             {
-                _ui.Rect(x, y, w, h, hover ? UiTheme.HOVER : UiTheme.CONTROL);
-                uint border = style == ShellStyle.Danger ? Rgba.Hex(0xFCA5A5, 0.45f) : hover ? UiTheme.ACCENT : UiTheme.CONTROL_BORDER;
-                _ui.Outline(x, y, w, h, MathF.Max(1f, UiScale), Fade(border, alpha));
+                _ui.RoundRect(x, y, w, h, r, hover ? UiTheme.HOVER : UiTheme.CONTROL);
+                uint border = style == ShellStyle.Danger ? Rgba.WithAlpha(UiTheme.DANGER, 0.55f) : hover ? UiTheme.ACCENT : UiTheme.CONTROL_BORDER;
+                _ui.RoundOutline(x, y, w, h, r, MathF.Max(1f, UiScale), Fade(border, alpha));
                 text = Fade(style == ShellStyle.Danger ? UiTheme.DANGER : hover ? UiTheme.ACCENT : UiTheme.TEXT, alpha);
             }
 
@@ -680,8 +682,8 @@ namespace BimGo.Game
             }
 
             bool hot = overThumb || _scrollDrag == region;
-            _ui.Rect(trackX, trackY, barW, trackH, UiTheme.SCROLL_TRACK);
-            _ui.Rect(trackX, thumbY, barW, thumbH, hot ? UiTheme.SCROLL_THUMB_HOT : UiTheme.SCROLL_THUMB);
+            _ui.RoundRect(trackX, trackY, barW, trackH, barW * 0.5f, UiTheme.SCROLL_TRACK); // UI round: rounded
+            _ui.RoundRect(trackX, thumbY, barW, thumbH, barW * 0.5f, hot ? UiTheme.SCROLL_THUMB_HOT : UiTheme.SCROLL_THUMB);
         }
 
         /// <summary>True when a span (scrolled coordinates) shows in the region's viewport: draw only those.</summary>

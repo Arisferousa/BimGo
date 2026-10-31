@@ -674,8 +674,8 @@ namespace BimGo.Game
         private bool SmallButton(FontAtlas f, InputState input, float x, float y, float w, float h, string label, bool danger = false)
         {
             bool hover = Hover(input, x, y, w, h);
-            _ui.Rect(x, y, w, h, hover ? UiTheme.Ink(0.1f) : UiTheme.CONTROL);
-            _ui.Outline(x, y, w, h, MathF.Max(1f, UiScale), danger ? Rgba.Hex(0xFCA5A5, 0.45f) : UiTheme.CONTROL_BORDER);
+            _ui.RoundRect(x, y, w, h, S(UiTheme.RADIUS_SMALL), hover ? UiTheme.Ink(0.1f) : UiTheme.CONTROL); // UI round: rounded
+            _ui.RoundOutline(x, y, w, h, S(UiTheme.RADIUS_SMALL), MathF.Max(1f, UiScale), danger ? Rgba.WithAlpha(UiTheme.DANGER, 0.55f) : UiTheme.CONTROL_BORDER);
             _ui.TextCentred(f.Small, x + w * 0.5f, y + h * 0.5f - f.Small.LineHeight * 0.5f, label, danger ? UiTheme.DANGER : hover ? UiTheme.ACCENT : UiTheme.TEXT, S(0.8f));
 
             bool clicked = hover && input.LeftPressed;

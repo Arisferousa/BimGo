@@ -22,6 +22,7 @@ namespace BimGo.Game
 
         // Help panel column widths (measured from the text; recomputed when the UI scale or the rows change)
         private float _helpScale = -1f, _helpKeyWidth, _helpPadWidth, _helpActionWidth;
+        private int _helpGeneration = -1;
 
         // F1 help rows (polish round P-B: generated from the catalogue for the current situation), rebuilt when a binding,
         // the situation or the gamepad's presence changes. Row 0 is the situation's title; the last row always shows.
@@ -648,7 +649,8 @@ namespace BimGo.Game
             // Polish round P-A2: the right-hand column (tools): the minimap (hidden while a dock sits over it on a short
             // window), then the gun's context panel or the open dock beneath it
             if (_showMap && !_dockOverMap) { DrawMinimapOverlay(mapX, mapY); }
-            if (!AnyDockOpen && !_unarmed)
+            _ui.Opacity = _hudAlpha; // UI round: the information fades while moving (HUD layouts)
+            if (!AnyDockOpen && !_unarmed && !HudMinimal)
             {
                 float panelTop = _showMap ? mapY + S(UiTheme.MINIMAP_HEIGHT) + S(UiTheme.COLUMN_GAP) : S(UiTheme.COLUMN_MARGIN);
                 float panelWidth = S(260), panelX = width - S(UiTheme.COLUMN_MARGIN) - panelWidth;
@@ -656,8 +658,9 @@ namespace BimGo.Game
                 _ui.Panel(panelX, panelTop, panelWidth, panelHeight, UiTheme.PANEL, UiTheme.PANEL_BORDER);
                 active.DrawPanel(_ui, panelX + S(14), panelTop + S(12), panelWidth - S(28));
             }
+            _ui.Opacity = 1f;
 
-            BuildSunIcon(f, _window.Input);
+            if (!HudMinimal || _sunPanelOpen) { BuildSunIcon(f, _window.Input); }
             if (_sunPanelOpen) { BuildSunPanel(f, _window.Input); }
             if (_sunHoursOpen) { BuildSunHoursPanel(f, _window.Input); }
             BuildGridsPanel(f, _window.Input); // grids round A
@@ -665,7 +668,9 @@ namespace BimGo.Game
             BuildSectionPanel(f, _window.Input);
 
             // P-A2: the left-hand column (information): status, coordinates, the legends and the F1 sheet
+            _ui.Opacity = _hudAlpha;
             BuildInfoColumn(f, height, sunLegend: true, profileLegend: true, help: true);
+            _ui.Opacity = 1f;
             BuildGunBar(f, width, height, active);
             BuildGunWheel(f, width, height);
             BuildRoomBanner(f, width);
@@ -693,7 +698,7 @@ namespace BimGo.Game
         /// </summary>
         private void BuildStatusPanel(FontAtlas f)
         {
-            float x = S(20), y = S(20), w = S(250), h = S(146);
+            float x = S(20), y = S(20), w = S(250), h = StatusPanelHeight;
             _ui.Panel(x, y, w, h, UiTheme.PANEL, UiTheme.PANEL_BORDER);
             float titleWidth = _ui.Text(f.Bold, x + S(14), y + S(11), "BIMGO", UiTheme.TEXT, S(2f));
 
@@ -753,6 +758,7 @@ namespace BimGo.Game
             }
             rowY += row;
 
+            if (!HudFull) { return; } // UI round: Standard's status stops at the room
             _ui.Text(f.Body, labelX, rowY, "GROUND", UiTheme.TEXT_MUTED);
             Text.Clear().AppendLength(_groundZ, 3);
             _ui.Text(f.Mono, valueX, rowY + S(1), Text.Span, UiTheme.TEXT);
@@ -778,12 +784,16 @@ namespace BimGo.Game
         private void BuildInfoColumn(FontAtlas f, int height, bool sunLegend, bool profileLegend, bool help)
         {
             float x = S(UiTheme.COLUMN_MARGIN), gap = S(10);
-            BuildStatusPanel(f);
-            float top = S(UiTheme.COLUMN_MARGIN) + S(UiTheme.STATUS_HEIGHT) + gap;
-            if (_coordinateReadout != CoordinateReadout.Off)
+            float top = S(UiTheme.COLUMN_MARGIN);
+            if (!HudMinimal) // UI round: Minimal leaves out the status and coordinates (Standard: a compact status)
             {
-                BuildCoordinatePanel(f, x, top);
-                top += S(UiTheme.COORDS_HEIGHT) + gap;
+                BuildStatusPanel(f);
+                top += StatusPanelHeight + gap;
+                if (_coordinateReadout != CoordinateReadout.Off)
+                {
+                    BuildCoordinatePanel(f, x, top);
+                    top += S(UiTheme.COORDS_HEIGHT) + gap;
+                }
             }
             float perf = BuildPerformancePanel(f, x, top); // Round Y-D1
             if (perf > 0f) { top += perf + gap; }
@@ -824,9 +834,10 @@ namespace BimGo.Game
 
             // Columns sized to the widest key, gamepad button and action (measured again when the UI scale or the rows change)
             (string Key, string Pad, string Action)[] rows = HelpRows();
-            if (_helpScale != UiScale)
+            if (_helpScale != UiScale || _helpGeneration != _ui.Generation)
             {
                 _helpScale = UiScale;
+                _helpGeneration = _ui.Generation; // UI round: fonts can change at the same scale
                 _helpKeyWidth = 0f;
                 _helpPadWidth = 0f;
                 _helpActionWidth = 0f;

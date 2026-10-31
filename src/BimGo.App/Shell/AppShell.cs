@@ -65,7 +65,7 @@ namespace BimGo.Shell
             {
                 _window = new GameWindow("BimGo");
                 _ui = new UiBatch();
-                _ui.Initialise(_window.DpiScale);
+                ApplyInterface(initialise: true); // UI round: the theme, fonts and size chosen
                 _home = new HomeScreen(_window, _ui, _recent, _instance);
 
                 while (true)
@@ -75,6 +75,7 @@ namespace BimGo.Shell
 
                     SessionEndReason reason = target.IsLive ? RunLive(target) : RunFile(target.Path, target.Kiosk, target.Pose);
                     if (reason == SessionEndReason.WindowClosed) { return 0; }
+                    ApplyInterface(initialise: false); // the walkthrough may have changed them (Esc → INTERFACE)
 
                     // A switch whose save prompt was cancelled must not fire later
                     if (reason == SessionEndReason.EndedByUser) { _next = null; }
@@ -102,6 +103,24 @@ namespace BimGo.Shell
             }
             return _openQueue.Count > 0 ? _openQueue.Dequeue() : null;
         }
+
+        /// <summary>
+        /// UI round: the interface settings for the home screen and loading screens: the theme and fonts (shared), and
+        /// the UI batch built (or rebuilt, when the size or fonts changed) at Windows' scaling × the size chosen.
+        /// </summary>
+        private void ApplyInterface(bool initialise)
+        {
+            LaunchSettings settings = LaunchSettings.LoadOrDefault();
+            UiLook.Apply(settings);
+            float scale = UiLook.ScaleFor(_window.DpiScale, settings);
+            var fonts = (UiFonts.Current.Text, UiFonts.Current.Numbers, UiFonts.Current.TextSize, scale);
+            if (initialise) { _ui.Initialise(scale); }
+            else if (fonts != _appliedFonts) { _ui.Rebuild(scale); }
+            _appliedFonts = fonts;
+            _ui.Radius = scale * UiTheme.RADIUS;
+        }
+
+        private (string, string, float, float) _appliedFonts;
 
         #endregion
 

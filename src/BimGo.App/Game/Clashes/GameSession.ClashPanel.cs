@@ -914,7 +914,7 @@ namespace BimGo.Game
                     ClashSetEdited();
                 });
             }
-            if (RuleOp.IsNegative(rule.Operator)) { _ui.Rect(bx, ry + S(32) - S(3), opW, S(3), inGroup ? UiTheme.Ink(0.25f) : Rgba.Hex(0xFCA5A5, 0.7f)); }
+            if (RuleOp.IsNegative(rule.Operator)) { _ui.Rect(bx, ry + S(32) - S(3), opW, S(3), inGroup ? UiTheme.Ink(0.25f) : Rgba.WithAlpha(UiTheme.DANGER, 0.7f)); }
             bx += opW + g;
 
             // Value: typed for contains, else picked from the model (ticks for the list operators)

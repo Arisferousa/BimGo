@@ -241,6 +241,7 @@ namespace BimGo.Game
             _showGunBar = settings.ShowGunBar;
             ReadVideoSettings(settings);
             ReadAppearanceSettings(settings);
+            ReadInterfaceSettings(LaunchSettings.LoadOrDefault()); // UI round: the machine's interface settings, not the model's copy
             UnitFormat.Read(settings);
             Hotkeys.Read(settings);
             Gamepad.Read(settings);
@@ -253,9 +254,10 @@ namespace BimGo.Game
         /// </summary>
         private void Initialise()
         {
-            UiScale = _window.DpiScale;
+            UiScale = InterfaceScale; // UI round: Windows' scaling × the interface size chosen
             _ui = new UiBatch();
             _ui.Initialise(UiScale);
+            _ui.Radius = S(UiTheme.RADIUS);
             // Sorting and the collision tree on a worker thread with a progress bar (Esc cancels back to the home screen)
             var stopwatch = Stopwatch.StartNew();
             var progress = new Utilities.OperationProgress();
@@ -632,6 +634,7 @@ namespace BimGo.Game
         private void UpdateFrame(float dt)
         {
             InputState input = _window.Input;
+            UpdateHudFade(dt); // UI round
 
             if (_window.Resized)
             {
@@ -1405,6 +1408,7 @@ namespace BimGo.Game
             settings.RevitTint = _tintMode;
             settings.ProxyMissingTextures = _proxyMissing;
             WriteAppearanceSettings(settings);
+            WriteInterfaceSettings(settings); // UI round
             settings.ProxyMaterialColour = _proxyMaterialColour;
             settings.Msaa = _msaa;
             settings.AmbientOcclusion = _ambientOcclusion;

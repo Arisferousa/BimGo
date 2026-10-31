@@ -137,6 +137,7 @@ namespace BimGo.Game
                 _videoUiScale = UiScale * height / Math.Max(1f, _window.Height);
                 _videoUi = new UiBatch();
                 _videoUi.Initialise(_videoUiScale);
+                _videoUi.Radius = _videoUiScale * UiTheme.RADIUS;
             }
 
             string name = SafeFileName(Path.GetFileNameWithoutExtension(DocumentName)) + what +
