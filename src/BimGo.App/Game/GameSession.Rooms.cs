@@ -56,6 +56,7 @@ namespace BimGo.Game
                 return;
             }
             if (!_paused) { SetPaused(true); }
+            ShowTip("rooms"); // tutorial round: the first time
             _roomsOpen = true;
             _roomScroll.Reset();
             _roomMatchesDirty = true;

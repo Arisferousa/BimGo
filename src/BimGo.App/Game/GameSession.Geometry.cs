@@ -31,6 +31,7 @@ namespace BimGo.Game
         {
             if (!_paused) { SetPaused(true); }
             _geometryOpen = true;
+            ShowTip("geometry"); // tutorial round: the first time
             _geometryScroll.Reset();
         }
 

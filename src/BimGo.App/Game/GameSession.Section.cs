@@ -202,6 +202,7 @@ namespace BimGo.Game
         private void OpenSectionEditor()
         {
             if (_sectionOpen) { return; }
+            if (!_viewer) { ShowTip("section-box"); } // tutorial round: the first time (the viewer has its own)
             if (_paused) { SetPaused(false); }
             CloseSunPanel();
             CloseGridsPanel(); // grids round A: one panel at a time

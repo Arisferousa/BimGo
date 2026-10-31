@@ -563,6 +563,27 @@ namespace BimGo.Scene
         /// <summary>Round Z-E: the welcome card (first walkthrough) has been seen.</summary>
         public bool WelcomeShown { get; set; }
 
+        /// <summary>Tutorial round: the full walkthrough's tutorial has been offered on this PC (taken or skipped).</summary>
+        public bool TutorialOffered { get; set; }
+
+        /// <summary>Tutorial round: the simple viewer's tutorial has been offered for a viewer file without an id (older copies).</summary>
+        public bool ViewerTutorialOffered { get; set; }
+
+        /// <summary>
+        /// Tutorial round: the viewer copies (<see cref="Format.ViewerDto.Id"/>) whose tutorial has been offered on this PC,
+        /// oldest first (at most <see cref="TutorialOffers.MAX_COPIES"/>).
+        /// </summary>
+        public List<string> TutorialCopies { get; set; } = new();
+
+        /// <summary>Tutorial round: the tutorial's chapters played to the end (ids; ticked in the menu's TUTORIAL).</summary>
+        public List<string> TutorialChaptersDone { get; set; } = new();
+
+        /// <summary>Tutorial round: a tip shows the first time a feature is used.</summary>
+        public bool Tips { get; set; } = true;
+
+        /// <summary>Tutorial round: the tips already shown (<see cref="TutorialTip.Id"/>).</summary>
+        public List<string> TipsSeen { get; set; } = new();
+
         /// <summary>
         /// Round Z-E, safe start (BimGo.exe started with Shift held): this process reads default settings with the
         /// Basic quality profile and never saves them, so a bad settings file or a heavy profile can't stop it starting.
@@ -936,12 +957,27 @@ namespace BimGo.Scene
             PadDeadZone = float.IsFinite(PadDeadZone) ? Math.Clamp(PadDeadZone, 0.05f, 0.6f) : DEFAULT_PAD_DEAD_ZONE;
             PadTriggerThreshold = float.IsFinite(PadTriggerThreshold) ? Math.Clamp(PadTriggerThreshold, 0.05f, 0.9f) : DEFAULT_PAD_TRIGGER;
             LastOptionsTab = Math.Clamp(LastOptionsTab, 0, 6);
+            TutorialCopies = CleanIds(TutorialCopies, TutorialOffers.MAX_COPIES, keepLast: true); // tutorial round
+            TutorialChaptersDone = CleanIds(TutorialChaptersDone, 64, keepLast: false);
+            TipsSeen = CleanIds(TipsSeen, 256, keepLast: false);
 
             // Last: the profile is whatever the (clamped) values match, so a hand-edited or older file reads true
             QualityProfile = QualityProfiles.Detect(this);
         }
 
         #endregion
+
+        /// <summary>
+        /// Tutorial round: a list of ids without blanks or repeats, at most <paramref name="max"/> (the newest when
+        /// <paramref name="keepLast"/>, else the first).
+        /// </summary>
+        private static List<string> CleanIds(List<string> ids, int max, bool keepLast)
+        {
+            if (ids == null) { return new List<string>(); }
+            List<string> clean = ids.Where(id => !string.IsNullOrWhiteSpace(id)).Select(id => id.Trim()).Distinct(StringComparer.Ordinal).ToList();
+            if (clean.Count > max) { clean = keepLast ? clean.Skip(clean.Count - max).ToList() : clean.Take(max).ToList(); }
+            return clean;
+        }
 
         /// <summary>
         /// Drops empty ids and null lists, trims, keeps the first of duplicate ids and at most
