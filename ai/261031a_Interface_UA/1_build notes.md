@@ -20,6 +20,11 @@ reference assemblies. **Not run** (no Windows / GPU here).
   `Overlays.cs`, `Render.cs` (HUD layouts, the help sheet re-measured when the fonts change), `Video.cs`,
   `Shell/AppShell.cs` (the home screen).
 
+## Revision 2 (after the first look on Windows)
+- The sidebar's SETTINGS section only listed CONTROLS, so INTERFACE (a tab beside the sidebar) went unnoticed. The
+  section now lists every settings tab (DISPLAY, REFLECTIONS, APPEARANCE, LIGHTS, INTERFACE: a click shows it beside
+  the sidebar, the open one marked with the accent) before CONTROLS; the search finds them too.
+
 ## Decisions worth knowing
 - **The dark theme looks as before** (same colours, the default fonts unchanged): only the corners are new, and the
   Standard HUD drops two status rows (ground, colour mode) that Full keeps.

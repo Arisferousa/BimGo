@@ -56,7 +56,11 @@ namespace BimGo.Game
         // Menu icons
         private const int MI_RESUME = 0, MI_HOME = 1, MI_PIN = 2, MI_SAVE = 3, MI_SAVE_AS = 4, MI_VIEWER = 5, MI_UPDATE = 6, MI_PUSH = 7, MI_KIOSK = 8,
             MI_REVIT = 9, MI_MATERIALS = 10, MI_LIBRARY = 11, MI_LAYERS = 12, MI_EYE = 13, MI_COMMENT = 14, MI_BOOKMARK = 15, MI_CLASH = 16, MI_ROOM = 17,
-            MI_SUN = 18, MI_MEDIA = 19, MI_PEOPLE = 20, MI_PHOTO = 21, MI_KEYS = 22, MI_CLOSE = 23;
+            MI_SUN = 18, MI_MEDIA = 19, MI_PEOPLE = 20, MI_PHOTO = 21, MI_KEYS = 22, MI_CLOSE = 23,
+            MI_DISPLAY = 24, MI_SHINE = 25, MI_SLIDERS = 26;
+
+        // The settings tabs as sidebar entries (their icons, in RIGHT_TABS order)
+        private static readonly int[] SETTINGS_TAB_ICONS = { MI_DISPLAY, MI_SHINE, MI_MATERIALS, MI_SUN, MI_SLIDERS };
 
         #endregion
 
@@ -324,7 +328,7 @@ namespace BimGo.Game
         /// entry). With a search typed, only entries whose label (or section) matches show.
         /// </summary>
         /// <returns>True when clicked.</returns>
-        private bool SideItem(ref SideMenu m, FontAtlas f, InputState input, string section, int icon, string label, bool enabled = true, bool danger = false)
+        private bool SideItem(ref SideMenu m, FontAtlas f, InputState input, string section, int icon, string label, bool enabled = true, bool danger = false, bool selected = false)
         {
             if (_menuSearchText.Length > 0 && !label.Contains(_menuSearchText, StringComparison.OrdinalIgnoreCase)
                 && !section.Contains(_menuSearchText, StringComparison.OrdinalIgnoreCase)) { return false; }
@@ -337,8 +341,10 @@ namespace BimGo.Game
             }
             float h = m.RowH - S(4);
             bool hover = enabled && Hover(input, m.X, m.Y, m.W, h);
-            if (hover) { _ui.RoundRect(m.X, m.Y, m.W, h, S(UiTheme.RADIUS_SMALL), UiTheme.Ink(0.08f)); }
-            uint colour = !enabled ? UiTheme.TEXT_FAINT : danger ? UiTheme.DANGER : hover ? UiTheme.TEXT : UiTheme.TEXT_SOFT;
+            if (selected) { _ui.RoundRect(m.X, m.Y, m.W, h, S(UiTheme.RADIUS_SMALL), UiTheme.Accent(0.14f)); }
+            else if (hover) { _ui.RoundRect(m.X, m.Y, m.W, h, S(UiTheme.RADIUS_SMALL), UiTheme.Ink(0.08f)); }
+            if (selected) { _ui.RoundRect(m.X, m.Y + S(6), S(3), h - S(12), S(1.5f), UiTheme.ACCENT); }
+            uint colour = !enabled ? UiTheme.TEXT_FAINT : danger ? UiTheme.DANGER : selected ? UiTheme.ACCENT : hover ? UiTheme.TEXT : UiTheme.TEXT_SOFT;
             DrawMenuIcon(icon, m.X + S(20), m.Y + h * 0.5f, S(8), hover && !danger ? UiTheme.ACCENT : colour);
             _ui.TextWrapped(f.Body, m.X + S(40), m.Y + h * 0.5f - f.Body.LineHeight * 0.5f, m.W - S(48), label, colour, maxLines: 1);
             m.Y += m.RowH;
@@ -476,6 +482,14 @@ namespace BimGo.Game
             if (SideItem(ref m, f, input, MEDIA, MI_PHOTO, SitePhotosMenuLabel())) { OpenSitePhotosPanel(); return false; }
 
             // SETTINGS (the tabs are beside the sidebar)
+            // The settings tabs beside the sidebar (the open one marked; a click shows it there)
+            for (int i = 0; i < RIGHT_TABS.Length; i++)
+            {
+                if (!SideItem(ref m, f, input, SETTINGS, SETTINGS_TAB_ICONS[Math.Min(i, SETTINGS_TAB_ICONS.Length - 1)], RIGHT_TABS[i], selected: _rightTab == i)) { continue; }
+                _rightTab = i;
+                _activeSlider = -1;
+                _settingsScroll.Reset();
+            }
             if (SideItem(ref m, f, input, SETTINGS, MI_KEYS, "CONTROLS")) { OpenControls(); return false; }
             return true;
         }
@@ -594,6 +608,23 @@ namespace BimGo.Game
                     _ui.Outline(cx - r, cy - r * 0.6f, r * 2f, r * 1.2f, t, colour);
                     for (int k = -1; k <= 1; k++) { _ui.Rect(cx + k * r * 0.55f - t * 0.5f, cy - r * 0.25f, t, t, colour); }
                     _ui.Rect(cx - r * 0.5f, cy + r * 0.2f, r, t, colour);
+                    break;
+                case MI_DISPLAY: // a monitor
+                    _ui.Outline(cx - r, cy - r * 0.8f, r * 2f, r * 1.4f, t, colour);
+                    _ui.Rect(cx - r * 0.5f, cy + r * 0.85f, r, t, colour);
+                    break;
+                case MI_SHINE: // a reflection: a pane with a glint
+                    _ui.Outline(cx - r, cy - r, r * 2f, r * 2f, t, colour);
+                    _ui.Line(cx - r * 0.5f, cy + r * 0.2f, cx + r * 0.2f, cy - r * 0.5f, t, colour);
+                    _ui.Line(cx - r * 0.1f, cy + r * 0.6f, cx + r * 0.6f, cy - r * 0.1f, t, colour);
+                    break;
+                case MI_SLIDERS: // three sliders
+                    for (int k = -1; k <= 1; k++)
+                    {
+                        float yy = cy + k * r * 0.65f;
+                        _ui.Rect(cx - r, yy - t * 0.5f, r * 2f, t, colour);
+                        _ui.Circle(cx + k * r * 0.5f, yy, r * 0.28f, colour, 10);
+                    }
                     break;
                 case MI_CLOSE:
                     _ui.Line(cx - r * 0.7f, cy - r * 0.7f, cx + r * 0.7f, cy + r * 0.7f, t, colour);
