@@ -301,15 +301,15 @@ namespace BimGo.Game
                 uint statusColour = UiTheme.StatusColour(record.Status);
                 _ui.Rect(x - S(8), ry - S(4), S(3), rowH - S(4), statusColour);
                 bool ticked = _commentSelected.Contains(record);
-                if (ticked) { _ui.Rect(x - S(5), ry - S(4), w + S(13), rowH - S(4), Rgba.Hex(0x22D3EE, 0.10f)); }
+                if (ticked) { _ui.Rect(x - S(5), ry - S(4), w + S(13), rowH - S(4), UiTheme.Accent(0.10f)); }
                 float box = S(18), boxY = ry + thumbH * 0.5f - box * 0.5f;
                 bool tickHover = Hover(input, x - S(4), ry - S(4), tickW, rowH - S(4));
-                _ui.Rect(x, boxY, box, box, ticked ? UiTheme.ACCENT : tickHover ? Rgba.Hex(0xFFFFFF, 0.12f) : UiTheme.CONTROL);
+                _ui.Rect(x, boxY, box, box, ticked ? UiTheme.ACCENT : tickHover ? UiTheme.Ink(0.12f) : UiTheme.CONTROL);
                 _ui.Outline(x, boxY, box, box, MathF.Max(1f, UiScale), ticked ? UiTheme.ACCENT : UiTheme.CONTROL_BORDER);
                 if (ticked)
                 {
-                    _ui.Line(x + box * 0.22f, boxY + box * 0.52f, x + box * 0.42f, boxY + box * 0.72f, S(2), Rgba.Hex(0x06232A));
-                    _ui.Line(x + box * 0.42f, boxY + box * 0.72f, x + box * 0.8f, boxY + box * 0.28f, S(2), Rgba.Hex(0x06232A));
+                    _ui.Line(x + box * 0.22f, boxY + box * 0.52f, x + box * 0.42f, boxY + box * 0.72f, S(2), UiTheme.ON_ACCENT);
+                    _ui.Line(x + box * 0.42f, boxY + box * 0.72f, x + box * 0.8f, boxY + box * 0.28f, S(2), UiTheme.ON_ACCENT);
                 }
                 if (tickHover && input.LeftPressed)
                 {
@@ -487,7 +487,7 @@ namespace BimGo.Game
             if (thumbnail != 0)
             {
                 _ui.Image(thumbnail, x, y, w, h, _window.Width, _window.Height);
-                _ui.Outline(x, y, w, h, MathF.Max(1f, UiScale), Rgba.Hex(0xFFFFFF, 0.15f));
+                _ui.Outline(x, y, w, h, MathF.Max(1f, UiScale), UiTheme.Ink(0.15f));
             }
             else
             {
@@ -527,7 +527,7 @@ namespace BimGo.Game
                 }
                 if (record.HasMarkup)
                 {
-                    _ui.Rect(ix + S(6), cy + picH - mh - S(6), S(92), mh, Rgba.Hex(0x0C0E12, 0.75f));
+                    _ui.Rect(ix + S(6), cy + picH - mh - S(6), S(92), mh, UiTheme.Shade(0.75f));
                     _ui.TextCentred(f.Small, ix + S(6) + S(46), cy + picH - mh - S(6) + mh * 0.5f - f.Small.LineHeight * 0.5f, "MARKED UP", UiTheme.COMMENT_LABEL, S(0.6f));
                 }
             }
@@ -674,8 +674,8 @@ namespace BimGo.Game
         private bool SmallButton(FontAtlas f, InputState input, float x, float y, float w, float h, string label, bool danger = false)
         {
             bool hover = Hover(input, x, y, w, h);
-            _ui.Rect(x, y, w, h, hover ? Rgba.Hex(0xFFFFFF, 0.1f) : UiTheme.CONTROL);
-            _ui.Outline(x, y, w, h, MathF.Max(1f, UiScale), danger ? Rgba.Hex(0xFCA5A5, 0.45f) : UiTheme.CONTROL_BORDER);
+            _ui.RoundRect(x, y, w, h, S(UiTheme.RADIUS_SMALL), hover ? UiTheme.Ink(0.1f) : UiTheme.CONTROL); // UI round: rounded
+            _ui.RoundOutline(x, y, w, h, S(UiTheme.RADIUS_SMALL), MathF.Max(1f, UiScale), danger ? Rgba.WithAlpha(UiTheme.DANGER, 0.55f) : UiTheme.CONTROL_BORDER);
             _ui.TextCentred(f.Small, x + w * 0.5f, y + h * 0.5f - f.Small.LineHeight * 0.5f, label, danger ? UiTheme.DANGER : hover ? UiTheme.ACCENT : UiTheme.TEXT, S(0.8f));
 
             bool clicked = hover && input.LeftPressed;

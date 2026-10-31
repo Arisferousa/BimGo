@@ -790,8 +790,8 @@ namespace BimGo.Game.Guns
             float width = UiBatch.Measure(font, text.Span) + S(16);
             float height = font.LineHeight + S(6);
             float x = screen.X - width * 0.5f, y = screen.Y - height - S(6);
-            if (live) { ui.Panel(x, y, width, height, Rgba.Hex(0x0C0E12, 0.85f), UiTheme.MEASURE); }
-            else { ui.Rect(x, y, width, height, Rgba.Hex(0x0C0E12, 0.7f)); }
+            if (live) { ui.Panel(x, y, width, height, UiTheme.Shade(0.85f), UiTheme.MEASURE); }
+            else { ui.Rect(x, y, width, height, UiTheme.Shade(0.7f)); }
             ui.Text(font, x + S(8), y + S(3), text.Span, colour);
         }
 
@@ -814,7 +814,7 @@ namespace BimGo.Game.Guns
             {
                 float cx = x + i * (chipW + S(6));
                 bool on = i == (int)_mode;
-                ui.Rect(cx, y, chipW, chipH, on ? UiTheme.MEASURE : Rgba.Hex(0xFFFFFF, 0.06f));
+                ui.Rect(cx, y, chipW, chipH, on ? UiTheme.MEASURE : UiTheme.Ink(0.06f));
                 ui.TextCentred(f.Small, cx + chipW * 0.5f, y + S(4), MODE_CHIPS[i], on ? Rgba.Hex(0x1A1405) : UiTheme.TEXT_MUTED, S(0.8f));
             }
             y += chipH + S(10);

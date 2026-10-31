@@ -26,9 +26,18 @@ room you're in; **L** cycles a coordinate readout (shared, project or Revit inte
 
 ## The menu (Esc)
 
-The left stack is the session: resume, return home, save, push edits into Revit, kiosk shortcut, CONTROLS, close the
-model. The right stack is the review tools: comments, bookmarks, media, entourage, textures, find room, sun hours,
-clashes, the family library, categories and links. Beside them are the display settings and quality profile.
+On the left, a sidebar: the model's name, **RESUME**, a search box (just start typing to narrow the entries; Esc
+clears it) and the sections:
+
+- **MODEL**: return home, set home, save, save as, the viewer copy, update from IFC, push edits into Revit, the kiosk
+  shortcut, materials or textures, the family library, categories and links, show all;
+- **REVIEW**: comments, bookmarks, clashes, find room, sun hours;
+- **MEDIA**: photos, tours, paths and video, entourage, site photos;
+- **SETTINGS**: DISPLAY, REFLECTIONS, APPEARANCE, LIGHTS and INTERFACE (each opens that tab beside the sidebar; the
+  open one is marked), and CONTROLS.
+
+CLOSE MODEL is at the sidebar's foot. Beside it are the settings: the quality profile, eye height, units, and the
+DISPLAY · REFLECTIONS · APPEARANCE · LIGHTS · INTERFACE tabs (see [Settings and files](settings-and-files.md)).
 
 ![The pause menu](images/move-pause-menu.png)
 

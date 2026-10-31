@@ -470,7 +470,7 @@ namespace BimGo.Game
             if (comment == null || (comment.SnapshotData == null && comment.SnapshotOriginalData == null && comment.Thumbnail == null)) { return false; }
             float r = S(11);
             bool hover = Hover(input, cx - r, cy - r, r * 2f, r * 2f);
-            _ui.Circle(cx, cy, r, hover ? Rgba.Hex(0x22D3EE, 0.95f) : Rgba.Hex(0x0B1220, 0.85f), 16);
+            _ui.Circle(cx, cy, r, hover ? UiTheme.Accent(0.95f) : Rgba.Hex(0x0B1220, 0.85f), 16);
             uint ink = hover ? Rgba.Hex(0x06232A) : comment.HasMarkup ? Rgba.Hex(0xF59E0B) : Rgba.Hex(0xFFFFFF);
             float s = r * 0.62f;
             _ui.Line(cx - s * 0.55f, cy + s * 0.55f, cx + s * 0.6f, cy - s * 0.6f, MathF.Max(2f, S(3f)), ink); // the body

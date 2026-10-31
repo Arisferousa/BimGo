@@ -278,7 +278,7 @@ namespace BimGo.Game
                 if (thumbnail != 0)
                 {
                     _ui.Image(thumbnail, thumbX, thumbY, thumbW, thumbH, _window.Width, _window.Height);
-                    _ui.Outline(thumbX, thumbY, thumbW, thumbH, MathF.Max(1f, UiScale), Rgba.Hex(0xFFFFFF, 0.15f));
+                    _ui.Outline(thumbX, thumbY, thumbW, thumbH, MathF.Max(1f, UiScale), UiTheme.Ink(0.15f));
                 }
                 else
                 {

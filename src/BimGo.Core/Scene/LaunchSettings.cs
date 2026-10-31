@@ -312,6 +312,32 @@ namespace BimGo.Scene
         /// <summary>Grass round: grass blades on the grass materials in the Realistic mode (on by default).</summary>
         public bool GrassBlades { get; set; } = true;
 
+        // ---- UI round: the interface (Esc → INTERFACE; the app's home screen too)
+
+        /// <summary>UI round: the colour theme (<see cref="UiThemes"/>).</summary>
+        public string UiTheme { get; set; } = UiThemes.DARK;
+
+        /// <summary>UI round: the accent colour as "#RRGGBB" (buttons, focus, highlights).</summary>
+        public string UiAccent { get; set; } = UiThemes.DEFAULT_ACCENT;
+
+        /// <summary>UI round: the interface's size on top of Windows' display scaling (0.75–2).</summary>
+        public float UiScale { get; set; } = 1f;
+
+        /// <summary>UI round: the text size on top of the interface's size (0.9–1.25).</summary>
+        public float UiTextSize { get; set; } = 1f;
+
+        /// <summary>UI round: the text font's family name (a bundled one or any installed).</summary>
+        public string UiFont { get; set; } = UiThemes.DEFAULT_FONT;
+
+        /// <summary>UI round: the numbers font's family name (readouts, keys).</summary>
+        public string UiNumbersFont { get; set; } = UiThemes.DEFAULT_NUMBERS_FONT;
+
+        /// <summary>UI round: what stays on screen while walking (<see cref="HudLayouts"/>).</summary>
+        public string HudLayout { get; set; } = HudLayouts.STANDARD;
+
+        /// <summary>UI round: HUD panels fade while you move and come back when you stop.</summary>
+        public bool HudFade { get; set; } = true;
+
         /// <summary>Grass round: blade density, 0 low, 1 medium (default), 2 high.</summary>
         public int GrassDensity { get; set; } = 1;
 
@@ -858,6 +884,13 @@ namespace BimGo.Scene
             FieldOfView = Math.Clamp(FieldOfView, 60f, 120f);
             MaxStepHeightMm = Math.Clamp(MaxStepHeightMm, 50f, 450f);
             if (!Enum.IsDefined(EyePreset)) { EyePreset = EyePreset.Standing; }
+            UiTheme = UiThemes.Clean(UiTheme); // UI round
+            UiAccent = TryParseColour(UiAccent, out _) ? "#" + UiAccent.Trim().TrimStart('#').ToUpperInvariant() : UiThemes.DEFAULT_ACCENT;
+            UiScale = float.IsFinite(UiScale) ? Math.Clamp(MathF.Round(UiScale * 20f) / 20f, UiThemes.MIN_SCALE, UiThemes.MAX_SCALE) : 1f;
+            UiTextSize = float.IsFinite(UiTextSize) ? Math.Clamp(MathF.Round(UiTextSize * 20f) / 20f, UiThemes.MIN_TEXT_SIZE, UiThemes.MAX_TEXT_SIZE) : 1f;
+            UiFont = string.IsNullOrWhiteSpace(UiFont) || UiFont.Length > 100 ? UiThemes.DEFAULT_FONT : UiFont.Trim();
+            UiNumbersFont = string.IsNullOrWhiteSpace(UiNumbersFont) || UiNumbersFont.Length > 100 ? UiThemes.DEFAULT_NUMBERS_FONT : UiNumbersFont.Trim();
+            HudLayout = HudLayouts.Clean(HudLayout);
             if (!Enum.IsDefined(VideoSize)) { VideoSize = VideoSize.FullHd; }
             if (!Enum.IsDefined(DisplayUnits)) { DisplayUnits = UnitSystem.Metric; }
             VideoFps = VideoFps >= 45 ? 60 : 30;
@@ -953,6 +986,54 @@ namespace BimGo.Scene
             rgb = 0;
             string hex = (text ?? string.Empty).Trim().TrimStart('#');
             return hex.Length == 6 && uint.TryParse(hex, System.Globalization.NumberStyles.AllowHexSpecifier, System.Globalization.CultureInfo.InvariantCulture, out rgb);
+        }
+    }
+
+    /// <summary>UI round: the interface's colour themes and limits (LaunchSettings.UiTheme and friends).</summary>
+    public static class UiThemes
+    {
+        public const string DARK = "dark", LIGHT = "light", CONTRAST = "contrast";
+
+        /// <summary>The themes in the order offered.</summary>
+        public static readonly string[] ALL = { DARK, LIGHT, CONTRAST };
+
+        /// <summary>BimGo's cyan.</summary>
+        public const string DEFAULT_ACCENT = "#22D3EE";
+
+        /// <summary>The accent colours offered (any "#RRGGBB" is kept).</summary>
+        public static readonly string[] ACCENTS = { "#22D3EE", "#3B82F6", "#8B5CF6", "#EC4899", "#F59E0B", "#22C55E", "#14B8A6", "#EF4444" };
+
+        public const string DEFAULT_FONT = "Bahnschrift", DEFAULT_NUMBERS_FONT = "Consolas";
+        public const float MIN_SCALE = 0.75f, MAX_SCALE = 2f, MIN_TEXT_SIZE = 0.9f, MAX_TEXT_SIZE = 1.25f;
+
+        /// <summary>A theme name as stored (unknown ones read as dark).</summary>
+        public static string Clean(string theme)
+        {
+            string t = theme?.Trim().ToLowerInvariant();
+            return ALL.Contains(t) ? t : DARK;
+        }
+    }
+
+    /// <summary>UI round: what stays on screen while walking.</summary>
+    public static class HudLayouts
+    {
+        /// <summary>Only the crosshair, the gun bar and messages.</summary>
+        public const string MINIMAL = "minimal";
+
+        /// <summary>The status panel, the minimap and the gun panel (the coordinates and legends when they matter).</summary>
+        public const string STANDARD = "standard";
+
+        /// <summary>Everything, as before: status, coordinates, legends, minimap, gun panel.</summary>
+        public const string FULL = "full";
+
+        /// <summary>The layouts in the order offered.</summary>
+        public static readonly string[] ALL = { MINIMAL, STANDARD, FULL };
+
+        /// <summary>A layout name as stored (unknown ones read as standard).</summary>
+        public static string Clean(string layout)
+        {
+            string l = layout?.Trim().ToLowerInvariant();
+            return ALL.Contains(l) ? l : STANDARD;
         }
     }
 }

@@ -334,7 +334,7 @@ namespace BimGo.Game
                 _ui.Panel(x, y, w, h, UiTheme.PANEL_STRONG, Rgba.WithAlpha(UiTheme.ACCENT, 0.6f));
                 _ui.TextCentred(f.Body, width * 0.5f, y + S(11), KIOSK_EXIT_HINT, UiTheme.TEXT);
                 float barX = x + S(16), barW = w - S(32), barY = y + h - S(18);
-                _ui.Rect(barX, barY, barW, S(5), Rgba.Hex(0xFFFFFF, 0.15f));
+                _ui.Rect(barX, barY, barW, S(5), UiTheme.Ink(0.15f));
                 _ui.Rect(barX, barY, barW * t, S(5), UiTheme.ACCENT);
             }
         }

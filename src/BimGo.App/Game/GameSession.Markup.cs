@@ -489,7 +489,7 @@ namespace BimGo.Game
             _markupX = MathF.Round(left + (areaW - _markupW) * 0.5f);
             _markupY = MathF.Round(y + (areaH - _markupH) * 0.5f);
             _ui.Image(_markupTexture, _markupX, _markupY, _markupW, _markupH, width, height);
-            _ui.Outline(_markupX, _markupY, _markupW, _markupH, MathF.Max(1f, UiScale), Rgba.Hex(0xFFFFFF, 0.2f));
+            _ui.Outline(_markupX, _markupY, _markupW, _markupH, MathF.Max(1f, UiScale), UiTheme.Ink(0.2f));
 
             UpdateMarkupMouse(input);
             if (_markupDrawing != null) { DrawMarkupShapePreview(_markupDrawing); }

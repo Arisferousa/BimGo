@@ -201,7 +201,7 @@ namespace BimGo.Game
                 float ry = top + r * rowH;
                 bool selected = info == null ? _siteBrowseGroup == null : string.Equals(info.Name, _siteBrowseGroup, StringComparison.OrdinalIgnoreCase);
                 bool hover = Hover(input, x, ry, cw, rowH - S(4));
-                _ui.Rect(x, ry, cw, rowH - S(4), selected ? Rgba.Hex(0x22D3EE, 0.14f) : hover ? UiTheme.HOVER : UiTheme.CONTROL);
+                _ui.Rect(x, ry, cw, rowH - S(4), selected ? UiTheme.Accent(0.14f) : hover ? UiTheme.HOVER : UiTheme.CONTROL);
                 if (selected) { _ui.Rect(x, ry, S(3), rowH - S(4), UiTheme.ACCENT); }
 
                 uint colour = info?.Colour ?? UiTheme.TEXT_MUTED;

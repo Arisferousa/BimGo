@@ -410,7 +410,7 @@ namespace BimGo.Game
             }
             _sectionOverlay.Begin(Camera);
             Vector3 origin = Scene.OriginOffset;
-            uint edge = Rgba.Hex(0x22D3EE, 0.9f);
+            uint edge = UiTheme.Accent(0.9f);
             if (_section.BoxOn)
             {
                 Vector3 min = _section.BoxMin - origin, max = _section.BoxMax - origin;

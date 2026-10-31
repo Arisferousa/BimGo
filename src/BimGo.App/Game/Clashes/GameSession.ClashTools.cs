@@ -966,8 +966,8 @@ namespace BimGo.Game
                 Vector2 m = input.MousePosition;
                 float mx = MathF.Min(_clashMarqueeFrom.X, m.X), my = MathF.Min(_clashMarqueeFrom.Y, m.Y);
                 float mw = MathF.Abs(m.X - _clashMarqueeFrom.X), mh = MathF.Abs(m.Y - _clashMarqueeFrom.Y);
-                _ui.Rect(mx, my, mw, mh, Rgba.Hex(0x22D3EE, 0.12f));
-                _ui.Outline(mx, my, mw, mh, MathF.Max(1f, UiScale), Rgba.Hex(0x22D3EE, 0.9f));
+                _ui.Rect(mx, my, mw, mh, UiTheme.Accent(0.12f));
+                _ui.Outline(mx, my, mw, mh, MathF.Max(1f, UiScale), UiTheme.Accent(0.9f));
             }
             if (!_clashMarquee) { DrawClashHoverLabel(f, input, width); }
 
@@ -1113,13 +1113,13 @@ namespace BimGo.Game
             {
                 float r = _clashSphereRadius;
                 float thickness = MathF.Max(0.01f, r * 0.012f);
-                uint wire = Rgba.Hex(0x22D3EE, 0.85f);
+                uint wire = UiTheme.Accent(0.85f);
                 o.Ring(centre, Vector3.UnitX, Vector3.UnitY, r, r, thickness * 1.5f, wire, 64); // the XY ring: the handle's
-                o.Ring(centre, Vector3.UnitX, Vector3.UnitZ, r, r, thickness, Rgba.Hex(0x22D3EE, 0.5f), 48);
-                o.Ring(centre, Vector3.UnitY, Vector3.UnitZ, r, r, thickness, Rgba.Hex(0x22D3EE, 0.5f), 48);
+                o.Ring(centre, Vector3.UnitX, Vector3.UnitZ, r, r, thickness, UiTheme.Accent(0.5f), 48);
+                o.Ring(centre, Vector3.UnitY, Vector3.UnitZ, r, r, thickness, UiTheme.Accent(0.5f), 48);
                 Vector3 right = ClashSphereHandleAxis();
                 Vector3 up = Vector3.Normalize(Vector3.Cross(right, Camera.Forward));
-                if (float.IsFinite(up.X)) { o.Ring(centre, right, up, r, r, thickness, Rgba.Hex(0x22D3EE, 0.35f), 64); } // the outline
+                if (float.IsFinite(up.X)) { o.Ring(centre, right, up, r, r, thickness, UiTheme.Accent(0.35f), 64); } // the outline
                 Vector3 axis = _clashSphereDragging ? _clashSphereAxis : right;
                 Vector3 handle = centre + axis * r;
                 o.Line(centre, handle, 2f, Rgba.Hex(0xFFFFFF, 0.8f));

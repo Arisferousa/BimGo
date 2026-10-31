@@ -432,7 +432,7 @@ namespace BimGo.Game
                 uint accent = _roomOverlay.Checks ? RoomCheckColour(_roomCheck[i]) : UiTheme.ACCENT;
                 _ui.Rect(screen.X - S(0.5f), y + h, S(1), stalk, Rgba.WithAlpha(accent, 0.7f * alpha));
                 _ui.Circle(screen.X, screen.Y, S(3), Rgba.WithAlpha(accent, alpha), 12);
-                _ui.Panel(x, y, w, h, Rgba.Hex(0x0C0E12, 0.82f * alpha), Rgba.Hex(0xFFFFFF, 0.14f * alpha));
+                _ui.Panel(x, y, w, h, UiTheme.Shade(0.82f * alpha), UiTheme.Ink(0.14f * alpha));
                 _ui.Rect(x, y, bar, h, Rgba.WithAlpha(accent, alpha));
 
                 float tx = x + bar + pad, ty = y + pad;
@@ -697,7 +697,7 @@ namespace BimGo.Game
         private bool RoomToggle(FontAtlas f, InputState input, float x, float y, float w, float h, string label, bool on)
         {
             bool hover = Hover(input, x, y, w, h);
-            _ui.Rect(x, y, w, h, on ? Rgba.WithAlpha(UiTheme.ACCENT, hover ? 0.9f : 0.75f) : hover ? Rgba.Hex(0xFFFFFF, 0.1f) : UiTheme.CONTROL);
+            _ui.Rect(x, y, w, h, on ? Rgba.WithAlpha(UiTheme.ACCENT, hover ? 0.9f : 0.75f) : hover ? UiTheme.Ink(0.1f) : UiTheme.CONTROL);
             _ui.Outline(x, y, w, h, MathF.Max(1f, UiScale), on ? UiTheme.ACCENT : UiTheme.CONTROL_BORDER);
             _ui.TextCentred(f.Small, x + w * 0.5f, y + h * 0.5f - f.Small.LineHeight * 0.5f, label,
                 on ? UiTheme.SCAN_TAG_TEXT : hover ? UiTheme.ACCENT : UiTheme.TEXT, S(0.8f));

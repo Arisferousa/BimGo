@@ -106,7 +106,7 @@ namespace BimGo.Game
             if (_gridNodes.Length == 0) { return; }
 
             uint rgb = LaunchSettings.TryParseColour(_grids.Colour, out uint parsed) ? parsed : 0x4FC3F7;
-            uint ring = Rgba.Hex(rgb), core = Rgba.Hex(0x0C0E12, 0.85f);
+            uint ring = Rgba.Hex(rgb), core = UiTheme.Shade(0.85f);
             float limit2 = _grids.LabelDistance * _grids.LabelDistance;
             _gridNodeOverlay.Begin(Camera);
             foreach (int level in _gridLevels)
@@ -389,7 +389,7 @@ namespace BimGo.Game
                         float lw = UiBatch.Measure(f.Small, grid.Name) + S(6);
                         float lx = Math.Clamp(a.X - lw * 0.5f, mapX, mapX + mapW - lw);
                         float ly = Math.Clamp(a.Y - S(7), mapY, mapY + mapH - S(14));
-                        _ui.Rect(lx, ly, lw, S(14), Rgba.Hex(0x0C0E12, 0.8f));
+                        _ui.Rect(lx, ly, lw, S(14), UiTheme.Shade(0.8f));
                         _ui.TextCentred(f.Small, lx + lw * 0.5f, ly, grid.Name, label);
                         break;
                     }

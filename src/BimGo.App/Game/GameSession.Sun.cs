@@ -533,8 +533,8 @@ namespace BimGo.Game
             bool hover = !_window.IsCaptured && Hover(input, x, y, size, size);
             uint colour = on ? UiTheme.SUN : hover ? UiTheme.TEXT : UiTheme.TEXT_MUTED;
 
-            _ui.Rect(x, y, size, size, Rgba.Hex(0x0C0E12, _sunPanelOpen || hover ? 0.9f : 0.6f));
-            _ui.Outline(x, y, size, size, S(2), _sunPanelOpen ? UiTheme.SUN : Rgba.Hex(0xFFFFFF, 0.14f));
+            _ui.Rect(x, y, size, size, UiTheme.Shade(_sunPanelOpen || hover ? 0.9f : 0.6f));
+            _ui.Outline(x, y, size, size, S(2), _sunPanelOpen ? UiTheme.SUN : UiTheme.Ink(0.14f));
 
             float cx = x + size * 0.5f, cy = y + size * 0.5f + S(2);
             _ui.Circle(cx, cy, S(7), colour, 16);
@@ -895,7 +895,7 @@ namespace BimGo.Game
             float h = S(30);
             bool focused = _sunField == field;
             bool hover = Hover(input, x, y, w, h);
-            _ui.Rect(x, y, w, h, focused ? Rgba.Hex(0xFFFFFF, 0.08f) : UiTheme.CONTROL);
+            _ui.Rect(x, y, w, h, focused ? UiTheme.Ink(0.08f) : UiTheme.CONTROL);
             _ui.Outline(x, y, w, h, MathF.Max(1f, UiScale), focused ? UiTheme.SUN : hover ? UiTheme.ACCENT : UiTheme.CONTROL_BORDER);
 
             float textY = y + h * 0.5f - f.Mono.LineHeight * 0.5f;
@@ -928,7 +928,7 @@ namespace BimGo.Game
             bool hover = Hover(input, x, y, size, size);
             bool enabled = _sun.Enabled;
             uint colour = !enabled ? UiTheme.TEXT_FAINT : hover || _sunPlaying ? UiTheme.SUN : UiTheme.TEXT;
-            _ui.Rect(x, y, size, size, hover && enabled ? Rgba.Hex(0xFFFFFF, 0.1f) : UiTheme.CONTROL);
+            _ui.Rect(x, y, size, size, hover && enabled ? UiTheme.Ink(0.1f) : UiTheme.CONTROL);
             _ui.Outline(x, y, size, size, MathF.Max(1f, UiScale), UiTheme.CONTROL_BORDER);
 
             float cx = x + size * 0.5f, cy = y + size * 0.5f, r = size * 0.26f;

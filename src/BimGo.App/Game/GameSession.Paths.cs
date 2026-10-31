@@ -509,7 +509,7 @@ namespace BimGo.Game
             float changed = value;
             if (SmallButton(f, input, bx, y, button, S(30), "−")) { changed = value - step; }
             Text.Clear().Append(value, decimals).Append(unit);
-            _ui.TextCentred(f.Bold, bx + button + valueW * 0.5f, y + S(6), Text.Span, own ? Rgba.Hex(0x67E8F9) : UiTheme.TEXT_FAINT);
+            _ui.TextCentred(f.Bold, bx + button + valueW * 0.5f, y + S(6), Text.Span, own ? UiTheme.ACCENT_SOFT : UiTheme.TEXT_FAINT);
             if (SmallButton(f, input, bx + button + valueW, y, button, S(30), "+")) { changed = value + step; }
             if (resettable && own && SmallButton(f, input, bx + button * 2f + valueW + S(4), y, button, S(30), "×")) { reset = true; }
             return changed == value ? value : MathF.Round(Math.Clamp(changed, min, max) / step) * step;
@@ -708,7 +708,7 @@ namespace BimGo.Game
                     if (key.TargetLocal is Vector3 target)
                     {
                         Text.Clear().Append("Target ").AppendLength(Vector3.Distance(target, key.Local), 1).Append(" from the key");
-                        _ui.Text(f.Small, x + S(92), cy + S(8), Text.Span, Rgba.Hex(0x67E8F9));
+                        _ui.Text(f.Small, x + S(92), cy + S(8), Text.Span, UiTheme.ACCENT_SOFT);
                     }
                     else
                     {
@@ -734,7 +734,7 @@ namespace BimGo.Game
                 Text.Clear().Append(key.Sun.Day).Append('/').Append(key.Sun.Month).Append("  ");
                 AppendTwoDigits(key.Sun.Minutes / 60).Append(':');
                 AppendTwoDigits(key.Sun.Minutes % 60);
-                _ui.Text(f.Bold, sx, cy + S(6), Text.Span, Rgba.Hex(0x67E8F9));
+                _ui.Text(f.Bold, sx, cy + S(6), Text.Span, UiTheme.ACCENT_SOFT);
             }
             else
             {
@@ -780,7 +780,7 @@ namespace BimGo.Game
 
             _ui.Text(f.Body, x, cy + S(7), "Cut, hidden", UiTheme.TEXT_SOFT);
             AppendKeyStateLabel(key);
-            _ui.TextWrapped(f.Small, sx, cy + S(8), cw - S(92), Text.Span, key.Section != null || key.Visibility != null ? Rgba.Hex(0x67E8F9) : UiTheme.TEXT_FAINT, maxLines: 1);
+            _ui.TextWrapped(f.Small, sx, cy + S(8), cw - S(92), Text.Span, key.Section != null || key.Visibility != null ? UiTheme.ACCENT_SOFT : UiTheme.TEXT_FAINT, maxLines: 1);
             cy += S(30);
             bool stateNow = SmallButton(f, input, sx, cy, S(120), S(28), "USE THE VIEW NOW");
             bool stateClear = (key.Section != null || key.Visibility != null) && SmallButton(f, input, sx + S(126), cy, S(28), S(28), "×");

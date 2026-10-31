@@ -902,7 +902,7 @@ namespace BimGo.Game
             _pathOverlay.Begin(Camera);
 
             // The line and the direction ticks (about every 2 m)
-            uint lineColour = Rgba.Hex(0x22D3EE, 0.95f), blockedColour = Rgba.Hex(0xEF4444, 1f);
+            uint lineColour = UiTheme.Accent(0.95f), blockedColour = Rgba.Hex(0xEF4444, 1f);
             int tickEvery = Math.Max(1, (int)MathF.Round(2f / MathF.Max(_pathSampleStep, 0.01f)));
             for (int i = 0; i + 1 < _pathSampleCount; i++)
             {
@@ -1064,7 +1064,7 @@ namespace BimGo.Game
 
             // The track, the keys' ticks and numbers, the playhead
             float duration = timeline.Duration;
-            _ui.Rect(tx, trackY - S(2), tw, S(4), Rgba.Hex(0xFFFFFF, 0.15f));
+            _ui.Rect(tx, trackY - S(2), tw, S(4), UiTheme.Ink(0.15f));
             float fraction = Math.Clamp(_pathScrubTime / duration, 0f, 1f);
             _ui.Rect(tx, trackY - S(2), tw * fraction, S(4), UiTheme.BOOKMARK);
             for (int i = 0; i < timeline.Count; i++)
@@ -1087,7 +1087,7 @@ namespace BimGo.Game
                     _ui.Circle(kx, stripY + S(2), S(3.5f), Rgba.Hex(0xFBBF24), 10);
                 }
             }
-            _ui.Circle(tx + tw * fraction, trackY, S(7), _pathScrubDrag ? Rgba.Hex(0xFFFFFF) : UiTheme.ACCENT, 16);
+            _ui.Circle(tx + tw * fraction, trackY, S(7), _pathScrubDrag ? UiTheme.TEXT : UiTheme.ACCENT, 16);
 
             // Drag along the track: the camera follows
             bool overTrack = Hover(input, tx - S(8), trackY - S(14), tw + S(16), S(28), focus: false);
@@ -1211,7 +1211,7 @@ namespace BimGo.Game
                     Text.Clear().Append(key.Sun.Day).Append('/').Append(key.Sun.Month).Append("  ");
                     AppendTwoDigits(key.Sun.Minutes / 60).Append(':');
                     AppendTwoDigits(key.Sun.Minutes % 60);
-                    _ui.Text(f.Bold, x + S(92), cy + S(1), Text.Span, Rgba.Hex(0x67E8F9));
+                    _ui.Text(f.Bold, x + S(92), cy + S(1), Text.Span, UiTheme.ACCENT_SOFT);
                 }
                 else
                 {

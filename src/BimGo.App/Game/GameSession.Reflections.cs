@@ -188,7 +188,7 @@ namespace BimGo.Game
             y += S(62);
 
             // Probe status and refresh
-            _ui.Rect(x, y, w, MathF.Max(1f, UiScale), Rgba.Hex(0xFFFFFF, 0.1f));
+            _ui.Rect(x, y, w, MathF.Max(1f, UiScale), UiTheme.Ink(0.1f));
             y += S(12);
             ReflectionProbes probes = _renderer.Probes;
             Text.Clear();

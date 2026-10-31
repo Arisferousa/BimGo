@@ -137,6 +137,7 @@ namespace BimGo.Game
                 _videoUiScale = UiScale * height / Math.Max(1f, _window.Height);
                 _videoUi = new UiBatch();
                 _videoUi.Initialise(_videoUiScale);
+                _videoUi.Radius = _videoUiScale * UiTheme.RADIUS;
             }
 
             string name = SafeFileName(Path.GetFileNameWithoutExtension(DocumentName)) + what +
@@ -401,7 +402,7 @@ namespace BimGo.Game
 
             float fraction = _videoFrames > 0 ? Math.Clamp(_videoFrame / (float)_videoFrames, 0f, 1f) : 1f;
             float barY = y + S(42);
-            _ui.Rect(ix, barY, iw, S(6), Rgba.Hex(0xFFFFFF, 0.15f));
+            _ui.Rect(ix, barY, iw, S(6), UiTheme.Ink(0.15f));
             _ui.Rect(ix, barY, iw * fraction, S(6), UiTheme.BOOKMARK);
 
             Text.Clear();

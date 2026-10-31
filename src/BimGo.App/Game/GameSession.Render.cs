@@ -22,6 +22,7 @@ namespace BimGo.Game
 
         // Help panel column widths (measured from the text; recomputed when the UI scale or the rows change)
         private float _helpScale = -1f, _helpKeyWidth, _helpPadWidth, _helpActionWidth;
+        private int _helpGeneration = -1;
 
         // F1 help rows (polish round P-B: generated from the catalogue for the current situation), rebuilt when a binding,
         // the situation or the gamepad's presence changes. Row 0 is the situation's title; the last row always shows.
@@ -648,7 +649,8 @@ namespace BimGo.Game
             // Polish round P-A2: the right-hand column (tools): the minimap (hidden while a dock sits over it on a short
             // window), then the gun's context panel or the open dock beneath it
             if (_showMap && !_dockOverMap) { DrawMinimapOverlay(mapX, mapY); }
-            if (!AnyDockOpen && !_unarmed)
+            _ui.Opacity = _hudAlpha; // UI round: the information fades while moving (HUD layouts)
+            if (!AnyDockOpen && !_unarmed && !HudMinimal)
             {
                 float panelTop = _showMap ? mapY + S(UiTheme.MINIMAP_HEIGHT) + S(UiTheme.COLUMN_GAP) : S(UiTheme.COLUMN_MARGIN);
                 float panelWidth = S(260), panelX = width - S(UiTheme.COLUMN_MARGIN) - panelWidth;
@@ -656,8 +658,9 @@ namespace BimGo.Game
                 _ui.Panel(panelX, panelTop, panelWidth, panelHeight, UiTheme.PANEL, UiTheme.PANEL_BORDER);
                 active.DrawPanel(_ui, panelX + S(14), panelTop + S(12), panelWidth - S(28));
             }
+            _ui.Opacity = 1f;
 
-            BuildSunIcon(f, _window.Input);
+            if (!HudMinimal || _sunPanelOpen) { BuildSunIcon(f, _window.Input); }
             if (_sunPanelOpen) { BuildSunPanel(f, _window.Input); }
             if (_sunHoursOpen) { BuildSunHoursPanel(f, _window.Input); }
             BuildGridsPanel(f, _window.Input); // grids round A
@@ -665,7 +668,9 @@ namespace BimGo.Game
             BuildSectionPanel(f, _window.Input);
 
             // P-A2: the left-hand column (information): status, coordinates, the legends and the F1 sheet
+            _ui.Opacity = _hudAlpha;
             BuildInfoColumn(f, height, sunLegend: true, profileLegend: true, help: true);
+            _ui.Opacity = 1f;
             BuildGunBar(f, width, height, active);
             BuildGunWheel(f, width, height);
             BuildRoomBanner(f, width);
@@ -693,7 +698,7 @@ namespace BimGo.Game
         /// </summary>
         private void BuildStatusPanel(FontAtlas f)
         {
-            float x = S(20), y = S(20), w = S(250), h = S(146);
+            float x = S(20), y = S(20), w = S(250), h = StatusPanelHeight;
             _ui.Panel(x, y, w, h, UiTheme.PANEL, UiTheme.PANEL_BORDER);
             float titleWidth = _ui.Text(f.Bold, x + S(14), y + S(11), "BIMGO", UiTheme.TEXT, S(2f));
 
@@ -753,6 +758,7 @@ namespace BimGo.Game
             }
             rowY += row;
 
+            if (!HudFull) { return; } // UI round: Standard's status stops at the room
             _ui.Text(f.Body, labelX, rowY, "GROUND", UiTheme.TEXT_MUTED);
             Text.Clear().AppendLength(_groundZ, 3);
             _ui.Text(f.Mono, valueX, rowY + S(1), Text.Span, UiTheme.TEXT);
@@ -778,12 +784,16 @@ namespace BimGo.Game
         private void BuildInfoColumn(FontAtlas f, int height, bool sunLegend, bool profileLegend, bool help)
         {
             float x = S(UiTheme.COLUMN_MARGIN), gap = S(10);
-            BuildStatusPanel(f);
-            float top = S(UiTheme.COLUMN_MARGIN) + S(UiTheme.STATUS_HEIGHT) + gap;
-            if (_coordinateReadout != CoordinateReadout.Off)
+            float top = S(UiTheme.COLUMN_MARGIN);
+            if (!HudMinimal) // UI round: Minimal leaves out the status and coordinates (Standard: a compact status)
             {
-                BuildCoordinatePanel(f, x, top);
-                top += S(UiTheme.COORDS_HEIGHT) + gap;
+                BuildStatusPanel(f);
+                top += StatusPanelHeight + gap;
+                if (_coordinateReadout != CoordinateReadout.Off)
+                {
+                    BuildCoordinatePanel(f, x, top);
+                    top += S(UiTheme.COORDS_HEIGHT) + gap;
+                }
             }
             float perf = BuildPerformancePanel(f, x, top); // Round Y-D1
             if (perf > 0f) { top += perf + gap; }
@@ -824,9 +834,10 @@ namespace BimGo.Game
 
             // Columns sized to the widest key, gamepad button and action (measured again when the UI scale or the rows change)
             (string Key, string Pad, string Action)[] rows = HelpRows();
-            if (_helpScale != UiScale)
+            if (_helpScale != UiScale || _helpGeneration != _ui.Generation)
             {
                 _helpScale = UiScale;
+                _helpGeneration = _ui.Generation; // UI round: fonts can change at the same scale
                 _helpKeyWidth = 0f;
                 _helpPadWidth = 0f;
                 _helpActionWidth = 0f;
@@ -855,7 +866,7 @@ namespace BimGo.Game
             float y = height - S(20) - h;
             float keyWidth = _helpKeyWidth + S(16);
             float padWidth = _helpPadWidth > 0f ? _helpPadWidth + S(16) : 0f;
-            _ui.Panel(x, y, S(12) + keyWidth + padWidth + _helpActionWidth + S(14), h, Rgba.Hex(0x0C0E12, 0.66f), Rgba.Hex(0xFFFFFF, 0.1f));
+            _ui.Panel(x, y, S(12) + keyWidth + padWidth + _helpActionWidth + S(14), h, UiTheme.Shade(0.66f), UiTheme.Ink(0.1f));
 
             float rowY = y + S(10);
             for (int n = 0; n < shown; n++)
@@ -902,8 +913,8 @@ namespace BimGo.Game
                 Gun gun = _guns[i];
                 bool selected = i == _activeGun && !_unarmed;
                 float bx = x + i * (slot + gap);
-                _ui.Rect(bx, y, slot, slot, Rgba.Hex(0x0C0E12, selected ? 0.9f : 0.6f));
-                _ui.Outline(bx, y, slot, slot, S(2), selected ? gun.Colour : Rgba.Hex(0xFFFFFF, 0.14f));
+                _ui.Rect(bx, y, slot, slot, UiTheme.Shade(selected ? 0.9f : 0.6f));
+                _ui.Outline(bx, y, slot, slot, S(2), selected ? gun.Colour : UiTheme.Ink(0.14f));
                 gun.DrawIcon(_ui, bx + slot * 0.5f, y + slot * 0.5f + S(2), iconSize, selected ? gun.Colour : UiTheme.TEXT_MUTED);
                 _ui.Text(f.Small, bx + S(5), y + S(3), gun.Key, selected ? gun.Colour : UiTheme.TEXT_FAINT);
             }
@@ -934,7 +945,7 @@ namespace BimGo.Game
             {
                 Text.Clear().Append("REVIT · ").Append(EditsPending).Append(" pending");
                 float pendingWidth = UiBatch.Measure(f.Small, Text.Span) + S(16);
-                _ui.Rect(width * 0.5f - pendingWidth * 0.5f, rowY - S(26), pendingWidth, S(20), Rgba.Hex(0x0C0E12, 0.7f));
+                _ui.Rect(width * 0.5f - pendingWidth * 0.5f, rowY - S(26), pendingWidth, S(20), UiTheme.Shade(0.7f));
                 _ui.TextCentred(f.Small, width * 0.5f, rowY - S(22), Text.Span, UiTheme.MEASURE_LABEL);
             }
         }
@@ -944,7 +955,7 @@ namespace BimGo.Game
 
         private void Hint(FontAtlas f, float x, float y, string button, string text, uint colour)
         {
-            _ui.Rect(x, y, HintWidth(f, button, text), S(24), Rgba.Hex(0x0C0E12, 0.7f));
+            _ui.Rect(x, y, HintWidth(f, button, text), S(24), UiTheme.Shade(0.7f));
             float used = _ui.Text(f.Mono, x + S(8), y + S(5), button, colour);
             _ui.Text(f.Body, x + S(8) + used + S(6), y + S(4), text, Rgba.Hex(0xE5E7EB));
         }
@@ -994,7 +1005,7 @@ namespace BimGo.Game
             float textWidth = UiBatch.Measure(f.Small, text, S(1f)) + S(24);
             float x = width * 0.5f - textWidth * 0.5f;
             float y = height - S(20) - S(52) - S(8) - S(24) - S(60);
-            _ui.Rect(x, y, textWidth, S(24), Rgba.Hex(0x0C0E12, 0.8f));
+            _ui.Rect(x, y, textWidth, S(24), UiTheme.Shade(0.8f));
             _ui.Outline(x, y, textWidth, S(24), MathF.Max(1f, UiScale), Rgba.WithAlpha(colour, 0.6f));
             _ui.TextCentred(f.Small, width * 0.5f, y + S(6), text, colour, S(1f));
         }

@@ -631,7 +631,7 @@ namespace BimGo.Game
                 uint texture = SiteThumbTexture(photo, ref uploads);
                 uint colour = SitePhotoColour(photo);
                 _ui.Line(anchor.X, anchor.Y, anchor.X, y + h, MathF.Max(1f, S(1.5f)), Rgba.WithAlpha(colour, 0.7f * alpha));
-                _ui.Rect(x - S(2), y - S(2), w + S(4), h + S(4), Rgba.Hex(0x0C0E12, 0.85f * alpha));
+                _ui.Rect(x - S(2), y - S(2), w + S(4), h + S(4), UiTheme.Shade(0.85f * alpha));
                 _ui.Rect(x - S(2), y - S(4), w + S(4), S(3), Rgba.WithAlpha(colour, alpha)); // its group's colour along the top
                 if (texture != 0) { _ui.Image(texture, x, y, w, h, _window.Width, _window.Height, Rgba.Hex(0xFFFFFF, alpha)); }
                 else { _ui.Rect(x, y, w, h, Rgba.WithAlpha(UiTheme.CONTROL, alpha)); }

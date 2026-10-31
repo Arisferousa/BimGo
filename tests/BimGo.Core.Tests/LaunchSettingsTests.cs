@@ -33,6 +33,43 @@ namespace BimGo.Tests
         }
 
         [TestMethod]
+        public void Interface_DefaultsKeepTheOldLookAndBadValuesAreCleaned()
+        {
+            // UI round: an older settings.json (no interface keys) reads as BimGo always looked, with the Standard HUD
+            LaunchSettings older = System.Text.Json.JsonSerializer.Deserialize<LaunchSettings>("{\"Msaa\":2}");
+            older.Sanitise();
+            Assert.AreEqual(UiThemes.DARK, older.UiTheme);
+            Assert.AreEqual(UiThemes.DEFAULT_ACCENT, older.UiAccent);
+            Assert.AreEqual(1f, older.UiScale);
+            Assert.AreEqual(1f, older.UiTextSize);
+            Assert.AreEqual("Bahnschrift", older.UiFont);
+            Assert.AreEqual("Consolas", older.UiNumbersFont);
+            Assert.AreEqual(HudLayouts.STANDARD, older.HudLayout);
+            Assert.IsTrue(older.HudFade);
+
+            var odd = new LaunchSettings
+            {
+                UiTheme = " LIGHT ", UiAccent = "3b82f6", UiScale = 7f, UiTextSize = float.NaN, UiFont = "  ", UiNumbersFont = new string('x', 300), HudLayout = "huge"
+            };
+            odd.Sanitise();
+            Assert.AreEqual(UiThemes.LIGHT, odd.UiTheme);
+            Assert.AreEqual("#3B82F6", odd.UiAccent);
+            Assert.AreEqual(UiThemes.MAX_SCALE, odd.UiScale);
+            Assert.AreEqual(1f, odd.UiTextSize);
+            Assert.AreEqual(UiThemes.DEFAULT_FONT, odd.UiFont);
+            Assert.AreEqual(UiThemes.DEFAULT_NUMBERS_FONT, odd.UiNumbersFont);
+            Assert.AreEqual(HudLayouts.STANDARD, odd.HudLayout);
+
+            var stepped = new LaunchSettings { UiTheme = "contrast", UiAccent = "not a colour", UiScale = 1.23f, UiTextSize = 0.5f, HudLayout = "MINIMAL" };
+            stepped.Sanitise();
+            Assert.AreEqual(UiThemes.CONTRAST, stepped.UiTheme);
+            Assert.AreEqual(UiThemes.DEFAULT_ACCENT, stepped.UiAccent);
+            Assert.AreEqual(1.25f, stepped.UiScale, 1e-6f, "5 % steps");
+            Assert.AreEqual(UiThemes.MIN_TEXT_SIZE, stepped.UiTextSize);
+            Assert.AreEqual(HudLayouts.MINIMAL, stepped.HudLayout);
+        }
+
+        [TestMethod]
         public void Sanitise_MsaaSnapsToOffTwoOrFour()
         {
             foreach ((int input, int expected) in new[] { (-1, 0), (0, 0), (1, 0), (2, 2), (3, 2), (4, 4), (16, 4) })

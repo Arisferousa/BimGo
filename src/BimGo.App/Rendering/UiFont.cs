@@ -73,6 +73,21 @@ namespace BimGo.Rendering
         /// <summary>Atlas size in pixels.</summary>
         public int Size { get; private set; }
 
+        /// <summary>UI round: the corner disc and ring (DISC_SIZE px each, at the top of the atlas, after the white block).</summary>
+        private const int DISC_X = 6, RING_X = DISC_X + DISC_SIZE + 2, DISC_SIZE = 32;
+
+        /// <summary>The ring's line width (px, at DISC_SIZE): about one pixel at the corner radii the UI uses.</summary>
+        private const float RING_WIDTH = 2f;
+
+        /// <summary>UI round: U of the disc's and the ring's left edge (V is 0 for both).</summary>
+        public float DiscU { get; private set; }
+
+        /// <summary>UI round: U of the ring's left edge.</summary>
+        public float RingU { get; private set; }
+
+        /// <summary>UI round: the disc's (and the ring's) size in texture coordinates.</summary>
+        public float CornerSize { get; private set; }
+
         /// <summary>UV of the solid white block.</summary>
         public float WhiteU { get; private set; }
 
@@ -120,6 +135,20 @@ namespace BimGo.Rendering
                 g.FillRectangle(SD.Brushes.White, 0, 0, 4, 4);
                 WhiteU = 2f / Size;
                 WhiteV = 2f / Size;
+
+                // UI round: an anti-aliased disc and ring, whose quarters are rounded corners (filled and outlined)
+                g.SmoothingMode = SD.Drawing2D.SmoothingMode.AntiAlias;
+                g.PixelOffsetMode = SD.Drawing2D.PixelOffsetMode.HighQuality;
+                g.FillEllipse(SD.Brushes.White, DISC_X, 0, DISC_SIZE, DISC_SIZE);
+                using (var pen = new SD.Pen(SD.Color.White, RING_WIDTH))
+                {
+                    float inset = RING_WIDTH * 0.5f;
+                    g.DrawEllipse(pen, RING_X + inset, inset, DISC_SIZE - RING_WIDTH, DISC_SIZE - RING_WIDTH);
+                }
+                g.SmoothingMode = SD.Drawing2D.SmoothingMode.None;
+                DiscU = DISC_X / (float)Size;
+                RingU = RING_X / (float)Size;
+                CornerSize = DISC_SIZE / (float)Size;
                 RasteriseAll(g, scale, true);
             }
 
@@ -132,13 +161,21 @@ namespace BimGo.Rendering
         /// <returns>True if every glyph fitted in the atlas.</returns>
         private bool RasteriseAll(SD.Graphics g, float scale, bool draw)
         {
-            var packer = new Packer { X = 6, Y = 0, RowHeight = 6, Fits = true };
-            Small = Rasterise(g, ref packer, new[] { "Bahnschrift SemiBold", "Segoe UI Semibold" }, 11f * scale, SD.FontStyle.Regular, draw);
-            Body = Rasterise(g, ref packer, new[] { "Bahnschrift", "Segoe UI" }, 14f * scale, SD.FontStyle.Regular, draw);
-            Bold = Rasterise(g, ref packer, new[] { "Bahnschrift SemiBold", "Segoe UI Semibold" }, 16f * scale, SD.FontStyle.Regular, draw);
-            Title = Rasterise(g, ref packer, new[] { "Bahnschrift", "Segoe UI" }, 40f * scale, SD.FontStyle.Bold, draw);
-            Mono = Rasterise(g, ref packer, new[] { "Consolas", "Courier New" }, 13f * scale, SD.FontStyle.Regular, draw);
-            MonoLarge = Rasterise(g, ref packer, new[] { "Consolas", "Courier New" }, 26f * scale, SD.FontStyle.Bold, draw);
+            // UI round: the fonts and text size chosen (Esc → INTERFACE); Segoe UI / Courier New stand in when a face is missing
+            (string textName, string numbersName, float textSize) = UiFonts.Current;
+            UiFonts.Faces text = UiFonts.Resolve(textName, numbers: false), numbers = UiFonts.Resolve(numbersName, numbers: true);
+            float t = scale * Math.Clamp(textSize, UiFonts.MIN_TEXT_SIZE, UiFonts.MAX_TEXT_SIZE);
+            var segoe = ("Segoe UI", SD.FontStyle.Regular);
+            var segoeSemi = ("Segoe UI Semibold", SD.FontStyle.Regular);
+            var courier = ("Courier New", SD.FontStyle.Regular);
+
+            var packer = new Packer { X = RING_X + DISC_SIZE + 2, Y = 0, RowHeight = DISC_SIZE + 1, Fits = true }; // after the white block, disc and ring
+            Small = Rasterise(g, ref packer, 11f * t, draw, text.SemiBold, segoeSemi);
+            Body = Rasterise(g, ref packer, 14f * t, draw, text.Regular, segoe);
+            Bold = Rasterise(g, ref packer, 16f * t, draw, text.SemiBold, segoeSemi);
+            Title = Rasterise(g, ref packer, 40f * t, draw, text.Bold, ("Segoe UI", SD.FontStyle.Bold));
+            Mono = Rasterise(g, ref packer, 13f * t, draw, numbers.Regular, courier);
+            MonoLarge = Rasterise(g, ref packer, 26f * t, draw, numbers.Bold, ("Courier New", SD.FontStyle.Bold));
             return packer.Fits;
         }
 
@@ -158,9 +195,9 @@ namespace BimGo.Rendering
         /// Each glyph gets a padded cell and is clipped to it. Accents on capitals (É, Å) and tails reach past the
         /// font's line box; unclipped they spilled into the row above and showed as small white marks under other text.
         /// </remarks>
-        private UiFont Rasterise(SD.Graphics g, ref Packer packer, string[] families, float pixelSize, SD.FontStyle style, bool draw)
+        private UiFont Rasterise(SD.Graphics g, ref Packer packer, float pixelSize, bool draw, params (string Family, SD.FontStyle Style)[] faces)
         {
-            using SD.Font font = CreateFont(families, pixelSize, style);
+            using SD.Font font = UiFonts.Create(pixelSize, faces);
             using var format = (SD.StringFormat)SD.StringFormat.GenericTypographic.Clone();
             format.FormatFlags |= SD.StringFormatFlags.MeasureTrailingSpaces | SD.StringFormatFlags.NoClip;
 
@@ -221,29 +258,6 @@ namespace BimGo.Rendering
             packer.RowHeight = 0;
 
             return new UiFont(lineHeight, latin, EXTRA, extra);
-        }
-
-        /// <summary>
-        /// Creates the first available font family from a list.
-        /// </summary>
-        private static SD.Font CreateFont(string[] families, float pixelSize, SD.FontStyle style)
-        {
-            foreach (string family in families)
-            {
-                try
-                {
-                    using var test = new SD.FontFamily(family);
-                    if (test.IsStyleAvailable(style))
-                    {
-                        return new SD.Font(family, pixelSize, style, SD.GraphicsUnit.Pixel);
-                    }
-                }
-                catch (ArgumentException)
-                {
-                    // Not installed; try the next
-                }
-            }
-            return new SD.Font(SD.FontFamily.GenericSansSerif, pixelSize, style, SD.GraphicsUnit.Pixel);
         }
 
         /// <summary>
