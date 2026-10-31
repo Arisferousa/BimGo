@@ -61,6 +61,8 @@
 		<None Update="Resources\Proxies\*.jpg;Resources\Proxies\*.png;Resources\Proxies\proxies.json" CopyToOutputDirectory="PreserveNewest" />
 		<!-- Location override: the offline place list (Natural Earth populated places, public domain; ai/261011b_Video_Location/make_places.py) -->
 		<None Update="Resources\places.tsv" CopyToOutputDirectory="PreserveNewest" />
+		<!-- UI round: open-licence interface fonts (SIL OFL 1.1) and their licences, loaded privately as Resources\Fonts -->
+		<None Update="Resources\Fonts\*.ttf;Resources\Fonts\*.txt" CopyToOutputDirectory="PreserveNewest" />
 	</ItemGroup>
 
 	<!--

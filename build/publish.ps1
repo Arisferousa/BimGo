@@ -64,7 +64,7 @@ dotnet publish (Join-Path $root 'src\BimGo.App\BimGo.App.csproj') -c Release -r 
     -p:PublishTrimmed=false -p:PublishSingleFile=false -o $appOut --nologo
 Check-Exit 'Publishing BimGo.App'
 Get-ChildItem $appOut -Filter *.pdb -Recurse | Remove-Item -Force
-foreach ($needed in 'BimGo.exe', 'BimGo.ico', 'LICENSE.txt', 'THIRD-PARTY-NOTICES.txt', 'Resources\places.tsv') {
+foreach ($needed in 'BimGo.exe', 'BimGo.ico', 'LICENSE.txt', 'THIRD-PARTY-NOTICES.txt', 'Resources\places.tsv', 'Resources\Fonts\Inter-Regular.ttf') {
     if (-not (Test-Path (Join-Path $appOut $needed))) { throw "The app publish lacks $needed." }
 }
 

@@ -24,6 +24,25 @@ Development only (not shipped): MSTest.Sdk 4.4.1, (c) Microsoft Corporation,
 MIT licence, https://github.com/microsoft/testfx
 
 --------------------------------------------------------------------------------
+Interface fonts (Resources\Fonts, shipped beside BimGo.exe)
+
+Offered in Esc -> INTERFACE, loaded privately by BimGo (never installed into
+Windows), unmodified. Each is licensed under the SIL Open Font License,
+Version 1.1 (https://openfontlicense.org); the full licence text with each
+font's copyright notice is beside the fonts (*-OFL.txt).
+
+  Inter 4.0 (Regular, SemiBold, Bold)       Copyright 2016 The Inter Project
+                                            Authors, https://github.com/rsms/inter
+  Roboto 3.010 (Regular, Medium, Bold)      Copyright 2011 The Roboto Project
+                                            Authors, https://github.com/googlefonts/roboto-3-classic
+  Source Sans 3 3.052 (Regular, Semibold,   Copyright 2010-2024 Adobe, with
+  Bold)                                     Reserved Font Name 'Source',
+                                            https://github.com/adobe-fonts/source-sans
+  JetBrains Mono 2.304 (Regular, Bold)      Copyright 2020 The JetBrains Mono
+                                            Project Authors,
+                                            https://github.com/JetBrains/JetBrainsMono
+
+--------------------------------------------------------------------------------
 Proxy textures (Resources\Proxies, shipped beside BimGo.exe)
 
 Stand-in colour maps for materials whose own image is missing (Realistic mode).
@@ -101,8 +120,9 @@ Not shipped with BimGo
 - Autodesk Revit API (RevitAPI.dll, RevitAPIUI.dll): referenced at build time
   from the user's own Revit installation and never copied into BimGo's output.
   No Autodesk files, textures or content are included.
-- Fonts: the interface draws text with fonts already installed in Windows
-  (Bahnschrift, Segoe UI, Consolas, with fallbacks). No font files are shipped.
+- Fonts: by default the interface draws text with fonts already installed in
+  Windows (Bahnschrift, Segoe UI, Consolas, with fallbacks); any installed font
+  can be chosen. The fonts below ship with BimGo (see the next section).
 - OpenGL: provided by Windows and the graphics driver; all shaders are
   BimGo's own.
 - Video encoding (walkthrough video, MP4 / H.264): done by Windows Media

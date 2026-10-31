@@ -1209,6 +1209,8 @@ namespace BimGo.Game
         {
             _paused = paused;
             _menuPreview = false; // QOL round: the options preview never outlives the pause menu
+            _menuSearchLength = 0; // UI round: the menu opens with no search typed
+            _menuSearchText = string.Empty;
             CloseOverlay(); // a dropdown / confirm belongs to the screen it was opened on
             if (paused) { ShowUi(); } // e.g. focus lost while hidden: come back to a normal HUD
             _window.SetCaptured(!paused && _window.IsActive && !CursorModeOpen);
