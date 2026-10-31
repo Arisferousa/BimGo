@@ -125,6 +125,7 @@ namespace BimGo.Game
         private void OpenGridsPanel()
         {
             if (_gridsPanelOpen) { return; }
+            ShowTip("grids"); // tutorial round: the first time
             CountGrids();
             if (!_clashModeOn)
             {

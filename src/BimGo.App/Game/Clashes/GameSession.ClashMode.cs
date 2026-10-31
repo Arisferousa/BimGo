@@ -86,7 +86,11 @@ namespace BimGo.Game
         private void ToggleClashMode()
         {
             if (_clashModeOn) { ExitClashMode(); }
-            else { EnterClashMode(null); }
+            else
+            {
+                EnterClashMode(null);
+                if (_clashModeOn) { ShowTip("clash-mode"); } // tutorial round: the first time
+            }
         }
 
         /// <summary>

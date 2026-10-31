@@ -81,6 +81,7 @@ namespace BimGo.Game
         private void OpenSunHours()
         {
             if (_sunHoursOpen) { return; }
+            ShowTip("sun-hours"); // tutorial round: the first time
             if (_paused) { SetPaused(false); }
             CloseSunPanel();
             CloseGridsPanel(); // grids round A: one panel at a time

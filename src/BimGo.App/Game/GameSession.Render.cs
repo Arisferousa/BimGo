@@ -163,9 +163,9 @@ namespace BimGo.Game
                 else if (_viewer) { BuildViewerHud(width, height); } // viewer round: the toolbar instead of the HUD
                 else { BuildHud(mapX, mapY); }
                 if (IsEditingComment) { BuildCommentEditor(); }
-                if (_welcomeOpen) { BuildWelcome(width, height); } // Round Z-E
             }
             _ui.ResetClip(); // polish round P-A1: a scroll region left open by an early return never outlives the frame
+            BuildTutorialOverlay(width, height); // Round Z-E's welcome card; tutorial round: the tutorial's cards and tips, over everything
             EndFocusFrame(); // P-A2: the focus ring, over everything
             _ui.Flush(width, height);
         }
@@ -515,6 +515,7 @@ namespace BimGo.Game
             FontAtlas f = _ui.Atlas;
             float w = S(220), h = S(208);
             float mapX = x + S(8), mapY = y + S(30), mapW = S(204), mapH = S(170);
+            MarkSpot(TutorialSpot.Minimap, x, y, w, h); // tutorial round
 
             // Frame: header strip and border only (the plan itself was drawn in 3D)
             _ui.Rect(x, y, w, S(30), UiTheme.PANEL);
@@ -637,6 +638,7 @@ namespace BimGo.Game
             _ui.Rect(cx - gap - arm, cy - t1 * 0.5f, arm, t1, UiTheme.TEXT);
             _ui.Rect(cx + gap, cy - t1 * 0.5f, arm, t1, UiTheme.TEXT);
             _ui.Circle(cx, cy, S(1.8f), active.Colour, 10);
+            MarkSpot(TutorialSpot.Crosshair, cx - S(24), cy - S(24), S(48), S(48)); // tutorial round
 
             if (!_window.IsCaptured && !IsEditingComment && !_sunPanelOpen && !_sunHoursOpen && !_gridsPanelOpen && !_fixtureDockOpen)
             {
@@ -700,6 +702,7 @@ namespace BimGo.Game
         {
             float x = S(20), y = S(20), w = S(250), h = StatusPanelHeight;
             _ui.Panel(x, y, w, h, UiTheme.PANEL, UiTheme.PANEL_BORDER);
+            MarkSpot(TutorialSpot.Status, x, y, w, h); // tutorial round
             float titleWidth = _ui.Text(f.Bold, x + S(14), y + S(11), "BIMGO", UiTheme.TEXT, S(2f));
 
             // Where edits go: LIVE (Revit session; OFFLINE when contact is lost) or FILE (standalone, * when unsaved)
@@ -930,6 +933,10 @@ namespace BimGo.Game
             float rmbWidth = HintWidth(f, secondary, active.HintSecondary);
             float rowWidth = nameWidth + S(10) + lmbWidth + S(10) + rmbWidth;
             float rowX = MathF.Round(width * 0.5f - rowWidth * 0.5f);
+
+            // Tutorial round: the bar (or its one-line hint) and the gun's row above it
+            float spotW = MathF.Max(_showGunBar ? total : UiBatch.Measure(f.Small, HINT_NO_GUN_BAR.Text), rowWidth);
+            MarkSpot(TutorialSpot.GunBar, width * 0.5f - spotW * 0.5f, rowY, spotW, (_showGunBar ? y + slot : y + S(16)) - rowY);
 
             if (!_unarmed) // unarmed: no gun name or LMB / RMB hints
             {

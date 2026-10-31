@@ -88,6 +88,7 @@ namespace BimGo.Game
         private void OpenWalkthroughSiteMap()
         {
             OpenSiteMap(_player.Feet + new Vector3(0f, 0f, SITE_PHOTO_EYE), 160f);
+            ShowTip("site-map"); // tutorial round: the first time
         }
 
         private void CloseSiteMap()
@@ -433,6 +434,7 @@ namespace BimGo.Game
                 return;
             }
             _viewerMapRect = new Vector4(x, y, w, h);
+            MarkSpot(TutorialSpot.ViewerMap, x, y, w, h); // tutorial round
 
             // What it shows: walking, around the player; orbiting, around what the middle of the view looks at
             Vector3 focus = _viewerWalk ? _player.Feet + new Vector3(0f, 0f, SITE_PHOTO_EYE) : Camera.Position;

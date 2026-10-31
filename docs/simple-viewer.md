@@ -13,8 +13,11 @@ opens with a clean toolbar instead of the full set of tools and settings, and or
    seen from the south-west.
 3. Esc → **SAVE VIEWER COPY…** and pick a name. The open file isn't changed.
 
-Send that one file. Everything it shows travels inside it, pictures included. The other person needs BimGo installed
-(the same setup); the copy opens in the simple viewer when they double-click it.
+Send that one file. Everything it shows travels inside it, pictures included. The other person needs BimGo: the same
+setup, or a portable zip with no setup at all ([Releasing → A portable zip](releasing.md#a-portable-zip-no-setup), which
+can carry the viewer copy too); the copy opens in the simple viewer when they double-click it, and the first time it opens on their
+PC it offers a short [tutorial](tutorial.md) (orbit, pan, zoom, walking, the toolbar, the map, home). Its menu's
+TUTORIAL plays it again.
 
 ![Saving a viewer copy](images/viewer-copy.png)
 
