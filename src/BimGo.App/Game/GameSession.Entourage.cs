@@ -886,7 +886,7 @@ namespace BimGo.Game
         {
             bool on = key == _entourageType;
             bool hover = Hover(input, x, y, size, size + S(20));
-            _ui.Rect(x, y, size, size, on ? Rgba.WithAlpha(UiTheme.PLACE, 0.18f) : hover ? Rgba.Hex(0xFFFFFF, 0.07f) : UiTheme.CONTROL);
+            _ui.Rect(x, y, size, size, on ? Rgba.WithAlpha(UiTheme.PLACE, 0.18f) : hover ? UiTheme.Ink(0.07f) : UiTheme.CONTROL);
             _ui.Outline(x, y, size, size, MathF.Max(1f, UiScale), on ? UiTheme.PLACE : UiTheme.CONTROL_BORDER);
             uint thumb = EntourageThumb(key);
             uint tint = 0xFFFFFFFF;

@@ -499,7 +499,7 @@ namespace BimGo.Game
 
                 ActionDef def = InputCatalog.Get(action);
                 bool rowHover = Hover(input, x, ry, w, rowH - S(2));
-                _ui.Rect(x, ry, w, rowH - S(2), rowHover ? Rgba.Hex(0xFFFFFF, 0.05f) : ((i & 1) == 0 ? Rgba.Hex(0xFFFFFF, 0.025f) : 0u));
+                _ui.Rect(x, ry, w, rowH - S(2), rowHover ? UiTheme.Ink(0.05f) : ((i & 1) == 0 ? UiTheme.Ink(0.025f) : 0u));
 
                 // P-B: NEW / CHANGED (a default this version changed) at the label's right
                 string tag = Hotkeys.FreshTag(action);
@@ -528,7 +528,7 @@ namespace BimGo.Game
                     bool slotHover = interactive && !def.IsFixed && Hover(input, sx, ry + S(2), sw, rowH - S(6));
                     if (waiting) { _captureRect = new System.Numerics.Vector4(sx, ry + S(2), sw, rowH - S(6)); }
 
-                    uint fill = waiting || pending ? Rgba.WithAlpha(UiTheme.ACCENT, 0.25f) : slotHover ? Rgba.Hex(0xFFFFFF, 0.1f) : def.IsFixed ? 0u : UiTheme.CONTROL;
+                    uint fill = waiting || pending ? Rgba.WithAlpha(UiTheme.ACCENT, 0.25f) : slotHover ? UiTheme.Ink(0.1f) : def.IsFixed ? 0u : UiTheme.CONTROL;
                     uint border = clash ? UiTheme.DANGER : waiting || pending ? UiTheme.ACCENT : UiTheme.CONTROL_BORDER;
                     if (fill != 0u) { _ui.Rect(sx, ry + S(2), sw, rowH - S(6), fill); }
                     if (!def.IsFixed || !chord.IsEmpty) { _ui.Outline(sx, ry + S(2), sw, rowH - S(6), MathF.Max(1f, UiScale), border); }

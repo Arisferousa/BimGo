@@ -236,7 +236,7 @@ namespace BimGo.Shell
             foreach (SessionInfo session in _sessions.Take(4))
             {
                 bool hover = Hover(input, x, y, width, row);
-                _ui.Panel(x, y, width, row, hover ? Rgba.Hex(0x22D3EE, 0.10f) : UiTheme.CARD, hover ? UiTheme.ACCENT : Rgba.WithAlpha(UiTheme.ACCENT, 0.35f));
+                _ui.Panel(x, y, width, row, hover ? UiTheme.Accent(0.10f) : UiTheme.CARD, hover ? UiTheme.ACCENT : Rgba.WithAlpha(UiTheme.ACCENT, 0.35f));
                 _ui.Circle(x + S(18), y + S(18), S(4), UiTheme.GOOD);
                 _ui.TextWrapped(f.Bold, x + S(30), y + S(9), width - S(200), string.IsNullOrWhiteSpace(session.DocTitle) ? "Revit model" : session.DocTitle, UiTheme.TEXT, maxLines: 1);
                 _ui.TextRight(f.Small, x + width - S(16), y + S(12), "REVIT " + session.RevitVersion, UiTheme.TEXT_MUTED, S(0.5f));
@@ -260,7 +260,7 @@ namespace BimGo.Shell
             if (lastLive)
             {
                 bool hover = Hover(input, x, y, width, row);
-                _ui.Panel(x, y, width, row, UiTheme.CARD, Rgba.Hex(0xFFFFFF, hover ? 0.18f : 0.08f));
+                _ui.Panel(x, y, width, row, UiTheme.CARD, UiTheme.Ink(hover ? 0.18f : 0.08f));
                 _ui.Ring(x + S(18), y + S(18), S(4), S(1.5f), UiTheme.TEXT_FAINT);
                 _ui.TextWrapped(f.Bold, x + S(30), y + S(9), width - S(200), string.IsNullOrWhiteSpace(_lastLive.DocTitle) ? Path.GetFileName(_lastLive.DocPath) : _lastLive.DocTitle, UiTheme.TEXT_FAINT, maxLines: 1);
                 if (!string.IsNullOrEmpty(_lastLive.RevitVersion)) { _ui.TextRight(f.Small, x + width - S(16), y + S(12), "REVIT " + _lastLive.RevitVersion, UiTheme.TEXT_FAINT, S(0.5f)); }
@@ -307,7 +307,7 @@ namespace BimGo.Shell
                 }
 
                 bool hover = Hover(input, x, y, width, row);
-                _ui.Panel(x, y, width, row, hover && info.Exists ? Rgba.Hex(0xFFFFFF, 0.06f) : UiTheme.CARD, hover ? UiTheme.ACCENT : UiTheme.CARD_BORDER);
+                _ui.Panel(x, y, width, row, hover && info.Exists ? UiTheme.Ink(0.06f) : UiTheme.CARD, hover ? UiTheme.ACCENT : UiTheme.CARD_BORDER);
 
                 // Thumbnail (16:9), or a placeholder with the BimGo mark
                 float thumbH = row - S(16), thumbW = thumbH * 16f / 9f;
@@ -316,7 +316,7 @@ namespace BimGo.Shell
                 if (texture != 0)
                 {
                     _ui.Image(texture, tx, ty, thumbW, thumbH, _window.Width, _window.Height, info.Exists ? 0xFFFFFFFF : Rgba.Hex(0xFFFFFF, 0.4f));
-                    _ui.Outline(tx, ty, thumbW, thumbH, MathF.Max(1f, _ui.Scale), Rgba.Hex(0xFFFFFF, 0.12f));
+                    _ui.Outline(tx, ty, thumbW, thumbH, MathF.Max(1f, _ui.Scale), UiTheme.Ink(0.12f));
                 }
                 else
                 {
@@ -468,14 +468,14 @@ namespace BimGo.Shell
             bool hover = Hover(input, x, y, w, h);
             if (primary)
             {
-                _ui.Rect(x, y, w, h, hover ? Rgba.Hex(0x67E8F9) : UiTheme.ACCENT);
+                _ui.Rect(x, y, w, h, hover ? UiTheme.ACCENT_SOFT : UiTheme.ACCENT);
             }
             else
             {
-                _ui.Rect(x, y, w, h, hover ? Rgba.Hex(0xFFFFFF, 0.08f) : Rgba.Hex(0xFFFFFF, 0f));
-                _ui.Outline(x, y, w, h, MathF.Max(1f, _ui.Scale), Rgba.Hex(0xFFFFFF, 0.2f));
+                _ui.Rect(x, y, w, h, hover ? UiTheme.Ink(0.08f) : UiTheme.Ink(0f));
+                _ui.Outline(x, y, w, h, MathF.Max(1f, _ui.Scale), UiTheme.Ink(0.2f));
             }
-            _ui.Text(f.Bold, x + S(16), y + h * 0.5f - f.Bold.LineHeight * 0.5f, label, primary ? Rgba.Hex(0x06232A) : UiTheme.TEXT, S(1.3f));
+            _ui.Text(f.Bold, x + S(16), y + h * 0.5f - f.Bold.LineHeight * 0.5f, label, primary ? UiTheme.ON_ACCENT : UiTheme.TEXT, S(1.3f));
 
             bool clicked = hover && input.LeftPressed;
             if (clicked) { input.ConsumeClicks(); }

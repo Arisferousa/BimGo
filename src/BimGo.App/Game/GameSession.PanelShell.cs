@@ -177,8 +177,8 @@ namespace BimGo.Game
             if (size == PanelSize.Side)
             {
                 // The model shows on the left (lightly dimmed)
-                _ui.Rect(0, 0, width, height, Rgba.Hex(0x101318, 0.25f));
-                _ui.Panel(x, y, w, h, Rgba.Hex(0x181C22, 0.97f), UiTheme.CARD_BORDER);
+                _ui.Rect(0, 0, width, height, UiTheme.Shade(0.25f));
+                _ui.Panel(x, y, w, h, Rgba.WithAlpha(UiTheme.CARD, 0.97f), UiTheme.CARD_BORDER);
             }
             else
             {
@@ -543,7 +543,7 @@ namespace BimGo.Game
             if (style == ShellStyle.Primary)
             {
                 _ui.Rect(x, y, w, h, Fade(hover ? UiTheme.FOCUS : UiTheme.ACCENT, alpha));
-                text = Rgba.Hex(0x06232A);
+                text = UiTheme.ON_ACCENT;
             }
             else
             {

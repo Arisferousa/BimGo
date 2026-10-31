@@ -855,7 +855,7 @@ namespace BimGo.Game
             float y = height - S(20) - h;
             float keyWidth = _helpKeyWidth + S(16);
             float padWidth = _helpPadWidth > 0f ? _helpPadWidth + S(16) : 0f;
-            _ui.Panel(x, y, S(12) + keyWidth + padWidth + _helpActionWidth + S(14), h, Rgba.Hex(0x0C0E12, 0.66f), Rgba.Hex(0xFFFFFF, 0.1f));
+            _ui.Panel(x, y, S(12) + keyWidth + padWidth + _helpActionWidth + S(14), h, UiTheme.Shade(0.66f), UiTheme.Ink(0.1f));
 
             float rowY = y + S(10);
             for (int n = 0; n < shown; n++)
@@ -902,8 +902,8 @@ namespace BimGo.Game
                 Gun gun = _guns[i];
                 bool selected = i == _activeGun && !_unarmed;
                 float bx = x + i * (slot + gap);
-                _ui.Rect(bx, y, slot, slot, Rgba.Hex(0x0C0E12, selected ? 0.9f : 0.6f));
-                _ui.Outline(bx, y, slot, slot, S(2), selected ? gun.Colour : Rgba.Hex(0xFFFFFF, 0.14f));
+                _ui.Rect(bx, y, slot, slot, UiTheme.Shade(selected ? 0.9f : 0.6f));
+                _ui.Outline(bx, y, slot, slot, S(2), selected ? gun.Colour : UiTheme.Ink(0.14f));
                 gun.DrawIcon(_ui, bx + slot * 0.5f, y + slot * 0.5f + S(2), iconSize, selected ? gun.Colour : UiTheme.TEXT_MUTED);
                 _ui.Text(f.Small, bx + S(5), y + S(3), gun.Key, selected ? gun.Colour : UiTheme.TEXT_FAINT);
             }
@@ -934,7 +934,7 @@ namespace BimGo.Game
             {
                 Text.Clear().Append("REVIT · ").Append(EditsPending).Append(" pending");
                 float pendingWidth = UiBatch.Measure(f.Small, Text.Span) + S(16);
-                _ui.Rect(width * 0.5f - pendingWidth * 0.5f, rowY - S(26), pendingWidth, S(20), Rgba.Hex(0x0C0E12, 0.7f));
+                _ui.Rect(width * 0.5f - pendingWidth * 0.5f, rowY - S(26), pendingWidth, S(20), UiTheme.Shade(0.7f));
                 _ui.TextCentred(f.Small, width * 0.5f, rowY - S(22), Text.Span, UiTheme.MEASURE_LABEL);
             }
         }
@@ -944,7 +944,7 @@ namespace BimGo.Game
 
         private void Hint(FontAtlas f, float x, float y, string button, string text, uint colour)
         {
-            _ui.Rect(x, y, HintWidth(f, button, text), S(24), Rgba.Hex(0x0C0E12, 0.7f));
+            _ui.Rect(x, y, HintWidth(f, button, text), S(24), UiTheme.Shade(0.7f));
             float used = _ui.Text(f.Mono, x + S(8), y + S(5), button, colour);
             _ui.Text(f.Body, x + S(8) + used + S(6), y + S(4), text, Rgba.Hex(0xE5E7EB));
         }
@@ -994,7 +994,7 @@ namespace BimGo.Game
             float textWidth = UiBatch.Measure(f.Small, text, S(1f)) + S(24);
             float x = width * 0.5f - textWidth * 0.5f;
             float y = height - S(20) - S(52) - S(8) - S(24) - S(60);
-            _ui.Rect(x, y, textWidth, S(24), Rgba.Hex(0x0C0E12, 0.8f));
+            _ui.Rect(x, y, textWidth, S(24), UiTheme.Shade(0.8f));
             _ui.Outline(x, y, textWidth, S(24), MathF.Max(1f, UiScale), Rgba.WithAlpha(colour, 0.6f));
             _ui.TextCentred(f.Small, width * 0.5f, y + S(6), text, colour, S(1f));
         }

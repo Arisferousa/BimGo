@@ -728,7 +728,7 @@ namespace BimGo.Game
                 _ui.Text(f.Bold, cx + S(14), headerY, CategoryCatalog.GROUP_NAMES[g].ToUpperInvariant(), headerHover ? UiTheme.ACCENT : UiTheme.TEXT, S(1.2f));
                 string tag = loaded == 0 ? "NOT LOADED" : loaded == rows ? "LOADED" : "PARTIAL";
                 _ui.TextRight(f.Small, cx + cardW - S(14), headerY + S(3), tag, loaded == 0 ? UiTheme.TEXT_MUTED : UiTheme.GOOD, S(0.8f));
-                _ui.Rect(cx + S(14), cardTop + S(40), cardW - S(28), MathF.Max(1f, UiScale), Rgba.Hex(0xFFFFFF, 0.1f));
+                _ui.Rect(cx + S(14), cardTop + S(40), cardW - S(28), MathF.Max(1f, UiScale), UiTheme.Ink(0.1f));
                 if (headerHover && input.LeftPressed)
                 {
                     bool show = visible == 0;
@@ -921,7 +921,7 @@ namespace BimGo.Game
         private float BuildUnitsRow(FontAtlas f, InputState input, float x, float y, float width)
         {
             _ui.Text(f.Small, x, y + S(2), "UNITS", UiTheme.TEXT_MUTED, S(1.8f));
-            _ui.TextRight(f.Mono, x + width, y + S(1), UnitFormat.IsImperial ? (UnitFormat.DecimalFeet ? "5.63'" : "5' 7 1/2\"") : "1.715 m", Rgba.Hex(0x67E8F9));
+            _ui.TextRight(f.Mono, x + width, y + S(1), UnitFormat.IsImperial ? (UnitFormat.DecimalFeet ? "5.63'" : "5' 7 1/2\"") : "1.715 m", UiTheme.ACCENT_SOFT);
             int current = UnitFormat.IsImperial ? 1 : 0;
             int picked = Segmented(f, input, x, y + S(22), width, UNIT_OPTIONS, current);
             if (picked != current) { SetDisplayUnits(picked == 1 ? UnitSystem.Imperial : UnitSystem.Metric, UnitFormat.DecimalFeet); }
@@ -1078,7 +1078,7 @@ namespace BimGo.Game
                 selected = stepped;
                 Sound.Play(SoundId.UiClick);
             }
-            _ui.Rect(x, y + h - MathF.Max(1f, UiScale), w, MathF.Max(1f, UiScale), Rgba.Hex(0xFFFFFF, 0.12f));
+            _ui.Rect(x, y + h - MathF.Max(1f, UiScale), w, MathF.Max(1f, UiScale), UiTheme.Ink(0.12f));
             float tx = x;
             for (int i = 0; i < labels.Length; i++)
             {
@@ -1172,15 +1172,15 @@ namespace BimGo.Game
 
             if (primary)
             {
-                _ui.Rect(x, y, w, h, Fade(hover ? Rgba.Hex(0x67E8F9) : UiTheme.ACCENT, alpha));
+                _ui.Rect(x, y, w, h, Fade(hover ? UiTheme.ACCENT_SOFT : UiTheme.ACCENT, alpha));
             }
             else
             {
-                _ui.Rect(x, y, w, h, hover ? Rgba.Hex(0xFFFFFF, 0.08f) : Rgba.Hex(0xFFFFFF, 0.0f));
-                _ui.Outline(x, y, w, h, MathF.Max(1f, UiScale), Fade(danger ? Rgba.Hex(0xFCA5A5, 0.45f) : Rgba.Hex(0xFFFFFF, 0.2f), alpha));
+                _ui.Rect(x, y, w, h, hover ? UiTheme.Ink(0.08f) : UiTheme.Ink(0.0f));
+                _ui.Outline(x, y, w, h, MathF.Max(1f, UiScale), Fade(danger ? Rgba.Hex(0xFCA5A5, 0.45f) : UiTheme.Ink(0.2f), alpha));
             }
 
-            uint textColour = primary ? Rgba.Hex(0x06232A) : danger ? UiTheme.DANGER : UiTheme.TEXT;
+            uint textColour = primary ? UiTheme.ON_ACCENT : danger ? UiTheme.DANGER : UiTheme.TEXT;
             UiFont font = compact ? f.Body : f.Bold;
             _ui.Text(font, x + S(compact ? 12 : 16), y + h * 0.5f - font.LineHeight * 0.5f, label, primary ? textColour : Fade(textColour, alpha), S(compact ? 0.9f : 1.3f));
 
@@ -1209,7 +1209,7 @@ namespace BimGo.Game
         private float Slider(FontAtlas f, InputState input, int id, float x, float y, float w, string label, ReadOnlySpan<char> valueText, float value, float min, float max)
         {
             _ui.Text(f.Body, x, y, label, UiTheme.TEXT);
-            _ui.TextRight(f.Mono, x + w, y + S(1), valueText, Rgba.Hex(0x67E8F9));
+            _ui.TextRight(f.Mono, x + w, y + S(1), valueText, UiTheme.ACCENT_SOFT);
 
             float trackY = y + S(30);
             float knobR = S(7);
@@ -1225,9 +1225,9 @@ namespace BimGo.Game
             }
 
             float fraction = Math.Clamp((value - min) / (max - min), 0f, 1f);
-            _ui.Rect(x, trackY - S(2), w, S(4), Rgba.Hex(0xFFFFFF, 0.15f));
+            _ui.Rect(x, trackY - S(2), w, S(4), UiTheme.Ink(0.15f));
             _ui.Rect(x, trackY - S(2), w * fraction, S(4), UiTheme.ACCENT);
-            _ui.Circle(x + w * fraction, trackY, knobR, hover || _activeSlider == id ? Rgba.Hex(0x67E8F9) : UiTheme.ACCENT, 16);
+            _ui.Circle(x + w * fraction, trackY, knobR, hover || _activeSlider == id ? UiTheme.ACCENT_SOFT : UiTheme.ACCENT, 16);
             return value;
         }
 
@@ -1243,9 +1243,9 @@ namespace BimGo.Game
                 float sx = x + i * segment;
                 bool on = i == selected;
                 bool hover = Hover(input, sx, y, segment, h);
-                _ui.Rect(sx, y, segment, h, on ? UiTheme.ACCENT : hover ? Rgba.Hex(0xFFFFFF, 0.08f) : UiTheme.CONTROL);
+                _ui.Rect(sx, y, segment, h, on ? UiTheme.ACCENT : hover ? UiTheme.Ink(0.08f) : UiTheme.CONTROL);
                 _ui.Outline(sx, y, segment, h, MathF.Max(1f, UiScale), UiTheme.CONTROL_BORDER);
-                _ui.TextCentred(f.Body, sx + segment * 0.5f, y + h * 0.5f - f.Body.LineHeight * 0.5f, options[i], on ? Rgba.Hex(0x06232A) : UiTheme.TEXT);
+                _ui.TextCentred(f.Body, sx + segment * 0.5f, y + h * 0.5f - f.Body.LineHeight * 0.5f, options[i], on ? UiTheme.ON_ACCENT : UiTheme.TEXT);
                 if (hover && input.LeftPressed && !on)
                 {
                     selected = i;
@@ -1266,8 +1266,8 @@ namespace BimGo.Game
             _ui.Outline(x, y, box, box, MathF.Max(1f, UiScale), value ? UiTheme.ACCENT : UiTheme.CONTROL_BORDER);
             if (value)
             {
-                _ui.Line(x + box * 0.22f, y + box * 0.52f, x + box * 0.42f, y + box * 0.72f, S(2), Rgba.Hex(0x06232A));
-                _ui.Line(x + box * 0.42f, y + box * 0.72f, x + box * 0.8f, y + box * 0.28f, S(2), Rgba.Hex(0x06232A));
+                _ui.Line(x + box * 0.22f, y + box * 0.52f, x + box * 0.42f, y + box * 0.72f, S(2), UiTheme.ON_ACCENT);
+                _ui.Line(x + box * 0.42f, y + box * 0.72f, x + box * 0.8f, y + box * 0.28f, S(2), UiTheme.ON_ACCENT);
             }
             _ui.Text(f.Body, x + box + S(10), y - S(1), label, hover ? UiTheme.ACCENT : UiTheme.TEXT);
 

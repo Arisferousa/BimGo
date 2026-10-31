@@ -246,7 +246,7 @@ namespace BimGo.Game
             if (_gridLevels.Count == 0 || (!_grids.Bubbles && !_grids.LevelTags)) { return; }
             uint rgb = LaunchSettings.TryParseColour(_grids.Colour, out uint parsed) ? parsed : 0x4FC3F7;
             uint ring = Rgba.Hex(rgb, MathF.Max(0.6f, _grids.Opacity));
-            uint fill = Rgba.Hex(0x0C0E12, 0.8f);
+            uint fill = UiTheme.Shade(0.8f);
             float radius = S(11);
             float limit = _grids.LabelDistance;
             float limit2 = limit * limit;

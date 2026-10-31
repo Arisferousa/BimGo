@@ -404,7 +404,7 @@ namespace BimGo.Game
                 ClashTest test = row.Test;
                 float ry = top + i * rowH;
                 bool selected = test.Id == _clashSelectedTest;
-                _ui.Rect(x, ry, w, rowH - S(6), selected ? Rgba.Hex(0x22D3EE, 0.12f) : Rgba.Hex(0xFFFFFF, 0.03f));
+                _ui.Rect(x, ry, w, rowH - S(6), selected ? UiTheme.Accent(0.12f) : UiTheme.Ink(0.03f));
 
                 bool enabled = Checkbox(f, input, x + S(10), ry + S(10), S(20), string.Empty, test.Enabled);
                 if (enabled != test.Enabled)
@@ -533,7 +533,7 @@ namespace BimGo.Game
                 foreach ((ClashGroup group, string label, string status) in row.Groups)
                 {
                     bool hover = Hover(input, x, cy, w, gh - S(4));
-                    _ui.Rect(x, cy, w, gh - S(4), hover ? Rgba.Hex(0xFFFFFF, 0.08f) : Rgba.Hex(0xFFFFFF, 0.03f));
+                    _ui.Rect(x, cy, w, gh - S(4), hover ? UiTheme.Ink(0.08f) : UiTheme.Ink(0.03f));
                     _ui.Rect(x, cy, S(4), gh - S(4), StatusColour(group.Status));
                     float statusW = UiBatch.Measure(f.Small, status) + S(12);
                     _ui.TextWrapped(f.Body, x + S(12), cy + S(5), w - S(24) - statusW, label, UiTheme.TEXT, maxLines: 1);
@@ -655,7 +655,7 @@ namespace BimGo.Game
                 float ry = top + i * rowH;
                 bool selected = row.Set.Id == _clashSelectedSet;
                 bool hover = Hover(input, x, ry, w, rowH - S(6));
-                _ui.Rect(x, ry, w, rowH - S(6), selected ? Rgba.Hex(0x22D3EE, 0.12f) : hover ? Rgba.Hex(0xFFFFFF, 0.06f) : Rgba.Hex(0xFFFFFF, 0.03f));
+                _ui.Rect(x, ry, w, rowH - S(6), selected ? UiTheme.Accent(0.12f) : hover ? UiTheme.Ink(0.06f) : UiTheme.Ink(0.03f));
                 _ui.TextWrapped(f.Bold, x + S(12), ry + S(6), w - S(24), row.Title, selected ? UiTheme.ACCENT : UiTheme.TEXT, maxLines: 1);
                 _ui.TextWrapped(f.Small, x + S(12), ry + S(27), w - S(24), row.Detail, UiTheme.TEXT_MUTED, maxLines: 1);
                 if (hover && input.LeftPressed)
@@ -747,8 +747,8 @@ namespace BimGo.Game
                 {
                     // Group header: "GROUP 2.1", ANY OF / ALL OF, ADD RULE, ADD GROUP (P-C: a group inside), ×
                     float hx = x + Math.Min(line.Depth, 4) * indent, hw = w - (hx - x);
-                    for (int d = 0; d < line.Depth && d < 4; d++) { _ui.Rect(x + S(8) + d * indent, ry, S(3), S(32), Rgba.Hex(0x22D3EE, 0.35f)); }
-                    _ui.Rect(hx, ry, hw, S(32), Rgba.Hex(0x22D3EE, 0.07f));
+                    for (int d = 0; d < line.Depth && d < 4; d++) { _ui.Rect(x + S(8) + d * indent, ry, S(3), S(32), UiTheme.Accent(0.35f)); }
+                    _ui.Rect(hx, ry, hw, S(32), UiTheme.Accent(0.07f));
                     _ui.Text(f.Bold, hx + S(8), ry + S(8), line.Number, UiTheme.ACCENT);
                     float gx = hx + S(96);
                     float delW = S(32), addW = S(100);
@@ -770,7 +770,7 @@ namespace BimGo.Game
                 }
 
                 float rx = x + Math.Min(line.Depth, 4) * indent;
-                for (int d = 0; d < line.Depth && d < 4; d++) { _ui.Rect(x + S(8) + d * indent, ry, S(3), S(32), Rgba.Hex(0x22D3EE, 0.35f)); }
+                for (int d = 0; d < line.Depth && d < 4; d++) { _ui.Rect(x + S(8) + d * indent, ry, S(3), S(32), UiTheme.Accent(0.35f)); }
                 if (BuildClashRuleRow(f, input, rule, rx, ry, w - (rx - x), inGroup: group != null))
                 {
                     remove = rule;
@@ -914,7 +914,7 @@ namespace BimGo.Game
                     ClashSetEdited();
                 });
             }
-            if (RuleOp.IsNegative(rule.Operator)) { _ui.Rect(bx, ry + S(32) - S(3), opW, S(3), inGroup ? Rgba.Hex(0xFFFFFF, 0.25f) : Rgba.Hex(0xFCA5A5, 0.7f)); }
+            if (RuleOp.IsNegative(rule.Operator)) { _ui.Rect(bx, ry + S(32) - S(3), opW, S(3), inGroup ? UiTheme.Ink(0.25f) : Rgba.Hex(0xFCA5A5, 0.7f)); }
             bx += opW + g;
 
             // Value: typed for contains, else picked from the model (ticks for the list operators)
@@ -1149,7 +1149,7 @@ namespace BimGo.Game
                 float ry = top + i * rowH;
                 bool hover = Hover(input, x, ry, w, rowH - S(4));
                 bool current = rule.HasValue(value.Value);
-                _ui.Rect(x, ry, w, rowH - S(4), current ? Rgba.Hex(0x22D3EE, 0.14f) : hover ? Rgba.Hex(0xFFFFFF, 0.08f) : ((i & 1) == 0 ? Rgba.Hex(0xFFFFFF, 0.03f) : 0u));
+                _ui.Rect(x, ry, w, rowH - S(4), current ? UiTheme.Accent(0.14f) : hover ? UiTheme.Ink(0.08f) : ((i & 1) == 0 ? UiTheme.Ink(0.03f) : 0u));
                 if (multi)
                 {
                     // A tick box (drawn like the checkboxes)
@@ -1158,8 +1158,8 @@ namespace BimGo.Game
                     _ui.Outline(bxx, byy, box, box, MathF.Max(1f, UiScale), current ? UiTheme.ACCENT : UiTheme.CONTROL_BORDER);
                     if (current)
                     {
-                        _ui.Line(bxx + box * 0.22f, byy + box * 0.52f, bxx + box * 0.42f, byy + box * 0.72f, S(2), Rgba.Hex(0x06232A));
-                        _ui.Line(bxx + box * 0.42f, byy + box * 0.72f, bxx + box * 0.8f, byy + box * 0.28f, S(2), Rgba.Hex(0x06232A));
+                        _ui.Line(bxx + box * 0.22f, byy + box * 0.52f, bxx + box * 0.42f, byy + box * 0.72f, S(2), UiTheme.ON_ACCENT);
+                        _ui.Line(bxx + box * 0.42f, byy + box * 0.72f, bxx + box * 0.8f, byy + box * 0.28f, S(2), UiTheme.ON_ACCENT);
                     }
                 }
                 _ui.TextWrapped(f.Body, x + S(10) + tick, ry + S(6), w - S(110) - tick, value.Label, UiTheme.TEXT, maxLines: 1);

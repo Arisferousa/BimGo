@@ -191,7 +191,7 @@ namespace BimGo.Game
                 float ry = top + i * rowH;
                 bool current = p.Id == _appearance.Active;
                 bool hover = Hover(input, x, ry, w, rowH - S(4));
-                _ui.Rect(x, ry, w, rowH - S(4), current ? Rgba.Hex(0x22D3EE, 0.14f) : hover ? Rgba.Hex(0xFFFFFF, 0.07f) : Rgba.Hex(0xFFFFFF, 0.03f));
+                _ui.Rect(x, ry, w, rowH - S(4), current ? UiTheme.Accent(0.14f) : hover ? UiTheme.Ink(0.07f) : UiTheme.Ink(0.03f));
                 if (current) { _ui.Rect(x, ry, S(3), rowH - S(4), UiTheme.ACCENT); }
                 _ui.TextWrapped(f.Body, x + S(12), ry + S(5), w - S(20), p.Name, current ? UiTheme.ACCENT : UiTheme.TEXT, maxLines: 1);
                 if (p.IsBySet) { _ui.Text(f.Small, x + S(12), ry + S(25), "By search set", UiTheme.TEXT_MUTED); }
@@ -498,7 +498,7 @@ namespace BimGo.Game
             {
                 ProfileRule rule = rules[i];
                 float ry = top + i * rowH;
-                _ui.Rect(x, ry, w, rowH - S(4), (i & 1) == 0 ? Rgba.Hex(0xFFFFFF, 0.03f) : 0u);
+                _ui.Rect(x, ry, w, rowH - S(4), (i & 1) == 0 ? UiTheme.Ink(0.03f) : 0u);
 
                 // On / off
                 bool on = Checkbox(f, input, x + S(8), ry + S(7), S(20), string.Empty, rule.On);

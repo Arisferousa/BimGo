@@ -150,7 +150,7 @@ namespace BimGo.Game
             Text.Clear();
             if (_eyeCustom) { Text.Append("CUSTOM ").AppendLength(_player.Controller.StandEye, 2); }
             else { Text.AppendLength(_eyeHeights[(int)_eyePreset], 2); }
-            _ui.TextRight(f.Mono, x + width, y + S(1), Text.Span, _eyeCustom ? UiTheme.MEASURE_LABEL : Rgba.Hex(0x67E8F9));
+            _ui.TextRight(f.Mono, x + width, y + S(1), Text.Span, _eyeCustom ? UiTheme.MEASURE_LABEL : UiTheme.ACCENT_SOFT);
 
             float buttonW = S(34), gap = S(6);
             float segmentsW = width - buttonW * 2f - gap * 2f;

@@ -437,7 +437,7 @@ namespace BimGo.Game
                 float ry = top + i * rowH;
                 bool selected = row.Key == _matchSelected;
                 bool hover = Hover(input, x, ry, cw, rowH - S(4));
-                _ui.Rect(x, ry, cw, rowH - S(4), selected ? Rgba.Hex(0x22D3EE, 0.14f) : hover ? UiTheme.HOVER : (i & 1) == 0 ? UiTheme.ROW_STRIPE : UiTheme.CONTROL);
+                _ui.Rect(x, ry, cw, rowH - S(4), selected ? UiTheme.Accent(0.14f) : hover ? UiTheme.HOVER : (i & 1) == 0 ? UiTheme.ROW_STRIPE : UiTheme.CONTROL);
                 if (selected) { _ui.Rect(x, ry, S(3), rowH - S(4), UiTheme.ACCENT); }
 
                 // Swatch: the matched image, else the colour

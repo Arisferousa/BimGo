@@ -127,7 +127,7 @@ namespace BimGo.Game
             int count = WheelSlotCount;
             float step = MathF.Tau / count;
 
-            _ui.Circle(cx, cy, radius + S(10), Rgba.Hex(0x0C0E12, 0.78f), 48);
+            _ui.Circle(cx, cy, radius + S(10), UiTheme.Shade(0.78f), 48);
             for (int slot = 0; slot < count; slot++)
             {
                 int target = WheelSlotTarget(slot);
@@ -138,12 +138,12 @@ namespace BimGo.Game
                 // Separator
                 float edge = mid - step * 0.5f;
                 _ui.Line(cx + MathF.Cos(edge) * inner, cy + MathF.Sin(edge) * inner, cx + MathF.Cos(edge) * radius, cy + MathF.Sin(edge) * radius,
-                    MathF.Max(1f, UiScale), Rgba.Hex(0xFFFFFF, 0.12f));
+                    MathF.Max(1f, UiScale), UiTheme.Ink(0.12f));
 
                 if (target == WHEEL_BAR)
                 {
                     // The gun bar switch: three little slots, lit when the bar is shown
-                    if (hover) { _ui.Wedge(cx, cy, radius, mid - step * 0.5f, mid + step * 0.5f, Rgba.Hex(0xFFFFFF, 0.16f), 10); }
+                    if (hover) { _ui.Wedge(cx, cy, radius, mid - step * 0.5f, mid + step * 0.5f, UiTheme.Ink(0.16f), 10); }
                     uint barColour = hover ? UiTheme.TEXT : _showGunBar ? UiTheme.ACCENT : UiTheme.TEXT_FAINT;
                     float cell = S(hover ? 9 : 8);
                     for (int k = -1; k <= 1; k++) { _ui.Outline(ix + k * (cell + S(2)) - cell * 0.5f, iy - cell * 0.5f - S(4), cell, cell, MathF.Max(1f, S(1.5f)), barColour); }
@@ -153,7 +153,7 @@ namespace BimGo.Game
                 if (target == WHEEL_UNARMED)
                 {
                     // Unarmed: an empty hand (a ring with a slash), lit while no gun is out
-                    if (hover) { _ui.Wedge(cx, cy, radius, mid - step * 0.5f, mid + step * 0.5f, Rgba.Hex(0xFFFFFF, 0.16f), 10); }
+                    if (hover) { _ui.Wedge(cx, cy, radius, mid - step * 0.5f, mid + step * 0.5f, UiTheme.Ink(0.16f), 10); }
                     uint handColour = hover ? UiTheme.TEXT : _unarmed ? UiTheme.ACCENT : UiTheme.TEXT_FAINT;
                     float r = S(hover ? 10 : 9);
                     _ui.Ring(ix, iy - S(4), r, MathF.Max(1f, S(1.5f)), handColour, 20);
@@ -168,8 +168,8 @@ namespace BimGo.Game
                 gun.DrawIcon(_ui, ix, iy, S(hover ? 34 : 28), hover || current ? gun.Colour : UiTheme.TEXT_MUTED);
                 _ui.TextCentred(f.Small, ix, iy + S(18), gun.Key, hover ? gun.Colour : UiTheme.TEXT_FAINT);
             }
-            _ui.Ring(cx, cy, radius, MathF.Max(1f, UiScale), Rgba.Hex(0xFFFFFF, 0.18f), 48);
-            _ui.Circle(cx, cy, inner, Rgba.Hex(0x0C0E12, 0.9f), 32);
+            _ui.Ring(cx, cy, radius, MathF.Max(1f, UiScale), UiTheme.Ink(0.18f), 48);
+            _ui.Circle(cx, cy, inner, UiTheme.Shade(0.9f), 32);
 
             if (_wheelHover == WHEEL_UNARMED)
             {

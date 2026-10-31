@@ -227,7 +227,7 @@ namespace BimGo.Game
             }
             bool on = _libraryCategory == category;
             bool hover = Hover(input, x, y, w, h);
-            _ui.Rect(x, y, w, h, on ? UiTheme.PLACE : hover ? Rgba.Hex(0xFFFFFF, 0.08f) : UiTheme.CONTROL);
+            _ui.Rect(x, y, w, h, on ? UiTheme.PLACE : hover ? UiTheme.Ink(0.08f) : UiTheme.CONTROL);
             _ui.Outline(x, y, w, h, MathF.Max(1f, UiScale), on ? UiTheme.PLACE : UiTheme.CONTROL_BORDER);
             _ui.TextCentred(f.Small, x + w * 0.5f, y + h * 0.5f - f.Small.LineHeight * 0.5f, label, on ? Rgba.Hex(0x1F1300) : UiTheme.TEXT, S(0.6f));
             if (hover && input.LeftPressed)
@@ -249,7 +249,7 @@ namespace BimGo.Game
         /// </summary>
         private void BuildFamilyList(FontAtlas f, InputState input, float x, float y, float w, float bottom)
         {
-            _ui.Panel(x, y, w, bottom - y, Rgba.Hex(0xFFFFFF, 0.02f), UiTheme.CARD_BORDER);
+            _ui.Panel(x, y, w, bottom - y, UiTheme.Ink(0.02f), UiTheme.CARD_BORDER);
             float rowH = S(28);
             int total = _libraryFamilies.Count + 1;
             float top = BeginScroll(_libraryFamilyScroll, input, x, y + S(4), w, bottom - y - S(8), out float cw);
@@ -261,7 +261,7 @@ namespace BimGo.Game
                 float ry = top + i * rowH;
                 bool on = string.Equals(_libraryFamily, family, StringComparison.Ordinal);
                 bool hover = Hover(input, x + S(4), ry, w - S(8), rowH - S(2));
-                if (on || hover) { _ui.Rect(x + S(4), ry, w - S(8), rowH - S(2), on ? Rgba.WithAlpha(UiTheme.PLACE, 0.25f) : Rgba.Hex(0xFFFFFF, 0.06f)); }
+                if (on || hover) { _ui.Rect(x + S(4), ry, w - S(8), rowH - S(2), on ? Rgba.WithAlpha(UiTheme.PLACE, 0.25f) : UiTheme.Ink(0.06f)); }
                 _ui.TextWrapped(f.Body, x + S(12), ry + rowH * 0.5f - f.Body.LineHeight * 0.5f - S(1), w - S(24), family ?? "All families", on ? UiTheme.PLACE_LABEL : UiTheme.TEXT, maxLines: 1);
                 if (hover && input.LeftPressed)
                 {
@@ -303,7 +303,7 @@ namespace BimGo.Game
                 float cx = x + (i % columns) * (cardW + gap), cyy = top + (i / columns) * (cardH + gap);
                 bool usable = entry.Placeable && entry.Element >= 0;
                 bool hover = usable && Hover(input, cx, cyy, cardW, cardH);
-                _ui.Panel(cx, cyy, cardW, cardH, hover ? Rgba.Hex(0xFFFFFF, 0.07f) : UiTheme.CONTROL, hover ? UiTheme.PLACE : UiTheme.CONTROL_BORDER);
+                _ui.Panel(cx, cyy, cardW, cardH, hover ? UiTheme.Ink(0.07f) : UiTheme.CONTROL, hover ? UiTheme.PLACE : UiTheme.CONTROL_BORDER);
 
                 // Preview (Revit's own, on a light tile like Revit's browser)
                 float pad = S(10), image = cardW - pad * 2f;

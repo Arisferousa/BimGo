@@ -258,9 +258,9 @@ namespace BimGo.Game
         private bool PageRow(FontAtlas f, InputState input, float x, float y, float w, string label, ReadOnlySpan<char> summary)
         {
             bool hover = Hover(input, x, y - S(4), w, S(26));
-            if (hover) { _ui.Rect(x - S(4), y - S(4), w + S(8), S(26), Rgba.Hex(0xFFFFFF, 0.06f)); }
+            if (hover) { _ui.Rect(x - S(4), y - S(4), w + S(8), S(26), UiTheme.Ink(0.06f)); }
             _ui.Text(f.Body, x, y, label, hover ? UiTheme.ACCENT : UiTheme.TEXT);
-            _ui.TextRight(f.Small, x + w - S(16), y + S(2), summary, Rgba.Hex(0x67E8F9));
+            _ui.TextRight(f.Small, x + w - S(16), y + S(2), summary, UiTheme.ACCENT_SOFT);
             _ui.Text(f.Body, x + w - S(10), y, "›", hover ? UiTheme.ACCENT : UiTheme.TEXT_MUTED);
             if (hover && input.LeftPressed)
             {
@@ -449,7 +449,7 @@ namespace BimGo.Game
                 while (n > 1 && UiBatch.Measure(f.Small, value.AsSpan(0, n)) + UiBatch.Measure(f.Small, "...") > room) { n--; }
                 value = value.Substring(0, n) + "...";
             }
-            _ui.TextRight(f.Small, x + w, y + S(2), value, keywords.Count == 0 ? UiTheme.TEXT_FAINT : Rgba.Hex(0x67E8F9));
+            _ui.TextRight(f.Small, x + w, y + S(2), value, keywords.Count == 0 ? UiTheme.TEXT_FAINT : UiTheme.ACCENT_SOFT);
             if (hover && input.LeftPressed)
             {
                 input.ConsumeClicks();
@@ -501,7 +501,7 @@ namespace BimGo.Game
             float cardTop = pad + S(68) + S(32), doneReserve = S(12) + S(36);
             float cardH = SettingsCardHeight(cardTop, doneReserve);
             float panelTop = pad - S(36), panelBottom = cardTop + cardH + doneReserve + S(12);
-            _ui.Rect(x - S(16), panelTop, columnW + S(32), MathF.Min(panelBottom, height - S(8)) - panelTop, Rgba.Hex(0x101318, 0.55f));
+            _ui.Rect(x - S(16), panelTop, columnW + S(32), MathF.Min(panelBottom, height - S(8)) - panelTop, UiTheme.Shade(0.55f));
 
             _ui.Text(f.Small, x, panelTop + S(10), "PREVIEW", UiTheme.ACCENT, S(2f));
             _ui.TextRight(f.Small, x + columnW, panelTop + S(10), "ESC RETURNS", UiTheme.TEXT_MUTED, S(1.2f));

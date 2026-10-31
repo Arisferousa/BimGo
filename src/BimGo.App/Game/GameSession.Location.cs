@@ -329,7 +329,7 @@ namespace BimGo.Game
 
             // Search box (always focused while the picker is open)
             float boxH = S(34);
-            _ui.Rect(ix, cy, iw, boxH, Rgba.Hex(0xFFFFFF, 0.08f));
+            _ui.Rect(ix, cy, iw, boxH, UiTheme.Ink(0.08f));
             _ui.Outline(ix, cy, iw, boxH, MathF.Max(1f, UiScale), UiTheme.SUN);
             float textY = cy + boxH * 0.5f - f.Body.LineHeight * 0.5f;
             if (_locationQueryLength == 0)
@@ -372,7 +372,7 @@ namespace BimGo.Game
             if (HasLocationOverride)
             {
                 _ui.Text(f.Body, ix, by + S(6), "UTC offset", UiTheme.TEXT_SOFT);
-                _ui.TextRight(f.Mono, ix + iw - S(80), by + S(7), _locationOffsetLabel ?? string.Empty, Rgba.Hex(0x67E8F9));
+                _ui.TextRight(f.Mono, ix + iw - S(80), by + S(7), _locationOffsetLabel ?? string.Empty, UiTheme.ACCENT_SOFT);
                 if (SmallButton(f, input, ix + iw - S(70), by, S(32), S(30), "−")) { StepLocationOffset(-1); }
                 if (SmallButton(f, input, ix + iw - S(32), by, S(32), S(30), "+")) { StepLocationOffset(+1); }
             }
@@ -391,7 +391,7 @@ namespace BimGo.Game
         private bool LocationRow(FontAtlas f, InputState input, float x, float y, float w, float h, string title, string detail)
         {
             bool hover = Hover(input, x, y, w, h);
-            _ui.Rect(x, y, w, h, hover ? Rgba.Hex(0xFFFFFF, 0.1f) : UiTheme.CONTROL);
+            _ui.Rect(x, y, w, h, hover ? UiTheme.Ink(0.1f) : UiTheme.CONTROL);
             _ui.Outline(x, y, w, h, MathF.Max(1f, UiScale), hover ? UiTheme.SUN : UiTheme.CONTROL_BORDER);
             _ui.TextWrapped(f.Bold, x + S(10), y + S(6), w - S(20), title ?? string.Empty, hover ? UiTheme.SUN : UiTheme.TEXT, maxLines: 1);
             _ui.TextWrapped(f.Small, x + S(10), y + S(27), w - S(20), detail ?? string.Empty, UiTheme.TEXT_MUTED, maxLines: 1);

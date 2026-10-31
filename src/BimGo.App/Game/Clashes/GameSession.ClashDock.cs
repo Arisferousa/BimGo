@@ -519,7 +519,7 @@ namespace BimGo.Game
                 {
                     // Members sit indented under their group (a faint rule down the left)
                     float indent = line.Member ? S(14) : 0f;
-                    if (line.Member) { _ui.Rect(x + S(5), ry, S(2), rowH, Rgba.Hex(0xFFFFFF, 0.12f)); }
+                    if (line.Member) { _ui.Rect(x + S(5), ry, S(2), rowH, UiTheme.Ink(0.12f)); }
                     BuildClashRowBody(f, input, line.Row, x + indent, ry, listW - indent, rowH, pictures, thumbW, thumbH, hover, (i & 1) == 0);
                     if (hover && input.LeftPressed)
                     {
@@ -566,7 +566,7 @@ namespace BimGo.Game
             float thumbW, float thumbH, bool hover, bool even)
         {
             bool current = row.Clash == _clashCurrent || IsClashSelected(row.Clash);
-            _ui.Rect(x, ry, w, rowH - S(4), current ? Rgba.Hex(0x22D3EE, 0.14f) : hover ? Rgba.Hex(0xFFFFFF, 0.08f) : (even ? Rgba.Hex(0xFFFFFF, 0.03f) : 0u));
+            _ui.Rect(x, ry, w, rowH - S(4), current ? UiTheme.Accent(0.14f) : hover ? UiTheme.Ink(0.08f) : (even ? UiTheme.Ink(0.03f) : 0u));
             _ui.Rect(x, ry, S(4), rowH - S(4), StatusColour(row.Clash.Status));
             uint titleColour = row.Clash.Status == ClashStatus.RESOLVED ? UiTheme.TEXT_FAINT : UiTheme.TEXT;
             if (pictures)
@@ -596,7 +596,7 @@ namespace BimGo.Game
             if (texture != 0)
             {
                 _ui.Image(texture, px, py, thumbW, thumbH, _window.Width, _window.Height);
-                _ui.Outline(px, py, thumbW, thumbH, MathF.Max(1f, UiScale), Rgba.Hex(0xFFFFFF, 0.15f));
+                _ui.Outline(px, py, thumbW, thumbH, MathF.Max(1f, UiScale), UiTheme.Ink(0.15f));
             }
             else
             {
@@ -616,9 +616,9 @@ namespace BimGo.Game
             ClashGroup group = line.Group;
             bool current = group == _clashGroupCurrent || (_clashGroupPicks.Contains(group) && ClashMultiActive);
             float h = rowH - S(4);
-            _ui.Rect(x, ry, w, h, current ? Rgba.Hex(0x22D3EE, 0.18f) : hover ? Rgba.Hex(0xFFFFFF, 0.1f) : Rgba.Hex(0xFFFFFF, 0.06f));
+            _ui.Rect(x, ry, w, h, current ? UiTheme.Accent(0.18f) : hover ? UiTheme.Ink(0.1f) : UiTheme.Ink(0.06f));
             _ui.Rect(x, ry, S(4), h, StatusColour(group.Status));
-            _ui.Outline(x, ry, w, h, MathF.Max(1f, UiScale), current ? UiTheme.ACCENT : Rgba.Hex(0xFFFFFF, 0.14f));
+            _ui.Outline(x, ry, w, h, MathF.Max(1f, UiScale), current ? UiTheme.ACCENT : UiTheme.Ink(0.14f));
 
             // The chevron: right when collapsed, down when expanded
             bool expanded = _clashGroupExpanded.Contains(group.Id);
@@ -634,8 +634,8 @@ namespace BimGo.Game
                 // Two offset frames behind the first member's picture read as "several"
                 float px = tx, py = ry + S(3);
                 float pw = thumbW - S(8), ph = thumbH - S(6);
-                _ui.Outline(px + S(8), py, pw, ph, MathF.Max(1f, UiScale), Rgba.Hex(0xFFFFFF, 0.2f));
-                _ui.Outline(px + S(4), py + S(3), pw, ph, MathF.Max(1f, UiScale), Rgba.Hex(0xFFFFFF, 0.3f));
+                _ui.Outline(px + S(8), py, pw, ph, MathF.Max(1f, UiScale), UiTheme.Ink(0.2f));
+                _ui.Outline(px + S(4), py + S(3), pw, ph, MathF.Max(1f, UiScale), UiTheme.Ink(0.3f));
                 DrawClashRowPicture(f, line.First, px, py + S(6), pw, ph);
                 if (CommentPencil(input, px + pw - S(14), py + S(6) + S(14), FindClashGroupComment(group))) { _clashGroupMarkupClick = group; }
                 tx = px + thumbW + S(6);
@@ -725,7 +725,7 @@ namespace BimGo.Game
                     float bx = x + k * (chip + S(4));
                     bool on = clash.Status == status;
                     bool hover = Hover(input, bx, cy, chip, S(28));
-                    _ui.Rect(bx, cy, chip, S(28), on ? StatusColour(status) : hover ? Rgba.Hex(0xFFFFFF, 0.1f) : UiTheme.CONTROL);
+                    _ui.Rect(bx, cy, chip, S(28), on ? StatusColour(status) : hover ? UiTheme.Ink(0.1f) : UiTheme.CONTROL);
                     _ui.Outline(bx, cy, chip, S(28), MathF.Max(1f, UiScale), on ? StatusColour(status) : UiTheme.CONTROL_BORDER);
                     _ui.TextCentred(f.Small, bx + chip * 0.5f, cy + S(7), CLASH_STATUS_SHORT[k], on ? Rgba.Hex(0x111827) : UiTheme.TEXT);
                     if (hover && input.LeftPressed && !on)

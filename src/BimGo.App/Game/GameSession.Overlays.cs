@@ -186,7 +186,7 @@ namespace BimGo.Game
         private bool DropdownButton(FontAtlas f, InputState input, float x, float y, float w, float h, string label, bool open)
         {
             bool hover = Hover(input, x, y, w, h);
-            _ui.Rect(x, y, w, h, open ? Rgba.Hex(0x22D3EE, 0.14f) : hover ? Rgba.Hex(0xFFFFFF, 0.1f) : UiTheme.CONTROL);
+            _ui.Rect(x, y, w, h, open ? UiTheme.Accent(0.14f) : hover ? UiTheme.Ink(0.1f) : UiTheme.CONTROL);
             _ui.Outline(x, y, w, h, MathF.Max(1f, UiScale), open ? UiTheme.ACCENT : UiTheme.CONTROL_BORDER);
             float chevron = S(20);
             _ui.TextWrapped(f.Small, x + S(8), y + h * 0.5f - f.Small.LineHeight * 0.5f, w - chevron - S(12), label ?? string.Empty,
@@ -239,7 +239,7 @@ namespace BimGo.Game
             d.Scroll = Math.Clamp(d.Scroll, 0, maxScroll);
 
             _ui.Rect(lx + S(3), ly + S(4), listW, listH, Rgba.Hex(0x000000, 0.35f)); // shadow
-            _ui.Panel(lx, ly, listW, listH, Rgba.Hex(0x111418, 0.98f), UiTheme.ACCENT);
+            _ui.Panel(lx, ly, listW, listH, Rgba.WithAlpha(UiTheme.CARD, 0.98f), UiTheme.ACCENT);
 
             int picked = -1;
             int last = Math.Min(count, d.Scroll + visible);
@@ -250,7 +250,7 @@ namespace BimGo.Game
                 bool hover = Hover(input, lx + pad, ry, listW - pad * 2f, rowH);
                 bool current = i == d.Selected;
                 if (current) { _dropdownSelectedRect = new System.Numerics.Vector4(lx + pad, ry, listW - pad * 2f, rowH); }
-                if (hover || current) { _ui.Rect(lx + pad, ry, listW - pad * 2f - scrollW, rowH, hover ? Rgba.Hex(0xFFFFFF, 0.1f) : Rgba.Hex(0x22D3EE, 0.12f)); }
+                if (hover || current) { _ui.Rect(lx + pad, ry, listW - pad * 2f - scrollW, rowH, hover ? UiTheme.Ink(0.1f) : UiTheme.Accent(0.12f)); }
                 if (current) { _ui.Rect(lx + pad, ry, S(3), rowH, UiTheme.ACCENT); }
                 _ui.TextWrapped(f.Body, lx + pad + S(10), ry + rowH * 0.5f - f.Body.LineHeight * 0.5f, listW - pad * 2f - S(20) - scrollW, d.Labels[i],
                     current ? UiTheme.ACCENT : UiTheme.TEXT, maxLines: 1);
@@ -264,8 +264,8 @@ namespace BimGo.Game
                 float trackH = listH - pad * 2f;
                 float thumbH = MathF.Max(S(16), trackH * visible / count);
                 float thumbY = ly + pad + (trackH - thumbH) * d.Scroll / maxScroll;
-                _ui.Rect(lx + listW - pad - scrollW, ly + pad, scrollW, trackH, Rgba.Hex(0xFFFFFF, 0.05f));
-                _ui.Rect(lx + listW - pad - scrollW, thumbY, scrollW, thumbH, Rgba.Hex(0xFFFFFF, 0.3f));
+                _ui.Rect(lx + listW - pad - scrollW, ly + pad, scrollW, trackH, UiTheme.Ink(0.05f));
+                _ui.Rect(lx + listW - pad - scrollW, thumbY, scrollW, thumbH, UiTheme.Ink(0.3f));
             }
 
             if (!_overlayClick) { return; }
@@ -309,8 +309,8 @@ namespace BimGo.Game
                 _ui.Outline(ix, cy, box, box, MathF.Max(1f, UiScale), c.Skip ? UiTheme.ACCENT : UiTheme.CONTROL_BORDER);
                 if (c.Skip)
                 {
-                    _ui.Line(ix + box * 0.22f, cy + box * 0.52f, ix + box * 0.42f, cy + box * 0.72f, S(2), Rgba.Hex(0x06232A));
-                    _ui.Line(ix + box * 0.42f, cy + box * 0.72f, ix + box * 0.8f, cy + box * 0.28f, S(2), Rgba.Hex(0x06232A));
+                    _ui.Line(ix + box * 0.22f, cy + box * 0.52f, ix + box * 0.42f, cy + box * 0.72f, S(2), UiTheme.ON_ACCENT);
+                    _ui.Line(ix + box * 0.42f, cy + box * 0.72f, ix + box * 0.8f, cy + box * 0.28f, S(2), UiTheme.ON_ACCENT);
                 }
                 _ui.Text(f.Body, ix + box + S(10), cy - S(1), c.SkipLabel ?? "Don't ask again this session", hoverSkip ? UiTheme.ACCENT : UiTheme.TEXT_SOFT);
                 if (hoverSkip && _overlayClick)
@@ -347,7 +347,7 @@ namespace BimGo.Game
         private bool OverlayButton(FontAtlas f, InputState input, float x, float y, float w, float h, string label, bool danger)
         {
             bool hover = Hover(input, x, y, w, h);
-            _ui.Rect(x, y, w, h, hover ? Rgba.Hex(0xFFFFFF, 0.12f) : UiTheme.CONTROL);
+            _ui.Rect(x, y, w, h, hover ? UiTheme.Ink(0.12f) : UiTheme.CONTROL);
             _ui.Outline(x, y, w, h, MathF.Max(1f, UiScale), danger ? Rgba.Hex(0xFCA5A5, 0.6f) : hover ? UiTheme.ACCENT : UiTheme.CONTROL_BORDER);
             _ui.TextCentred(f.Small, x + w * 0.5f, y + h * 0.5f - f.Small.LineHeight * 0.5f, label, danger ? UiTheme.DANGER : hover ? UiTheme.ACCENT : UiTheme.TEXT, S(0.8f));
             bool clicked = hover && _overlayClick;

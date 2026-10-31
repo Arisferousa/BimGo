@@ -340,7 +340,7 @@ namespace BimGo.Game
                 // Swatch in the colour drawn under (or instead of) the image
                 float sw = S(36);
                 _ui.Rect(x, ry, sw, sw, PackColour(m.Colour));
-                _ui.Outline(x, ry, sw, sw, MathF.Max(1f, UiScale), Rgba.Hex(0xFFFFFF, 0.15f));
+                _ui.Outline(x, ry, sw, sw, MathF.Max(1f, UiScale), UiTheme.Ink(0.15f));
 
                 float textX = x + sw + S(12), textW = w - buttonsW - sw - S(36);
                 _ui.TextWrapped(f.Bold, textX, ry + S(2), textW * 0.55f, m.Name, UiTheme.TEXT, maxLines: 1);

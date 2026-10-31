@@ -574,12 +574,12 @@ namespace BimGo.Game
 
             float fraction = _tour.Duration > 0f ? Math.Clamp(_tourTime / _tour.Duration, 0f, 1f) : 1f;
             float barY = y + h - S(16), barW = w - S(28);
-            _ui.Rect(x + S(14), barY, barW, S(4), Rgba.Hex(0xFFFFFF, 0.15f));
+            _ui.Rect(x + S(14), barY, barW, S(4), UiTheme.Ink(0.15f));
             _ui.Rect(x + S(14), barY, barW * fraction, S(4), UiTheme.BOOKMARK);
             for (int i = 1; i < _tour.Count; i++)
             {
                 float tick = _tour.StartOf(i) / MathF.Max(_tour.Duration, 0.001f);
-                _ui.Rect(x + S(14) + barW * tick - S(1), barY - S(2), S(2), S(8), Rgba.Hex(0xFFFFFF, 0.35f));
+                _ui.Rect(x + S(14) + barW * tick - S(1), barY - S(2), S(2), S(8), UiTheme.Ink(0.35f));
             }
         }
 
@@ -754,7 +754,7 @@ namespace BimGo.Game
                 // Hold: value (TOUR when not set), − + × (reset)
                 float bx = x + small + S(8) + nameW;
                 Text.Clear().Append(tour.HoldFor(record), 1).Append(" s");
-                _ui.TextRight(f.Mono, bx + holdW, by + S(6), Text.Span, record.TourHold.HasValue ? Rgba.Hex(0x67E8F9) : UiTheme.TEXT_FAINT);
+                _ui.TextRight(f.Mono, bx + holdW, by + S(6), Text.Span, record.TourHold.HasValue ? UiTheme.ACCENT_SOFT : UiTheme.TEXT_FAINT);
                 bx += holdW + gap;
                 if (SmallButton(f, input, bx, by, small, bh, "−")) { changed = record; newHold = MathF.Max(TourSettings.MIN_HOLD, tour.HoldFor(record) - 1f); newSwivel = record.TourSwivel; newSkip = record.TourSkip; }
                 bx += small + gap;

@@ -223,7 +223,7 @@ namespace BimGo.Game
                     float labelW = UiBatch.Measure(f.Small, label);
                     if (labelW > roomW * 1.6f) { continue; }
                     float lx = (a.X + b.X) * 0.5f, ly = (a.Y + b.Y) * 0.5f - S(7);
-                    _ui.Rect(lx - labelW * 0.5f - S(4), ly - S(1), labelW + S(8), S(17), Rgba.Hex(0x0C0E12, 0.55f));
+                    _ui.Rect(lx - labelW * 0.5f - S(4), ly - S(1), labelW + S(8), S(17), UiTheme.Shade(0.55f));
                     _ui.TextCentred(f.Small, lx, ly, label, UiTheme.TEXT_SOFT);
                 }
             }
@@ -239,7 +239,7 @@ namespace BimGo.Game
                     bool inFocus = _siteFocusGroup == null || string.Equals(group, _siteFocusGroup, StringComparison.OrdinalIgnoreCase);
                     float gw = UiBatch.Measure(f.Small, group) + S(10);
                     uint colour = SiteGroupColour(group);
-                    _ui.Rect(g.X - gw * 0.5f, g.Y - S(26), gw, S(17), Rgba.Hex(0x0C0E12, inFocus ? 0.75f : 0.35f));
+                    _ui.Rect(g.X - gw * 0.5f, g.Y - S(26), gw, S(17), UiTheme.Shade(inFocus ? 0.75f : 0.35f));
                     _ui.Rect(g.X - gw * 0.5f, g.Y - S(10), gw, MathF.Max(1.5f, S(2)), Rgba.WithAlpha(colour, inFocus ? 1f : 0.3f));
                     _ui.TextCentred(f.Small, g.X, g.Y - S(25), group, Rgba.WithAlpha(colour, inFocus ? 1f : 0.35f));
                 }
@@ -303,10 +303,10 @@ namespace BimGo.Game
             float half = Math.Clamp(fov, 10f, 150f) * MathF.PI / 360f;
             _ui.Wedge(at.X, at.Y, size * 3.2f, -yaw - half, -yaw + half, Rgba.WithAlpha(colour, 0.22f), 10);
             float w = size * 1.7f, h = size * 1.15f;
-            _ui.Rect(at.X - w * 0.5f - S(1), at.Y - h * 0.5f - S(1), w + S(2), h + S(2), Rgba.Hex(0x0C0E12, 0.8f));
+            _ui.Rect(at.X - w * 0.5f - S(1), at.Y - h * 0.5f - S(1), w + S(2), h + S(2), UiTheme.Shade(0.8f));
             _ui.Rect(at.X - w * 0.5f, at.Y - h * 0.5f, w, h, colour);
             _ui.Rect(at.X - w * 0.18f, at.Y - h * 0.5f - size * 0.3f, w * 0.36f, size * 0.3f, colour); // the viewfinder bump
-            _ui.Circle(at.X, at.Y, h * 0.32f, Rgba.Hex(0x0C0E12, 0.9f), 10); // the lens
+            _ui.Circle(at.X, at.Y, h * 0.32f, UiTheme.Shade(0.9f), 10); // the lens
         }
 
         /// <summary>A small arrow on a map: the way a yaw looks (north up, screen Y down).</summary>
@@ -317,7 +317,7 @@ namespace BimGo.Game
             var side = new Vector2(-forward.Y, forward.X);
             Vector2 tip = at + forward * size, left = at - forward * size * 0.6f + side * size * 0.7f, right = at - forward * size * 0.6f - side * size * 0.7f;
             Vector2 notch = at - forward * size * 0.2f;
-            _ui.Circle(at.X, at.Y, size * 0.75f, Rgba.Hex(0x0C0E12, 0.6f), 12);
+            _ui.Circle(at.X, at.Y, size * 0.75f, UiTheme.Shade(0.6f), 12);
             _ui.Triangle(tip.X, tip.Y, left.X, left.Y, notch.X, notch.Y, colour);
             _ui.Triangle(tip.X, tip.Y, notch.X, notch.Y, right.X, right.Y, colour);
         }
@@ -583,7 +583,7 @@ namespace BimGo.Game
             float perPixel = _siteMapAcross / rect.Z;
             float metres = NiceMetres(perPixel * S(120));
             float barW = metres / perPixel, sx = rect.X + S(14), sy = rect.Y + rect.W - S(18);
-            _ui.Rect(sx - S(6), sy - S(18), barW + S(12), S(28), Rgba.Hex(0x0C0E12, 0.6f));
+            _ui.Rect(sx - S(6), sy - S(18), barW + S(12), S(28), UiTheme.Shade(0.6f));
             _ui.Rect(sx, sy, barW, MathF.Max(2f, S(2)), UiTheme.TEXT);
             _ui.Text(f.Small, sx, sy - S(16), Text.Clear().Append(metres, metres < 10f ? 1 : 0).Append(" m").Span, UiTheme.TEXT);
 

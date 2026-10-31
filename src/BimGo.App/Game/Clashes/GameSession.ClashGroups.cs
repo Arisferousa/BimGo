@@ -799,7 +799,7 @@ namespace BimGo.Game
                 float bx = x + k * (chip + S(4));
                 bool on = group.Status == status;
                 bool hover = Hover(input, bx, cy, chip, S(28));
-                _ui.Rect(bx, cy, chip, S(28), on ? StatusColour(status) : hover ? Rgba.Hex(0xFFFFFF, 0.1f) : UiTheme.CONTROL);
+                _ui.Rect(bx, cy, chip, S(28), on ? StatusColour(status) : hover ? UiTheme.Ink(0.1f) : UiTheme.CONTROL);
                 _ui.Outline(bx, cy, chip, S(28), MathF.Max(1f, UiScale), on ? StatusColour(status) : UiTheme.CONTROL_BORDER);
                 _ui.TextCentred(f.Small, bx + chip * 0.5f, cy + S(7), CLASH_STATUS_SHORT[k], on ? Rgba.Hex(0x111827) : UiTheme.TEXT);
                 if (hover && input.LeftPressed && (!on || _clashGroupCardMixed))
