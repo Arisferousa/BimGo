@@ -35,3 +35,10 @@ reference assemblies. **Not run** (no Windows / GPU here).
 - **The welcome card** now asks about the tutorial; it is offered once more to people who saw the old card. The
   viewer, which never showed it, offers its own tutorial once per copy per PC.
 - Tips save the settings when shown (once per feature).
+
+## Revision 2: a portable zip
+- `build/publish.ps1 -PortableOnly [-Include <files>]` (tests, the app, the zip; only the .NET 8 SDK needed) or
+  `-Portable` (the zip as well as the setup): `artifacts\BimGo-Portable-<version>.zip` with the app folder,
+  "Open .bimgo files with BimGo.cmd" (`--register`), "Remove BimGo from this PC.cmd" (`--unregister`),
+  "READ ME FIRST.txt" and the included files (a viewer copy). Documented in `docs/releasing.md`; the simple viewer
+  page points to it. Not run here (no PowerShell / Windows).
