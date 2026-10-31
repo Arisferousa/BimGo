@@ -635,6 +635,7 @@ namespace BimGo.Game
         {
             InputState input = _window.Input;
             UpdateHudFade(dt); // UI round
+            RebuildInterfaceIfPending();
 
             if (_window.Resized)
             {

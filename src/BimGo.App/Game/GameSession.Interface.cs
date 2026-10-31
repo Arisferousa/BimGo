@@ -98,16 +98,29 @@ namespace BimGo.Game
             SaveSettings();
         }
 
-        /// <summary>Sizes or fonts changed: the font atlas is built again at the new scale, and saved.</summary>
+        /// <summary>
+        /// Sizes or fonts changed: saved now, and the font atlas built again at the start of the next frame (this
+        /// frame's text is already queued with the old one).
+        /// </summary>
         private void ApplyInterfaceFonts()
         {
+            _interfaceRebuild = true;
+            SaveSettings();
+        }
+
+        private bool _interfaceRebuild;
+
+        /// <summary>Once a frame, before anything is drawn: a pending font atlas rebuild.</summary>
+        private void RebuildInterfaceIfPending()
+        {
+            if (!_interfaceRebuild) { return; }
+            _interfaceRebuild = false;
             UiFonts.Current = (_uiFont, _uiNumbersFont, _uiTextSize);
             UiScale = InterfaceScale;
             _ui.Rebuild(UiScale);
             _ui.Radius = S(UiTheme.RADIUS);
             _settingsScroll.Reset();
             _sideScroll.Reset();
-            SaveSettings();
         }
 
         #endregion
