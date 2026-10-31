@@ -30,8 +30,10 @@ Stand-in colour maps for materials whose own image is missing (Realistic mode).
 From ambientCG (https://ambientcg.com), released under CC0 1.0 Universal
 (public domain dedication, https://creativecommons.org/publicdomain/zero/1.0/).
 No attribution is required; it is given here anyway. Colour maps only, resized
-to 512 px. These images are never embedded in .bimgo files. No Autodesk
-textures are included in BimGo.
+to 512 px. As proxies they are never embedded in .bimgo files; one picked in
+MATERIALS (BIMGO TEXTURES) is copied into that file, as CC0 allows. No
+Autodesk textures are included in BimGo (MATERIALS can copy images from an
+Autodesk Material Library installed on the user's own PC into their file).
 
   brick              Bricks059         https://ambientcg.com/a/Bricks059
   blockwork          Bricks066         https://ambientcg.com/a/Bricks066
