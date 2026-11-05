@@ -21,7 +21,8 @@
     **Standard** (a compact status: mode, level, room; the gun's panel; the minimap) or **Full** (everything, with the
     ground and colour mode rows and the sun). **Fade the panels while moving** dims them while you walk and brings
     them back a second after you stop.
-  - **RESET THE INTERFACE** puts it all back.
+  - **Tips the first time I use a feature** ([tutorial and tips](tutorial.md)): on by default.
+  - **RESET THE INTERFACE** puts it all back (the tips setting stays).
 - **Units**: metric or imperial (feet-inches or decimal feet).
 - **CONTROLS**: every key and gamepad button (see [Controls](controls.md)).
 - In Revit, the **Options** window (opened by Go and Export) holds what is extracted and the player options.

@@ -527,7 +527,7 @@ END-ISO-10303-21;
         public void Notice_SaysWhatCameInAndToSave()
         {
             var summary = new IfcImportSummary { Elements = 1234, Storeys = 1, Rooms = 2 };
-            StringAssert.Contains(summary.Notice(), "1,234 elements, 1 level, 2 rooms");
+            StringAssert.Contains(summary.Notice(), $"{1234:N0} elements, 1 level, 2 rooms"); // the thousands separator is Windows' own
             StringAssert.Contains(summary.Notice(), "Save as .bimgo");
             Assert.IsFalse(summary.Notice().Contains("left out"));
             summary.Unsupported["IFCADVANCEDFACE (curved)"] = 3;

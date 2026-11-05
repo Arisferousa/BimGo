@@ -66,6 +66,7 @@ namespace BimGo.Game
         private void OpenPhotoMode()
         {
             if (_photoOpen) { return; }
+            ShowTip("photo-mode"); // tutorial round: the first time
             if (_paused) { SetPaused(false); }
             CloseSunPanel();
             CloseGridsPanel(); // grids round A: one panel at a time

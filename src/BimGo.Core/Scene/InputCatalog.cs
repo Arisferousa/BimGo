@@ -38,6 +38,9 @@ namespace BimGo.Scene
         /// <summary>Viewer round: the simple viewer's tools (a file saved for the simple viewer).</summary>
         Viewer,
 
+        /// <summary>Tutorial round: while the tutorial shows (walking or in the simple viewer).</summary>
+        Tutorial,
+
         /// <summary>Keys that can't be rebound (Esc, menus and panels' mouse, Alt+F4). Listed for reference and clash checks.</summary>
         Fixed
     }
@@ -122,6 +125,9 @@ namespace BimGo.Scene
         // The simple viewer (viewer round): its tools, pass through walls, walking speed
         ViewerMeasure, ViewerSection, ViewerComment, ViewerViews, ViewerSun, ViewerGhost, ViewerFaster, ViewerSlower,
         ViewerPhotos, ViewerGallery, ViewerMap, SiteMap, // site photos round (the site map: everywhere)
+
+        // The tutorial (tutorial round)
+        TutorialNext,
 
         // Fixed (not rebindable)
         Back, CloseWindow, Click, DragLook, FineAdjust, PhotoZoom, OpenFile, PadClick, PadMenuBack
@@ -475,6 +481,9 @@ namespace BimGo.Scene
             Add(InputAction.ViewerGallery, InputContext.Viewer, "Photo browser", P, "Shift+P");
             Add(InputAction.ViewerMap, InputContext.Viewer, "Map in the corner: show / hide", P, "Tab");
 
+            // The tutorial (tutorial round): Enter skips the step shown (its card's NEXT)
+            Add(InputAction.TutorialNext, InputContext.Tutorial, "Tutorial: next step (skips the one shown)", P, "Enter");
+
             Add(InputAction.KioskExit, InputContext.Kiosk, "Leave kiosk mode (hold " + KIOSK_EXIT_HOLD_SECONDS.ToString("0", System.Globalization.CultureInfo.InvariantCulture) + " s)", ActionKind.Hold, "Ctrl+Shift+Q");
 
             // Pause menu (sky round)
@@ -617,7 +626,7 @@ namespace BimGo.Scene
             InputContext.General, InputContext.Movement, InputContext.Guns, InputContext.Tools,
             InputContext.ScanGun, InputContext.MeasureGun, InputContext.CommentGun, InputContext.DemolishGun, InputContext.GizmoGuns,
             InputContext.Holding, InputContext.Markup, InputContext.SectionEditor, InputContext.PhotoMode, InputContext.SunPanel,
-            InputContext.Tour, InputContext.Clashes, InputContext.PauseMenu, InputContext.PathEditor, InputContext.Kiosk, InputContext.Viewer, InputContext.Fixed
+            InputContext.Tour, InputContext.Clashes, InputContext.PauseMenu, InputContext.PathEditor, InputContext.Kiosk, InputContext.Viewer, InputContext.Tutorial, InputContext.Fixed
         };
 
         /// <summary>A group's heading.</summary>
@@ -643,6 +652,7 @@ namespace BimGo.Scene
             InputContext.PathEditor => "Path editor",
             InputContext.Kiosk => "Kiosk mode",
             InputContext.Viewer => "Simple viewer",
+            InputContext.Tutorial => "Tutorial",
             _ => "Fixed (not rebindable)"
         };
 
@@ -659,6 +669,7 @@ namespace BimGo.Scene
             InputContext.Tour => "While a bookmark tour or a camera path plays (Esc stops it).",
             InputContext.Clashes => "Clash detection's docked list (the clash mode key or Esc leaves): the move keys fly, run speeds up, RMB-drag looks, the wheel scrolls the list.",
             InputContext.PauseMenu => "While the pause menu shows (not in its panels).",
+            InputContext.Tutorial => "While the tutorial shows, walking or in the simple viewer (menu → TUTORIAL plays it again). With the cursor free, its card's buttons work too.",
             InputContext.Viewer => "A file saved for the simple viewer: one key per toolbar tool, and walking, pass through walls and the walking speed (the mouse wheel too).",
             InputContext.Kiosk => "A file opened from a kiosk shortcut: visitors walk, fly and look only (no menus, guns, panels or saving); after two minutes without input the bookmark tour plays. Leaving it goes to the normal walkthrough.",
             InputContext.PathEditor => "The 3D camera path editor (the path editor key, or MEDIA → PATHS → EDIT IN 3D; Esc leaves): free cursor, RMB-drag looks, click a key or a handle, drag the handles; the scrubber at the bottom drives the camera.",
@@ -716,7 +727,7 @@ namespace BimGo.Scene
 
         private static InputSituation[] BuildSituations()
         {
-            InputContext[] walking = { InputContext.General, InputContext.Movement, InputContext.Guns, InputContext.Tools };
+            InputContext[] walking = { InputContext.General, InputContext.Movement, InputContext.Guns, InputContext.Tools, InputContext.Tutorial }; // tutorial round: Enter skips a step
             InputContext[] With(InputContext gun) => walking.Append(gun).ToArray();
             InputAction[] sunTime = { InputAction.SunEarlier, InputAction.SunEarlierFine, InputAction.SunLater, InputAction.SunLaterFine };
             InputAction[] Join(InputAction[] a, params InputAction[] b) => a.Concat(b).ToArray();
@@ -803,7 +814,7 @@ namespace BimGo.Scene
                 new InputSituation(SIT_GIZMO, With(InputContext.GizmoGuns), Array.Empty<InputAction>(), Walk(
                     H("Drop onto the surface · snap", InputAction.GizmoDrop, InputAction.GizmoSnap),
                     H("Billboard size (hold + wheel)", InputAction.HoldScale))),
-                new InputSituation(SIT_HOLDING, new[] { InputContext.Holding, InputContext.GizmoGuns }, new[]
+                new InputSituation(SIT_HOLDING, new[] { InputContext.Holding, InputContext.GizmoGuns, InputContext.Tutorial }, new[]
                 {
                     InputAction.MoveForward, InputAction.MoveBack, InputAction.MoveLeft, InputAction.MoveRight,
                     InputAction.Minimap, InputAction.HideUi, InputAction.Help, InputAction.Fullscreen, InputAction.Screenshot,
@@ -915,7 +926,7 @@ namespace BimGo.Scene
                 // Viewer round: a file made for the simple viewer (GameSession.UpdateViewer). The mouse orbits, pans and zooms
                 // (fixed buttons, like the panels' clicks) and the toolbar has the tools; walking, the move keys walk and a drag looks.
                 // Mouse and keyboard only: the gamepad walks and looks (A jumps), its menu click isn't live here
-                new InputSituation(SIT_VIEWER, new[] { InputContext.Viewer }, new[]
+                new InputSituation(SIT_VIEWER, new[] { InputContext.Viewer, InputContext.Tutorial }, new[]
                 {
                     InputAction.MoveForward, InputAction.MoveBack, InputAction.MoveLeft, InputAction.MoveRight, InputAction.Run, InputAction.Jump,
                     InputAction.LookUp, InputAction.LookDown, InputAction.LookLeft, InputAction.LookRight, InputAction.DragLook,
@@ -1014,10 +1025,10 @@ namespace BimGo.Scene
         /// The controls defaults version (polish round P-B). 0: the defaults up to P-A2; 1: P-B's hotkey review; 2: Round
         /// K-A's media panel; 3: Round K-B's path editor; 4: Round X-B3's billboard resize (HoldScale); 5: Round X-E's
         /// Revit views from here (RevitViewNew, RevitViewUpdate); 6: Round Y-A's saved measurements (MeasureShowAll, MeasureExport); 7: Round Y-C2's
-        /// fixture light profile dock (FixtureProfile); 8: Round Z-A's room tags (RoomTags); 9: Round Z-C's kiosk exit (KioskExit); 10: the simple viewer's keys (Viewer*); 11: its site photo and map keys. Raise it when a default changes and add the changes to
+        /// fixture light profile dock (FixtureProfile); 8: Round Z-A's room tags (RoomTags); 9: Round Z-C's kiosk exit (KioskExit); 10: the simple viewer's keys (Viewer*); 11: its site photo and map keys; 12: the tutorial's next step (TutorialNext). Raise it when a default changes and add the changes to
         /// <see cref="DefaultsChanges"/> (ControlsTests checks the table against the defaults).
         /// </summary>
-        public const int DEFAULTS_VERSION = 11;
+        public const int DEFAULTS_VERSION = 12;
 
         /// <summary>Every default that changed, by version (oldest first). <c>Was</c>: the old binding ("none" for none).</summary>
         public static readonly DefaultsChange[] DefaultsChanges =
@@ -1090,7 +1101,10 @@ namespace BimGo.Scene
             new(11, InputAction.ViewerPhotos, true, null),
             new(11, InputAction.ViewerGallery, true, null),
             new(11, InputAction.ViewerMap, true, null),
-            new(11, InputAction.SiteMap, true, null)
+            new(11, InputAction.SiteMap, true, null),
+
+            // Version 12 (tutorial round): Enter skips the tutorial's step
+            new(12, InputAction.TutorialNext, true, null)
         };
 
         /// <summary>The changes made after a version the user saw (empty when it is current or newer).</summary>

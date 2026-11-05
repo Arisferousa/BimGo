@@ -1073,6 +1073,7 @@ namespace BimGo.Game
         private void OpenSitePhotosPanel()
         {
             _sitePhotosOpen = true;
+            ShowTip("site-photos"); // tutorial round: the first time
             _siteSearchPause = 2;
             _sitePhotoScroll.Reset();
             _siteDeleteArmed = null;

@@ -58,8 +58,9 @@ the materials, openings cut from walls and slabs, storeys as levels, spaces as r
 site's latitude and longitude for the sun, and Revit's RPC trees and people (swapped for billboards). Furniture,
 fixtures and equipment can be moved; edits stay in the file's journal (they can't be pushed into Revit LT).
 
-The first walkthrough shows a short welcome card with the main keys. Click **START WALKING** (or press Esc), then
-click in the window to look around.
+The first walkthrough shows a short welcome card with the main keys and asks whether to take the
+[tutorial](tutorial.md): about 30 short steps that show you around, doing each thing as you go. **NO THANKS** (or Esc)
+starts walking: click in the window to look around. Esc → TUTORIAL brings it back whenever you like.
 
 ![The welcome card](images/gs-welcome.png)
 

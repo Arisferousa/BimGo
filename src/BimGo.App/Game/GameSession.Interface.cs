@@ -57,7 +57,7 @@ namespace BimGo.Game
         private const int MI_RESUME = 0, MI_HOME = 1, MI_PIN = 2, MI_SAVE = 3, MI_SAVE_AS = 4, MI_VIEWER = 5, MI_UPDATE = 6, MI_PUSH = 7, MI_KIOSK = 8,
             MI_REVIT = 9, MI_MATERIALS = 10, MI_LIBRARY = 11, MI_LAYERS = 12, MI_EYE = 13, MI_COMMENT = 14, MI_BOOKMARK = 15, MI_CLASH = 16, MI_ROOM = 17,
             MI_SUN = 18, MI_MEDIA = 19, MI_PEOPLE = 20, MI_PHOTO = 21, MI_KEYS = 22, MI_CLOSE = 23,
-            MI_DISPLAY = 24, MI_SHINE = 25, MI_SLIDERS = 26;
+            MI_DISPLAY = 24, MI_SHINE = 25, MI_SLIDERS = 26, MI_TUTORIAL = 27, MI_GUIDE = 28;
 
         // The settings tabs as sidebar entries (their icons, in RIGHT_TABS order)
         private static readonly int[] SETTINGS_TAB_ICONS = { MI_DISPLAY, MI_SHINE, MI_MATERIALS, MI_SUN, MI_SLIDERS };
@@ -259,6 +259,15 @@ namespace BimGo.Game
             }
             y += S(34);
 
+            // Tutorial round: first-use tips (menu → TUTORIAL can show them all again)
+            bool tips = Checkbox(f, input, x, y, w, "Tips the first time I use a feature", _tipsOn);
+            if (tips != _tipsOn)
+            {
+                _tipsOn = tips;
+                SaveSettings();
+            }
+            y += S(34);
+
             // Back to how BimGo always looked
             bool defaults = _uiThemeName == UiThemes.DARK && string.Equals(_uiAccent, UiThemes.DEFAULT_ACCENT, StringComparison.OrdinalIgnoreCase)
                 && _uiFont == UiThemes.DEFAULT_FONT && _uiNumbersFont == UiThemes.DEFAULT_NUMBERS_FONT && _uiUserScale == 1f && _uiTextSize == 1f
@@ -369,6 +378,7 @@ namespace BimGo.Game
             float pad = S(18);
             _ui.Rect(0, 0, sideW, height, UiTheme.PANEL_STRONG);
             _ui.Rect(sideW - MathF.Max(1f, UiScale), 0, MathF.Max(1f, UiScale), height, UiTheme.DIVIDER);
+            MarkSpot(TutorialSpot.Sidebar, 0f, 0f, sideW, height); // tutorial round
             float x = pad, w = sideW - pad * 2f, y = S(22);
 
             _ui.Text(f.Small, x, y, "BIMGO · PAUSED", UiTheme.TEXT_FAINT, S(2f));
@@ -390,6 +400,7 @@ namespace BimGo.Game
 
             // Search
             float sh = S(32);
+            MarkSpot(TutorialSpot.MenuSearch, x, y, w, sh); // tutorial round
             _ui.RoundRect(x, y, w, sh, S(UiTheme.RADIUS_SMALL), UiTheme.CONTROL);
             _ui.RoundOutline(x, y, w, sh, S(UiTheme.RADIUS_SMALL), MathF.Max(1f, UiScale), _menuSearchLength > 0 ? UiTheme.ACCENT : UiTheme.CONTROL_BORDER);
             float ty = y + sh * 0.5f - f.Body.LineHeight * 0.5f;
@@ -424,10 +435,16 @@ namespace BimGo.Game
         /// <summary>Every entry, by section (an entry that leaves the menu returns false at once).</summary>
         private bool SidebarEntries(ref SideMenu m, FontAtlas f, InputState input)
         {
-            const string MODEL = "MODEL", REVIEW = "REVIEW", MEDIA = "MEDIA", SETTINGS = "SETTINGS";
+            const string MODEL = "MODEL", REVIEW = "REVIEW", MEDIA = "MEDIA", SETTINGS = "SETTINGS", HELP = "HELP";
 
             // MODEL: where you are, the file, the model's content
-            if (SideItem(ref m, f, input, MODEL, MI_HOME, "RETURN HOME")) { _player.GoHome(); SetPaused(false); return false; }
+            if (SideItem(ref m, f, input, MODEL, MI_HOME, "RETURN HOME"))
+            {
+                _player.GoHome();
+                TutorialSawHome(); // tutorial round
+                SetPaused(false);
+                return false;
+            }
             if (SideItem(ref m, f, input, MODEL, MI_PIN, _clock < _homeSetUntil ? "HOME SAVED HERE" : "SET HOME HERE")) { SetHomeHere(); }
             if (IsFileMode)
             {
@@ -481,8 +498,8 @@ namespace BimGo.Game
             if (SideItem(ref m, f, input, MEDIA, MI_PEOPLE, EntourageMenuLabel())) { OpenEntourage(); return false; }
             if (SideItem(ref m, f, input, MEDIA, MI_PHOTO, SitePhotosMenuLabel())) { OpenSitePhotosPanel(); return false; }
 
-            // SETTINGS (the tabs are beside the sidebar)
-            // The settings tabs beside the sidebar (the open one marked; a click shows it there)
+            // SETTINGS: the settings tabs beside the sidebar (the open one marked; a click shows it there)
+            float settingsTop = m.Y;
             for (int i = 0; i < RIGHT_TABS.Length; i++)
             {
                 if (!SideItem(ref m, f, input, SETTINGS, SETTINGS_TAB_ICONS[Math.Min(i, SETTINGS_TAB_ICONS.Length - 1)], RIGHT_TABS[i], selected: _rightTab == i)) { continue; }
@@ -491,6 +508,11 @@ namespace BimGo.Game
                 _settingsScroll.Reset();
             }
             if (SideItem(ref m, f, input, SETTINGS, MI_KEYS, "CONTROLS")) { OpenControls(); return false; }
+            if (m.Y > settingsTop) { MarkSpot(TutorialSpot.SettingsTabs, m.X, settingsTop, m.W, m.Y - settingsTop); } // tutorial round
+
+            // HELP (tutorial round): the tutorial (all of it or a chapter, tips) and the online guide
+            if (SideItem(ref m, f, input, HELP, MI_TUTORIAL, TutorialMenuLabel())) { OpenTutorialPicker(); }
+            if (SideItem(ref m, f, input, HELP, MI_GUIDE, "ONLINE GUIDE")) { OpenDocs(); }
             return true;
         }
 
@@ -625,6 +647,15 @@ namespace BimGo.Game
                         _ui.Rect(cx - r, yy - t * 0.5f, r * 2f, t, colour);
                         _ui.Circle(cx + k * r * 0.5f, yy, r * 0.28f, colour, 10);
                     }
+                    break;
+                case MI_TUTORIAL: // a signpost: a pole and two boards
+                    _ui.Line(cx - r * 0.2f, cy - r, cx - r * 0.2f, cy + r, t, colour);
+                    _ui.Outline(cx - r * 0.2f, cy - r * 0.8f, r * 1.1f, r * 0.55f, t, colour);
+                    _ui.Outline(cx - r, cy, r * 0.8f, r * 0.55f, t, colour);
+                    break;
+                case MI_GUIDE: // an open book
+                    _ui.Outline(cx - r, cy - r * 0.7f, r, r * 1.4f, t, colour);
+                    _ui.Outline(cx, cy - r * 0.7f, r, r * 1.4f, t, colour);
                     break;
                 case MI_CLOSE:
                     _ui.Line(cx - r * 0.7f, cy - r * 0.7f, cx + r * 0.7f, cy + r * 0.7f, t, colour);

@@ -141,6 +141,7 @@ namespace BimGo.Game
             EnsureClashes();
             if (!_paused) { SetPaused(true); }
             _clashesOpen = true;
+            ShowTip("clashes"); // tutorial round: the first time
             _clashScroll.Reset();
             _clashRuleScroll.Reset();
             _clashEditorScroll.Reset();

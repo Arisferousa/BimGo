@@ -165,6 +165,7 @@ namespace BimGo.Game
         private void OpenBookmarks()
         {
             _bookmarksOpen = true;
+            ShowTip("bookmarks"); // tutorial round: the first time
             _bookmarkScroll.Reset();
             _bookmarkDeleteArmed = null;
             _bookmarksNotice = null;

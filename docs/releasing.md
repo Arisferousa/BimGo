@@ -56,6 +56,28 @@ the installer all read it.
    Tick **Set as a pre-release** for a beta (for example tag `v1.1.0-beta.1`).
 7. **Back to work:** `git checkout dev` and `git merge main` (so `dev` has the release commit), then carry on.
 
+## A portable zip (no setup)
+
+For someone who only opens `.bimgo` files (a client, your boss), a zip is the least hassle: no installer, no admin
+rights, no Revit. Build it on your PC with:
+
+```
+powershell -ExecutionPolicy Bypass -File build\publish.ps1 -PortableOnly -Include "C:\Models\Tower (viewer).bimgo"
+```
+
+This needs only the .NET 8 SDK (no Revit, no Inno Setup). It runs the tests, publishes the app and writes
+`artifacts\BimGo-Portable-<version>.zip`: one folder with `BimGo.exe` and its files, plus:
+
+- **Open .bimgo files with BimGo.cmd**, to double-click once (`BimGo.exe --register`: the file association and a
+  Start-menu shortcut, for that Windows user);
+- **Remove BimGo from this PC.cmd** (`--unregister`);
+- **READ ME FIRST.txt** (extract first, then the .cmd, and the SmartScreen warning);
+- the files you `-Include` (a viewer copy, say).
+
+`-Portable` (without *Only*) makes the zip as well as the setup in a full release. The person extracts the folder
+anywhere (Documents, say), double-clicks the .cmd once, then double-clicks the `.bimgo`. A newer version is a new zip:
+extract it in place of the old folder and run the .cmd again.
+
 ## Good to know
 
 - **Pre-releases** let testers try a build without it showing as the latest: use them for the beta before 1.0.

@@ -82,8 +82,17 @@ namespace BimGo.Format
         /// <summary>How the viewer starts: <see cref="ViewerStart.ORBIT"/> (default) or <see cref="ViewerStart.WALK"/>.</summary>
         public string Start { get; set; } = ViewerStart.ORBIT;
 
+        /// <summary>
+        /// Tutorial round: this viewer copy's id (a new one for each SAVE VIEWER COPY…, kept when the file is saved again).
+        /// The simple viewer's tutorial is offered the first time each copy opens on a PC. Null in older files.
+        /// </summary>
+        public string Id { get; set; }
+
         /// <summary>A copy (unknown start values read as orbit).</summary>
-        public ViewerDto Copy() => new() { Open = Open, Start = Start == ViewerStart.WALK ? ViewerStart.WALK : ViewerStart.ORBIT };
+        public ViewerDto Copy() => new() { Open = Open, Start = Start == ViewerStart.WALK ? ViewerStart.WALK : ViewerStart.ORBIT, Id = Id };
+
+        /// <summary>Tutorial round: a new viewer copy's id.</summary>
+        public static string NewId() => Guid.NewGuid().ToString("N");
     }
 
     /// <summary>

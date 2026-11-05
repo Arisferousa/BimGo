@@ -460,7 +460,9 @@ namespace BimGo.Game
                 MatchImages = MatchImagesForSave(),
                 MaterialBaseVertices = MatchBaseVerticesForSave(),
                 Clashes = ClashBytesForSave(), // Round C: as held when clash detection was never switched on
-                Viewer = viewerCopy || _viewerFile ? new ViewerDto { Start = viewerCopy ? ViewerStart.ORBIT : _viewerStart } : null, // viewer round: a viewer file stays one
+                Viewer = viewerCopy || _viewerFile
+                    ? new ViewerDto { Start = viewerCopy ? ViewerStart.ORBIT : _viewerStart, Id = viewerCopy ? ViewerDto.NewId() : ViewerCopyId } // tutorial round: each copy its own id
+                    : null, // viewer round: a viewer file stays one
                 CreatedUtc = _options.Document?.CreatedUtc ?? Scene.Provenance?.ExtractedUtc ?? DateTime.UtcNow,
                 Path = path
             };

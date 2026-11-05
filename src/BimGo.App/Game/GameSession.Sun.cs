@@ -365,6 +365,7 @@ namespace BimGo.Game
         private void OpenSunPanel()
         {
             if (_sunPanelOpen) { return; }
+            ShowTip("sun-panel"); // tutorial round: the first time
             CloseSunHours(); // one panel at a time
             CloseGridsPanel();
             CloseFixtureDock(); // Round Y-C2

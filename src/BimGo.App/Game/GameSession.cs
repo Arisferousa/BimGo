@@ -242,6 +242,7 @@ namespace BimGo.Game
             ReadVideoSettings(settings);
             ReadAppearanceSettings(settings);
             ReadInterfaceSettings(LaunchSettings.LoadOrDefault()); // UI round: the machine's interface settings, not the model's copy
+            ReadTutorialSettings(LaunchSettings.LoadOrDefault()); // tutorial round: tips, chapters done
             UnitFormat.Read(settings);
             Hotkeys.Read(settings);
             Gamepad.Read(settings);
@@ -372,8 +373,12 @@ namespace BimGo.Game
 
             // Round Z-C: a kiosk shortcut's launch (files only)
             if (_options.Kiosk && IsFileMode) { EnterKiosk(); }
-            else if (_viewerFile) { EnterViewer(fromWalkthrough: false); } // viewer round: a file saved for the simple viewer
-            else if (!LaunchSettings.SafeStart && !Scene.Settings.WelcomeShown) { OpenWelcome(); } // Round Z-E: first walkthrough
+            else
+            {
+                if (_viewerFile) { EnterViewer(fromWalkthrough: false); } // viewer round: a file saved for the simple viewer
+                OfferTutorialAtStart(); // Round Z-E: the welcome card; tutorial round: it offers the tutorial (the viewer's too)
+            }
+            _tipsArmed = true; // tutorial round: tips from here on (not for what Initialise selected)
         }
 
         /// <summary>
@@ -659,6 +664,11 @@ namespace BimGo.Game
                 UpdateWelcome(input);
                 return;
             }
+
+            // Tutorial round: the menu's TUTORIAL card has every key and click while open; the step card and a tip take the
+            // clicks on them, Enter skips a step, and the step's goal is watched
+            if (_tutorialPickerOpen && UpdateTutorialPicker(input)) { return; }
+            UpdateTutorial(input, dt);
 
             UpdatePadFocus(input); // polish round P-A2: the D-pad's focus ring and LB / RB tabs (before the keys below)
             if (_paused || _tourActive) { CloseGunWheel(pick: false); }
@@ -1192,6 +1202,7 @@ namespace BimGo.Game
             _guns[_activeGun].OnDeselect();
             _activeGun = index;
             Sound.Play(SoundId.UiClick);
+            ShowGunTip(index); // tutorial round: the first time
         }
 
         /// <summary>
@@ -1412,6 +1423,7 @@ namespace BimGo.Game
             settings.ProxyMissingTextures = _proxyMissing;
             WriteAppearanceSettings(settings);
             WriteInterfaceSettings(settings); // UI round
+            WriteTutorialSettings(settings); // tutorial round
             settings.ProxyMaterialColour = _proxyMaterialColour;
             settings.Msaa = _msaa;
             settings.AmbientOcclusion = _ambientOcclusion;

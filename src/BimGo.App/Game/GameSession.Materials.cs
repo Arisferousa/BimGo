@@ -219,6 +219,7 @@ namespace BimGo.Game
         private void OpenMaterials()
         {
             _materialsOpen = true;
+            ShowTip("materials"); // tutorial round: the first time
             _matchPicker = PICKER_EDITOR;
             _materialsNotice = null;
             _matchSearchPause = 2;

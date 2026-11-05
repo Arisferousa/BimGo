@@ -10,6 +10,7 @@ detail.
 - [Getting started](getting-started.md): install, BimGo for Revit, your first walkthrough, IFC files from Revit LT
 - [Moving around](moving-around.md): walking, flying, levels, bookmarks, the menu
 - [Controls](controls.md): every default key, the guns, the gamepad
+- [Tutorial and tips](tutorial.md): a step-by-step tour for first-time users (the simple viewer's too), and tips the first time you use a feature
 
 ## Using BimGo
 - [The tool guns](guns.md): scan, measure, portal, comment, teleport, demolish, gizmo, clone, place

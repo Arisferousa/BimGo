@@ -47,6 +47,7 @@ namespace BimGo.Game
         private void OpenSiteGallery()
         {
             _siteGalleryOpen = true;
+            ShowTip("site-gallery"); // tutorial round: the first time
             _siteGalleryScroll.Reset();
             _siteGroupScroll.Reset();
             _siteSearchPause = 2; // the key that opened it isn't typed into the search

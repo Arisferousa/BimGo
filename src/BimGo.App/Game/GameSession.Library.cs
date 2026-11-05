@@ -83,6 +83,7 @@ namespace BimGo.Game
                     : "This file has no family library (it comes with live Revit sessions: Options → Load → “Family library”)", 5f);
                 return;
             }
+            ShowTip("library"); // tutorial round: the first time
             if (!_paused) { SetPaused(true); }
             _libraryOpen = true;
             _libraryNotice = null;

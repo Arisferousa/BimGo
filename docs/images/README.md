@@ -26,7 +26,7 @@ Adding a new picture: put it here, link it from the page as `![What it shows](im
 | `gs-options.png` | [getting-started](../getting-started.md) | The Options window (Load tab) |
 | `gs-revit-ribbon.png` | [getting-started](../getting-started.md) | The BimGo tab in Revit (crop to the ribbon) |
 | `gs-start-screen.png` | [getting-started](../getting-started.md) | The start screen with a few recent files |
-| `gs-welcome.png` | [getting-started](../getting-started.md) | The welcome card over a first walkthrough |
+| `gs-welcome.png` | [getting-started](../getting-started.md) | The welcome card over a first walkthrough: the keys, ONLINE GUIDE, NO THANKS, TAKE THE TUTORIAL |
 | `guns-bar.png` | [guns](../guns.md) | The gun bar (bottom) and the gun panel (right), crop |
 | `guns-gizmo.gif` | [guns](../guns.md) | Gizmo: locking on to a chair, moving, rotating, dropping (F), committing |
 | `guns-measure.gif` | [guns](../guns.md) | Measure gun: an area being picked, then closed |
@@ -57,4 +57,6 @@ Adding a new picture: put it here, link it from the page as `![What it shows](im
 | `site-photos-panel.png` | [site-photos](../site-photos.md) | The SITE PHOTOS panel with a dozen photos (thumbnails, groups, placed / pinned) and the alignment line |
 | `site-photo-view.png` | [site-photos](../site-photos.md) | A photo at about 55 % over the model while adjusting: the lens slider and PIN HERE in the dock |
 | `site-map.png` | [site-photos](../site-photos.md) | The SITE MAP, aerial, zoomed to a few buildings: photo arrows, a group name, room names, a hovered photo's thumbnail |
+| `tutorial-card.png` | [tutorial](../tutorial.md) | Walking with the tutorial on a step to do (e.g. Run): STEP 4 OF 30, the progress bar, YOUR TURN with its bar; ideally a spot ringed |
+| `tutorial-menu.png` | [tutorial](../tutorial.md) | Esc → TUTORIAL: PLAY IT ALL, the chapters (some ticked), the tips checkbox, SHOW TIPS AGAIN, ONLINE GUIDE, CLOSE |
 | `materials-panel.png` | [materials](../materials.md) | MATERIALS on an IFC model: the list (some matched, with image swatches) and a brick material's page: its image, size sliders, bump and cutout |

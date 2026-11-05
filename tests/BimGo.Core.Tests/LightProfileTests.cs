@@ -17,8 +17,13 @@ namespace BimGo.Tests
     {
         #region Sample files
 
-        /// <summary>A 30° spot, bilateral (C 0–180), 0–90° gamma, 1000 lm lamp.</summary>
-        private const string SPOT = @"IESNA:LM-63-2002
+        /// <summary>
+        /// A 30° spot, bilateral (C 0–180), 0–90° gamma, 1000 lm lamp. With "\n" line ends whatever the checkout's (Git on
+        /// Windows may turn this file's into "\r\n", which the tests that edit it or compare line ends rely on).
+        /// </summary>
+        private static readonly string SPOT = SPOT_FILE.Replace("\r\n", "\n");
+
+        private const string SPOT_FILE = @"IESNA:LM-63-2002
 [TEST] BimGo test file (hand-written, CC0)
 [MANUFAC] BimGo
 [LUMINAIRE] Test spot, 30 deg, bilateral 0-180

@@ -774,6 +774,7 @@ namespace BimGo.Game
             if (Entourage == null) { return; }
             if (!_paused) { SetPaused(true); }
             _entourageOpen = true;
+            ShowTip("entourage"); // tutorial round: the first time
             _entourageNotice = null;
             _entourageRemoveArmed = null;
         }

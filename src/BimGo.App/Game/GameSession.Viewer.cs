@@ -153,6 +153,7 @@ namespace BimGo.Game
         private bool ViewerOverPanels(Vector2 p)
         {
             if (Inside(_viewerBarRect, p) || Inside(_viewerTitleRect, p) || Inside(_viewerMapRect, p)) { return true; }
+            if ((_tutorial != null && Inside(_tutorialCardRect, p)) || (_tip != null && Inside(_tipRect, p))) { return true; } // tutorial round
             if (_dropdown != null) { return true; } // an open dropdown takes every click
             if (_viewerPopup != VP_NONE && Inside(_viewerPopupRect, p)) { return true; }
             if (!_unarmed && Inside(_viewerPanelRect, p)) { return true; }
@@ -297,6 +298,7 @@ namespace BimGo.Game
         private void ViewerGoHome()
         {
             Sound.Play(SoundId.UiClick);
+            TutorialSawHome(); // tutorial round
             if (Bookmarks?.Home != null || _startedAtSavedHome)
             {
                 _player.GoHome(); // taken up next frame: a walking home walks, a flying one orbits
@@ -936,6 +938,7 @@ namespace BimGo.Game
             float bx = MathF.Round(width * 0.5f - barW * 0.5f), by = height - S(24) - barH;
             _ui.Panel(bx, by, barW, barH, UiTheme.PANEL_STRONG, UiTheme.PANEL_BORDER);
             _viewerBarRect = new Vector4(bx, by, barW, barH);
+            MarkSpot(TutorialSpot.ViewerBar, bx, by, barW, barH); // tutorial round
 
             int hovered = -1;
             float y = by + pad;
@@ -943,6 +946,8 @@ namespace BimGo.Game
             {
                 if (!ViewerToolShown(t)) { continue; }
                 float x = bx + pad + ViewerButtonX(t);
+                if (t == VT_HOME) { MarkSpot(TutorialSpot.ViewerHome, x, y, size, size); } // tutorial round
+                else if (t == VT_PHOTOS) { MarkSpot(TutorialSpot.ViewerPhotos, x, y, size, size); }
                 bool on = t switch
                 {
                     VT_ORBIT => !_viewerWalk,
@@ -1046,6 +1051,7 @@ namespace BimGo.Game
         private void ViewerBarClick(int tool)
         {
             Sound.Play(SoundId.UiClick);
+            ShowViewerTip(tool); // tutorial round: the first time
             switch (tool)
             {
                 case VT_HOME: ViewerGoHome(); break;
@@ -1273,7 +1279,7 @@ namespace BimGo.Game
             _ui.Rect(0, 0, width, height, Rgba.Hex(0x000000, 0.5f));
 
             float w = S(380), bh = S(UiTheme.BUTTON_HEIGHT), step = bh + S(UiTheme.GAP_SMALL);
-            int buttons = IsFileMode ? 8 : 5;
+            int buttons = IsFileMode ? 9 : 6;
             float h = S(UiTheme.PANEL_PAD_Y) * 2f + S(62) + buttons * step + S(78);
             float x = MathF.Round(width * 0.5f - w * 0.5f), y = MathF.Round(MathF.Max(S(16), height * 0.5f - h * 0.5f));
             _ui.Panel(x, y, w, h, UiTheme.PANEL_STRONG, UiTheme.PANEL_BORDER);
@@ -1308,6 +1314,12 @@ namespace BimGo.Game
             }
             iy += step;
             if (MenuButton(f, ix, iy, iw, _window.IsFullscreen ? "LEAVE FULLSCREEN" : "FULLSCREEN", false, false, height: bh, compact: true)) { _window.ToggleFullscreen(); }
+            iy += step;
+            if (MenuButton(f, ix, iy, iw, TutorialMenuLabel(), false, false, height: bh, compact: true)) // tutorial round: the short tutorial again
+            {
+                StartTutorial(Tutorials.VIEWER);
+                return;
+            }
             iy += step;
             if (MenuButton(f, ix, iy, iw, "CLOSE MODEL", false, danger: true, height: bh, compact: true)) { _endRequested = true; return; }
             iy += step + S(UiTheme.GAP_SMALL);
@@ -1471,7 +1483,8 @@ namespace BimGo.Game
                 : $"It opens on the whole model ({Key(InputAction.SetHome)} sets a home view to open at instead, then save the copy again).";
             Utilities.Log_Utils.Write("Viewer copy written.");
             FileDialogs.ShowInfo(_window.Handle,
-                "The viewer copy is saved. BimGo opens it in the simple viewer: orbit and walk, measure, section box, comments, views and the sun.\n\n" +
+                "The viewer copy is saved. BimGo opens it in the simple viewer: orbit and walk, measure, section box, comments, views and the sun. " +
+                "The first time it opens on a PC, it offers a short tutorial.\n\n" +
                 $"{home}\n\nComments made in it are saved in that file: open it in BimGo to read them (its menu can switch to full BimGo).",
                 "BimGo viewer copy");
         }

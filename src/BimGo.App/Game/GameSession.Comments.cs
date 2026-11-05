@@ -63,6 +63,7 @@ namespace BimGo.Game
         private void OpenComments()
         {
             _commentsOpen = true;
+            ShowTip("comments"); // tutorial round: the first time
             _commentScroll.Reset();
             _commentDeleteArmed = null;
             _commentSelected.Clear();

@@ -85,6 +85,7 @@ namespace BimGo.Game
         {
             if (!_paused) { SetPaused(true); }
             _controlsOpen = true;
+            ShowTip("controls"); // tutorial round: the first time
             _controlsNotice = null;
             _resetAllAsk = false;
             _controlRowsVersion = int.MinValue;

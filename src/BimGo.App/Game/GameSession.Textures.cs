@@ -165,6 +165,7 @@ namespace BimGo.Game
         private void OpenTextures()
         {
             _texturesOpen = true;
+            ShowTip("textures"); // tutorial round: the first time
             _textureScroll.Reset();
             _proxyPickerFor = -1;
             _texturesNotice = null;

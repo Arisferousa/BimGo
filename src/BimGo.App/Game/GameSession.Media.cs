@@ -52,6 +52,7 @@ namespace BimGo.Game
             if (!_paused) { SetPaused(true); }
             CloseBookmarksPanel();
             _mediaOpen = true;
+            ShowTip("media"); // tutorial round: the first time
             _mediaNotice = null;
             SwitchMediaTab(Math.Clamp(tab, MEDIA_PHOTO, MEDIA_VIDEO), force: true);
         }

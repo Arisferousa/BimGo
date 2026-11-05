@@ -34,7 +34,8 @@ clears it) and the sections:
 - **REVIEW**: comments, bookmarks, clashes, find room, sun hours;
 - **MEDIA**: photos, tours, paths and video, entourage, site photos;
 - **SETTINGS**: DISPLAY, REFLECTIONS, APPEARANCE, LIGHTS and INTERFACE (each opens that tab beside the sidebar; the
-  open one is marked), and CONTROLS.
+  open one is marked), and CONTROLS;
+- **HELP**: the [tutorial](tutorial.md) (all of it or one chapter, and tips) and the online guide.
 
 CLOSE MODEL is at the sidebar's foot. Beside it are the settings: the quality profile, eye height, units, and the
 DISPLAY · REFLECTIONS · APPEARANCE · LIGHTS · INTERFACE tabs (see [Settings and files](settings-and-files.md)).

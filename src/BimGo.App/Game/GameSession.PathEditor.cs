@@ -120,6 +120,7 @@ namespace BimGo.Game
         private void EnterPathEditor(CameraPath path)
         {
             if (_player == null) { return; }
+            ShowTip("path-editor"); // tutorial round: the first time
             if (path == null || !CameraPaths.Paths.Contains(path)) { path = CameraPaths.Paths.Count > 0 ? CameraPaths.Paths[0] : CameraPaths.AddPath(); }
             if (_clashModeOn) { ExitClashMode(); }
             CloseMediaPanel();
