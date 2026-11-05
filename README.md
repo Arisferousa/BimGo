@@ -41,7 +41,7 @@ Download `BimGo-Setup-<version>.exe` from [Releases](https://github.com/aussieBI
 
 1. Open `src/BimGo.sln` in Visual Studio 2022 (.NET desktop workload; the .NET 10 SDK too for Revit 2027). Configurations `Debug R25` / `R26` / `R27` (Revit 2025 / 2026 / 2027) or Release.
 2. Build. **Debug** builds deploy like the installer: the app to `%LocalAppData%\Programs\BimGo\` (it registers `.bimgo` files and a Start-menu shortcut on start), the add-in into `%AppData%\Autodesk\ApplicationPlugins\BimGo.bundle\Contents\<year>\` (removing any older copy under `Revit\Addins\<year>\`). Release builds copy nothing.
-3. Tests: Test Explorer → Run All, or `dotnet test tests/BimGo.Core.Tests`.
+3. Tests: Test Explorer → Run All, or `dotnet test --project tests/BimGo.Core.Tests` (.NET 10 SDK; with only the .NET 8 SDK, `dotnet test tests/BimGo.Core.Tests`).
 4. A release (tests, the self-contained app, the bundle and `BimGo-Setup-<version>.exe`): `build\publish.ps1`, see [releasing](docs/releasing.md). The version is set once, in `src/Directory.Build.props`.
 
 **Command line** (`BimGo.exe`):

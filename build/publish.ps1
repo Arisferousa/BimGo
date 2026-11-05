@@ -81,8 +81,17 @@ New-Item -ItemType Directory -Path $artifacts | Out-Null
 # ---- 2. Tests
 if (-not $SkipTests) {
     Step 'Core tests'
-    dotnet test (Join-Path $root 'tests\BimGo.Core.Tests') -c Release --nologo
-    Check-Exit 'The Core tests'
+    # global.json runs the tests on Microsoft.Testing.Platform: the .NET 10 SDK then wants --project, the .NET 8 SDK
+    # (which ignores that setting) the path on its own. Run from the repo root so global.json is the one read.
+    $tests = Join-Path $root 'tests\BimGo.Core.Tests'
+    Push-Location $root
+    try {
+        $sdk = "$(dotnet --version)".Trim()
+        if ([int]($sdk -replace '^(\d+).*$', '$1') -ge 10) { dotnet test --project $tests -c Release }
+        else { dotnet test $tests -c Release --nologo }
+        Check-Exit 'The Core tests'
+    }
+    finally { Pop-Location }
 }
 
 # ---- 3. The app (self-contained, so standalone users need no .NET)
